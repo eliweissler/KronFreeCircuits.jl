@@ -4,14 +4,22 @@ using KrylovKit: KrylovKit
     solve(solver, H, m) -> (vals::Vector{Float64}, vecs::Matrix{ComplexF64})
 
 Eigenpairs of the Hermitian operator `H`, ascending.
-`Dense` returns all pairs and ignores `m`; `Lanczos` returns the lowest `m`.
+`Dense` returns the lowest `m` pairs, or all when `m == 0` or `m >= size(H, 1)`;
+`Lanczos` returns the lowest `m`.
 """
 function solve end
 
 function solve(::Dense, H::KronFreeOperator, m::Int)
-    F = eigen(Hermitian(Matrix(H)))
+    m >= 0 || throw(ArgumentError("Dense requires m >= 0, got $m"))
+    n = size(H, 1)
+    A = Hermitian(Matrix(H))
+    F = 0 < m < n ? eigen!(A, 1:m) : eigen!(A)
     return Vector{Float64}(F.values), Matrix{ComplexF64}(F.vectors)
 end
+
+# Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); Lanczos is advised.
+const _DENSE_WARN_DIM = 10_000
+_dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM
 
 function solve(s::Lanczos, H::KronFreeOperator, m::Int)
     n = size(H, 1)

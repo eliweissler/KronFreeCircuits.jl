@@ -183,6 +183,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     H = KronFreeOperator(dims, terms; constant=constant)
 
     # (4) Diagonalize.
+    _dense_too_large(node.solver, prod(dims)) &&
+        @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
+              "Lanczos is advised", _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
     m = node.compute == 0 ? prod(dims) : node.compute
     E, V = solve(node.solver, H, m)
 
@@ -226,7 +229,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         c isa PhaseGrid || continue
         s = _edge_support(V, dims, a, c.order ÷ 2)
         bad = findall(>(_EDGE_TOL), s)
-        isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid"
+        isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
     return MaterializedNode(node, dims, E, V, collect(Int, idx), ports, children)

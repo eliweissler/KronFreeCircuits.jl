@@ -218,7 +218,34 @@ function diagonal(H::KronFreeOperator)
     return vec(D)
 end
 
+const _MATRIX_BLOCK = 256
+
+"""
+    Matrix(H::KronFreeOperator) -> Matrix{ComplexF64}
+
+The explicit `n × n` matrix, built by applying `H` to blocks of at most 256 identity columns,
+so the peak memory beyond the result is a few `n × 256` blocks.
+"""
 function Base.Matrix(H::KronFreeOperator)
     n = prod(H.dims)
-    return mul!(Matrix{ComplexF64}(undef, n, n), H, Matrix{ComplexF64}(I, n, n))
+    M = Matrix{ComplexF64}(undef, n, n)
+    B = min(n, _MATRIX_BLOCK)
+    E = zeros(ComplexF64, n, B)          # identity block, reused
+    Y = Matrix{ComplexF64}(undef, n, B)
+    for c0 in 1:B:n
+        w = min(B, n - c0 + 1)
+        if w < B                         # last, narrower block
+            E = zeros(ComplexF64, n, w)
+            Y = Matrix{ComplexF64}(undef, n, w)
+        end
+        for j in 1:w
+            E[c0 + j - 1, j] = 1
+        end
+        mul!(Y, H, E)
+        copyto!(view(M, :, c0:c0+w-1), Y)
+        for j in 1:w
+            E[c0 + j - 1, j] = 0
+        end
+    end
+    return M
 end
