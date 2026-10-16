@@ -57,3 +57,27 @@ function kron_three_oscillators(d::Int)::Matrix{ComplexF64}
     end
     return kron_reference([d, d, d], terms)
 end
+
+using JSON3
+
+"""
+    reference(name) -> (energies::Vector{Float64}, params::Dict{Symbol,Any})
+
+The scqubits reference entry `name` of `scqubits_reference.json`.
+"""
+function reference(name::String)
+    entry = JSON3.read(read(fixture("scqubits_reference.json"), String))[Symbol(name)]
+    params = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in pairs(entry.params))
+    return (energies=Vector{Float64}(entry.energies), params=params)
+end
+
+two_transmons_params(; g) = (E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=25.0, E_C2=1.0, n_g2=0.0, g=g)
+three_transmons_params(; g) = (two_transmons_params(; g)..., E_J3=20.0, E_C3=0.8, n_g3=0.1)
+zero_pi_params() = (E_J=10.0, E_L=0.04, E_CJ=20.0, E_CS=0.5, varphi_ext=2π * 0.23, n_g=0.1)
+full_zero_pi_params() = (zero_pi_params()..., E_Cz=Float64(reference("full_zero_pi").params[:E_Cz]),
+                         dE_J=0.05, dC_J=0.05, dC=0.08, dE_L=0.1)
+function two_zero_pi_params(; g)
+    p = zero_pi_params()
+    suffixed(s) = NamedTuple{Tuple(Symbol(k, s) for k in keys(p))}(values(p))
+    return (suffixed("1")..., suffixed("2")..., g=g)
+end

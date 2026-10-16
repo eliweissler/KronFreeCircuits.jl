@@ -4,10 +4,10 @@ abstract type Solver end
 struct Dense <: Solver end
 
 """
-    Lanczos(; tol=1e-10, krylovdim=0, maxiter=100, verbosity=0)
+    Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0)
 
 Iterative solver; `krylovdim == 0` lets the solver choose.
-`maxiter` bounds the restarts and `verbosity` is passed to KrylovKit (0 is silent).
+`maxiter` bounds the restarts (grid Hamiltonians are stiff: a 9k-dimensional zero-pi leaf needs several hundred) and `verbosity` is passed to KrylovKit (0 is silent).
 """
 struct Lanczos <: Solver
     tol::Float64
@@ -15,7 +15,7 @@ struct Lanczos <: Solver
     maxiter::Int
     verbosity::Int
 end
-Lanczos(; tol=1e-10, krylovdim=0, maxiter=100, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
+Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
 
 abstract type SelectionRule end
 

@@ -17,5 +17,6 @@ include("tree.jl")
 include("solvers.jl")
 include("selection.jl")
 include("phase.jl")
+include("materialize.jl")
 
 end # module
