@@ -228,7 +228,8 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     amps = isleaf ? AbstractMatrix{ComplexF64}[] : AbstractMatrix{ComplexF64}[_childamps(c) for c in children]
     V0 = copy(V)
     sector = findall(mask)
-    peak = Int[_sector_peak(view(V0, :, j), sector)[1] for j in axes(V0, 2)]
+    peaks = [_sector_peak(view(V0, :, j), sector) for j in axes(V0, 2)]
+    peak = Int[first(pk) for pk in peaks]
     if node.phase === :follow && prev !== nothing
         size(prev.vectors) == size(V) ||
             throw(ArgumentError("phase :follow: the previous solution keeps $(size(prev.vectors, 2)) states, this one $(size(V, 2))"))
@@ -238,11 +239,18 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     else
         for j in axes(V, 2)
             C = reshape(view(V0, :, j), dims...)
-            comp, α = branch_peak_phase(C, amps; mask=mask)
-            r = _peak_ratio(C, amps, comp, α)
-            r < _HYBRID_RATIO && @warn "Branch node on modes $(modes(node)): kept state $j has joint-peak amplitude " *
-                                       "$(abs(α)), ratio $r < $_HYBRID_RATIO to its dominant product component's " *
-                                       "(heavy hybridization); its phase is fixed by a small amplitude" maxlog=10
+            last(peaks[j]) && @warn "Branch node on modes $(modes(node)): kept state $j has no weight on the " *
+                                    "phase mask; using its largest entry" maxlog=10
+            α = _joint_peak_amplitude(C, amps, peak[j])          # = branch_peak_phase(C, amps; mask=mask)
+            d = _peak_denominator(C, amps, peak[j])
+            if !isfinite(d) || d < 1e-12 * norm(C)
+                @warn "Branch node on modes $(modes(node)): kept state $j: its dominant product component's own " *
+                      "peak amplitude vanishes ($d), so its phase is fixed by an amplitude of $(abs(α))" maxlog=10
+            elseif abs(α) / d < _HYBRID_RATIO
+                @warn "Branch node on modes $(modes(node)): kept state $j has joint-peak amplitude $(abs(α)), " *
+                      "ratio $(abs(α) / d) < $_HYBRID_RATIO to its dominant product component's (heavy " *
+                      "hybridization); its phase is fixed by a small amplitude" maxlog=10
+            end
             view(V, :, j) .*= exp(-im * angle(α))
         end
     end

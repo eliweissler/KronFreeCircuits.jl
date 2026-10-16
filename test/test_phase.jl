@@ -16,5 +16,10 @@ using KronFreeCircuits: branch_peak_phase
     @test branch_peak_phase(C, [A1, A2]; mask=vec(m))[1] == LinearIndices((3, 2))[1, 2]
     @test branch_peak_phase(C, [A1, A2]; mask=falses(6))[1] == comp
     # three children recursion shape
-    @test branch_peak_phase(randn(ComplexF64, 2, 3, 2), [randn(ComplexF64, 2, 2), randn(ComplexF64, 3, 3), randn(ComplexF64, 2, 2)]) isa Tuple{Int,ComplexF64}
+    C3 = randn(ComplexF64, 2, 3, 2); B = [randn(ComplexF64, 2, 2), randn(ComplexF64, 3, 3), randn(ComplexF64, 2, 2)]
+    r3 = branch_peak_phase(C3, B)
+    @test r3 isa Tuple{Int,ComplexF64}
+    s1, s2, s3 = Tuple(argmax(abs.(C3)))
+    @test r3[1] == LinearIndices(C3)[s1, s2, s3]
+    @test r3[2] ≈ sum(C3[a, b, c] * B[1][s1, a] * B[2][s2, b] * B[3][s3, c] for a in 1:2, b in 1:3, c in 1:2)
 end

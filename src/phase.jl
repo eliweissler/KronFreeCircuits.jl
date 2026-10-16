@@ -58,8 +58,7 @@ is the full-space amplitude of the child's kept state `i` at the peak point of i
 for a basis child the identity (its peak point is the basis index itself).
 The function selects row `a*` of `amps[a]` for the dominant component itself.
 Returns `comp`, the linear index of the dominant component `(a*, b*, …) = argmax |C|` (over `mask`),
-and `α`, the
-exact full-space amplitude of the state at the joint peak of that component,
+and `α`, the exact full-space amplitude of the state at the joint peak of that component,
 `α = Σ C[a, b, …] amps[1][a*, a] amps[2][b*, b] ⋯`.
 `mask` (`prod(size(C))` booleans, axis 1 fastest, or `nothing` for none) restricts the argmax as
 the leaf rule does, falling back to the global argmax when `C` has no weight on `mask`.
@@ -70,14 +69,19 @@ function branch_peak_phase(C::AbstractArray{<:Number}, amps::AbstractVector{<:Ab
     length(amps) == ndims(C) ||
         throw(ArgumentError("branch_peak_phase: $(length(amps)) amplitude matrices for a $(ndims(C))-axis tensor"))
     comp = mask === nothing ? argmax(abs.(vec(C))) : _sector_peak(vec(C), findall(vec(mask)))[1]
-    ci = CartesianIndices(C)[comp]
-    α = _contract_rows(C, [view(amps[a], ci[a], :) for a in 1:ndims(C)])[1]
-    return comp, ComplexF64(α)
+    return comp, _joint_peak_amplitude(C, amps, comp)
 end
 
-# |α| relative to the amplitude the dominant product component alone contributes at the joint peak,
-# |C[comp]| ∏_a |amps[a][a*, a*]| (1 on a basis child's axis): near 1 for a weakly hybridized state.
-function _peak_ratio(C::AbstractArray{<:Number}, amps::AbstractVector{<:AbstractMatrix}, comp::Int, α::Number)
+# The exact full-space amplitude of `C` at the joint peak of its component `comp`.
+function _joint_peak_amplitude(C::AbstractArray{<:Number}, amps::AbstractVector{<:AbstractMatrix}, comp::Int)
     ci = CartesianIndices(C)[comp]
-    return abs(α) / (abs(C[comp]) * prod(abs(amps[a][ci[a], ci[a]]) for a in 1:ndims(C)))
+    return ComplexF64(_contract_rows(C, [view(amps[a], ci[a], :) for a in 1:ndims(C)])[1])
+end
+
+# The amplitude the dominant product component alone contributes at its joint peak,
+# |C[comp]| ∏_a |amps[a][a*, a*]| (1 on a basis child's axis); |α| divided by it is near 1 for a
+# weakly hybridized state.
+function _peak_denominator(C::AbstractArray{<:Number}, amps::AbstractVector{<:AbstractMatrix}, comp::Int)
+    ci = CartesianIndices(C)[comp]
+    return abs(C[comp]) * prod(abs(amps[a][ci[a], ci[a]]) for a in 1:ndims(C))
 end

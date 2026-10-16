@@ -32,7 +32,8 @@ using KronFreeCircuits: materialized, Node, Dense, lowest, nport, ChargeBasis, l
     end
     @testset "dressed_index warning" begin
         @test_logs dressed_index(sys0, top, (1, 1))
-        sysg = materialize(top, spec, two_transmons_params(g=1.5))
+        # strong coupling hybridizes some kept states (diagnostic ratio down to 0.14)
+        sysg = @test_logs (:warn, r"Branch node") match_mode=:any materialize(top, spec, two_transmons_params(g=1.5))
         B = bare_overlaps(sysg, top)
         ps = [p for p in 1:64 if 1e-12 < sum(B[:, p]) && maximum(B[:, p]) < 0.5]
         @test !isempty(ps)

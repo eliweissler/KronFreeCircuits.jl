@@ -115,7 +115,9 @@ end
         @test_throws ArgumentError port(sys, :n, :varphi_1; k=1.0)
         kw = Node([mk(1), mk(2)]; keep=connected(; core=[1], port=(:n, :varphi_1), thresh=0.05))
         pos = Node([mk(1), mk(2)]; keep=connected([1], (:varphi_1, nport()), 0.05))
-        skw, spos = materialize(kw, spec, θ), materialize(pos, spec, θ)
+        # the 64 kept states include high, strongly interfering ones (diagnostic ratio down to 0.14)
+        skw = @test_logs (:warn, r"Branch node") match_mode=:any materialize(kw, spec, θ)
+        spos = @test_logs (:warn, r"Branch node") match_mode=:any materialize(pos, spec, θ)
         @test materialized(skw, kw).kept == materialized(spos, pos).kept && length(materialized(skw, kw).kept) > 1
         @test energies(skw) ≈ energies(spos)
         @test port(skw, :n, :varphi_1) ≈ port(spos, :varphi_1, nport())
@@ -291,10 +293,12 @@ end
     sys = @test_logs min_level=Base.CoreLogging.Warn materialize(top, KronFreeCircuits.parse_spec(src), θ)   # no edge or hybridization warning
     q1, t = materialized(sys, q1n), materialized(sys, top)
     W = kron(Matrix{ComplexF64}(I, 101, 101), q1.vectors)                         # top product basis -> full space
+    sector = findall(kron(positive_mask(grid), trues(4)))                          # axis 1 fastest
     for j in 1:8
         ψ = W * t.vectors[:, j]
         a, b = Tuple(CartesianIndices((4, 101))[t.peak_component[j]])
         @test positive_mask(grid)[b]                                               # the symmetric partner at -φ is excluded
+        @test t.peak_component[j] == sector[argmax(abs.(t.vectors[sector, j]))]    # the argmax of |c| over the mask
         p = LinearIndices((21, 101))[q1.peak_component[a], b]
         @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0
         @test ψ[p] ≈ t.peak_amplitudes[j, j]
