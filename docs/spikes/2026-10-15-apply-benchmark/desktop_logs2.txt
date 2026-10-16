@@ -1,0 +1,65 @@
+==CUDA
+Julia 1.13.2, threads=16, BLAS threads=16, array=CuArray
+NVIDIA RTX A4500
+
+=== A: 3 modes cosine-coupled  dims=(40, 40, 40)  n=64000  nterms=6
+  sparse   skipped (est nnz 3.1e+08)
+  blas     err=0.0e+00       5.054 ms
+  ka       err=4.7e-16       0.950 ms
+  permute  err=0.0e+00       1.389 ms
+  batched  err=0.0e+00       1.563 ms
+  itensor  err=5.6e-15       1.507 ms
+
+=== A: 3 modes cosine-coupled  dims=(80, 80, 80)  n=512000  nterms=6
+  sparse   skipped (est nnz 1.0e+10)
+  blas     err=0.0e+00      18.979 ms
+  ka       err=7.9e-16      12.287 ms
+  permute  err=0.0e+00       9.404 ms
+  batched  err=0.0e+00       9.286 ms
+  itensor  err=1.1e-14       9.333 ms
+
+=== A: 3 modes cosine-coupled  dims=(100, 100, 100)  n=1000000  nterms=6
+  sparse   skipped (est nnz 3.0e+10)
+  blas     err=0.0e+00      40.099 ms
+  ka       err=9.0e-16      30.118 ms
+  permute  err=0.0e+00      27.460 ms
+  batched  err=0.0e+00      28.212 ms
+  itensor  err=1.4e-14      27.293 ms
+
+=== B: two leaves, dense 300x300 ports  dims=(300, 300)  n=90000  nterms=3
+  sparse   skipped (est nnz 8.2e+09)
+  blas     err=0.0e+00       3.140 ms
+  ka       err=2.7e-16       3.949 ms
+  permute  err=1.0e-16       3.220 ms
+  batched  err=0.0e+00       3.206 ms
+  itensor  err=1.2e-16       3.178 ms
+
+=== B: two leaves, dense 500x500 ports  dims=(500, 500)  n=250000  nterms=3
+  sparse   skipped (est nnz 6.3e+10)
+  blas     err=0.0e+00      10.386 ms
+  ka       err=2.6e-16      16.724 ms
+  permute  err=8.5e-17      10.682 ms
+  batched  err=0.0e+00      10.513 ms
+  itensor  err=1.1e-16      10.560 ms
+
+DONE
+==CPU
+Julia 1.13.2, threads=16, BLAS threads=16, array=Array
+
+=== A: 3 modes cosine-coupled  dims=(80, 80, 80)  n=512000  nterms=6
+  sparse   skipped (est nnz 1.0e+10)
+  blas     err=0.0e+00      22.453 ms
+  ka       err=7.9e-16     122.627 ms
+  permute  err=0.0e+00      66.952 ms
+  batched  err=0.0e+00      19.756 ms
+  itensor  err=1.1e-14      78.968 ms
+
+=== B: two leaves, dense 300x300 ports  dims=(300, 300)  n=90000  nterms=3
+  sparse   skipped (est nnz 8.2e+09)
+  blas     err=0.0e+00       2.573 ms
+  ka       err=2.2e-16      30.995 ms
+  permute  err=4.7e-17       3.750 ms
+  batched  err=0.0e+00       2.434 ms
+  itensor  err=9.0e-17       4.066 ms
+
+DONE
