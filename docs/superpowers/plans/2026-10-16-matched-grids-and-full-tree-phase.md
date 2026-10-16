@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Raise the in-suite scqubits agreement for the grid systems from 1e-4-level to 1e-10-level by comparing on identical discretizations, and add a phase convention that fixes a branch eigenvector's phase in the full leaf coordinate basis by expanding down the tree.
+**Goal:** Raise the in-suite scqubits agreement for the grid systems from 1e-4-level to 1e-10-level by comparing on identical small discretizations, and make branch phase fixing physical: each branch state's phase is set by its exact full-space amplitude at the joint peak of its dominant product component, computed from the children's stored peak amplitudes without expansion.
 
-**Architecture:** Task 1 changes only tests and the reference generator: scqubits' 7-point stencil on its 1001-point grid is exactly our `PhaseGrid(…, 1001; order=6)`, so the two codes build the same matrices. Task 2 adds `:positive_sector_full` beside `:positive_sector`: the kept vectors of a node are expanded one child axis at a time with the children's kept-vector matrices (via `apply_axis!` with a `DenseOp`), recursively to the leaves, restricted to the positive leaf coordinates, and the largest component there is made real and positive.
+**Architecture:** Task 1 changes only tests and the reference generator: scqubits' 7-point stencil on its 1001-point grid is exactly our `PhaseGrid(…, 1001; order=6)`, so the two codes build the same matrices. Task 2 changes the branch behavior of `:positive_sector`: every materialized node stores, per kept state, its peak point and a k×k matrix of exact full-space amplitudes at the other kept states' peaks; a branch uses its children's matrices to evaluate each state at the joint peak of its dominant product component and makes that amplitude real positive. Task 3 (tabled) is the exact sector maximum by branch-and-bound.
 
 **Tech Stack:** as plan 1. No new dependencies.
 
@@ -15,14 +15,14 @@
 - As plan 1: Julia 1.13, `ComplexF64`, column-major axis 1 fastest, structure-dispatched apply, no new dependencies, commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - Physics conventions and fixture files are unchanged. Only the reference generator may change, and only additively (new entries, recorded metadata); existing entries keep their values.
 - scqubits' phase-grid second derivative uses `scqubits.settings.STENCIL = 7` (record it in the reference file), i.e. a 7-point central stencil, which is our `order=6`; its first derivative (the `n_φ` operator and the `n_θ n_φ` cross term) uses the matching 7-point first-derivative stencil. Edge handling is truncation, as ours.
-- The default phase convention stays `:positive_sector` (per-node). `:positive_sector_full` is opt-in per node.
+- The default phase convention stays `:positive_sector`; its branch behavior becomes the joint-peak rule of Task 2 (no new convention symbol).
 
 ## Review Focus
 
 1. A matched-discretization test must fail if either code's stencil, range, or point count differs: pin `order=6` and `N=201` explicitly and assert agreement at `1e-9` or tighter, never looser. Pinned in Task 1.
-2. `:positive_sector_full` on a leaf must give exactly the same result as `:positive_sector`. Pinned in Task 2.
-3. `:positive_sector_full` must estimate the expanded size and `@warn` above a threshold (default 2e8 complex entries, about 3.2 GB) before allocating. Pinned in Task 2.
-4. The expansion must use the children's kept vectors AFTER their own phase fixing, so that the full-space vector is the physical state; the convention changes only the global phase of the branch vector. Pinned in Task 2 by comparing against a direct Kronecker reconstruction.
+2. Leaf behavior of `:positive_sector` is unchanged by Task 2; leaf `peak_amplitudes` equal the vectors at the peaks. Pinned in Task 2.
+3. The branch rule must be invariant to a child state's sign flip (coefficients and stored amplitudes flip together). Pinned in Task 2's unit test.
+4. The amplitude used for the phase must equal the brute-force full-space value at the joint peak, through two levels of tree. Pinned in Task 2 by Kronecker reconstruction oracles.
 5. Edge-support warnings on the shared ±6π grid are expected in Task A's tests and must be captured with `@test_logs`, never left as noise.
 
 ---
@@ -71,55 +71,90 @@ In `test/test_zero_pi_reference.jl` (gated by `KRONFREE_SLOW_TESTS=1`): keep the
 
 ---
 
-### Task 2: `:positive_sector_full` phase convention
+### Task 2: Branch phase fixing at the joint peak of the dominant product component
+
+**Decision (Eli, 2026-10-16).** Keep the per-node positive-sector rule at leaves. At a branch, fix each kept state's phase by its exact full-space amplitude at the joint peak of its dominant product-state component, computed through the children's stored peak amplitudes. This is child-convention-independent (a leaf state flipping sign between parameter points flips the coefficients and the stored amplitudes together, leaving the physical amplitude unchanged), recursive, and costs k² per node with no grid-sized arrays. The exact full-space sector maximum via a Cauchy–Schwarz branch-and-bound is tabled (Task 3).
 
 **Files:**
-- Modify: `src/phase.jl`, `src/materialize.jl`, `src/tree.jl` (allow the new symbol; docstrings), `test/test_materialize.jl`, `test/test_selection.jl` or a new `test/test_phase.jl`
+- Modify: `src/materialize.jl` (`MaterializedNode` gains `peak_component::Vector{Int}` and `peak_amplitudes::Matrix{ComplexF64}`; the branch phase step), `src/phase.jl` (a pure function for the branch rule), `src/tree.jl` (docstring), `test/test_materialize.jl`, `test/test_phase.jl` (new, unit tests of the pure function), `README.md` (one sentence)
 
 **Interfaces:**
-- Consumes: `fix_phases!`, `MaterializedNode` (`children`, `vectors`, `dims`), `positive_mask(b)`, `apply_axis!`, `DenseOp`.
-- Produces: `Node(...; phase=:positive_sector_full)` accepted; `full_space_vector(mn::MaterializedNode, j::Int)::Array{ComplexF64}` returning kept state `j` expanded to the leaf coordinate basis as a tensor with one axis per leaf mode (in `modes(node)` order); `full_space_mask(mn)::Vector{Bool}` the Kronecker product of all leaf `positive_mask`s; `expanded_size(mn)::Int`; the warning threshold keyword `full_phase_max_entries` on `materialize` (default `2_000_000_000 ÷ 10 = 200_000_000`).
-- Expansion algorithm: start from `reshape(V[:, j], dims...)`; for each child axis `a` that is a `MaterializedNode` child `c`, apply `DenseOp(c.vectors)` along axis `a` (this maps the child's kept index to the child's product index, growing the axis from `length(c.kept)` to `prod(c.dims)`), then reshape that axis into `c.dims`; recurse into `c`'s node children. Use `apply_axis!` so the kron-free machinery does the work; a basis child needs no expansion.
-- Phase rule: for each kept vector, expand, take the entry of largest modulus among `full_space_mask`, multiply the branch vector (and its already-formed ports, as the existing rotation code does) by `exp(-im*angle(entry))`. Leaves: identical to `:positive_sector` (the expansion is the identity).
+- Consumes: `MaterializedNode` (`children`, `vectors`, `dims`, `kept`), `positive_mask`, `fix_phases!`, the existing selection-port rotation code.
+- Produces:
+  - `MaterializedNode.peak_component::Vector{Int}`: for kept state `j`, the linear index into the node's own product basis (`dims`) of its peak point. For a leaf this is the positive-sector argmax already used by `:positive_sector`. For a branch it is the linear index of the dominant coefficient `(a*, b*, …) = argmax |c|` of the kept vector; the physical point it denotes is resolved recursively through the children's `peak_component`.
+  - `MaterializedNode.peak_amplitudes::Matrix{ComplexF64}` of size `k × k`: `A[p, j]` is the exact full-space amplitude of kept state `j` at the physical peak point of kept state `p`. Leaf: `A = V[peak_component, :]`. Branch: `A[p, j] = Σ_{ab…} c^{(j)}_{ab…} A₁[a_p, a] A₂[b_p, b] …`, i.e. the kept vector `j` reshaped to `dims`, contracted on each child axis with the child's peak-amplitude row for `p`'s component on that axis. Implement the contraction with `apply_axis!` and a `DenseOp` of the single row (or a direct `dot`), not by expansion.
+  - `branch_peak_phase(C::AbstractArray{ComplexF64}, rows::Vector{<:AbstractVector})::Tuple{Int,ComplexF64}` in `src/phase.jl`: given a kept vector reshaped to the node's dims and, per child axis, that child's peak-amplitude ROWS indexed by the child's kept index (i.e. the child's full `peak_amplitudes` matrix is passed and the function selects row `a*` for the dominant component), returns `(linear index of argmax |C|, exact amplitude at the joint peak)`. Pure, unit-testable.
+  - Branch phase step in `_materialize`: for each kept `j`, `(comp, α) = branch_peak_phase(...)`; multiply column `j` (and rotate already-formed ports, as the existing code does) by `exp(-im*angle(α))`; store `comp` and compute the node's `peak_amplitudes`. Diagnostic: when `abs(α) < 0.1` (the amplitude at the chosen point is small relative to the unit-norm state, i.e. heavy hybridization), `@warn maxlog=10` naming the node's modes and state index.
+  - `:positive_sector` keeps its name; the branch behavior changes from "largest coefficient real positive" to the above. `:follow` is unchanged.
 
 - [ ] **Step 1: Write the failing tests**
 
+`test/test_phase.jl` (unit, synthetic):
 ```julia
-@testset ":positive_sector_full" begin
+@testset "branch_peak_phase" begin
+    # two children with 3 and 2 kept states; synthetic peak-amplitude matrices and a coefficient tensor
+    A1 = ComplexF64[0.9 0.1 0.2; 0.3 0.8 0.1; 0.2 0.2 0.7]; A2 = ComplexF64[0.95 0.2; 0.1 0.9]
+    C = zeros(ComplexF64, 3, 2); C[2, 1] = 0.8im; C[1, 2] = 0.5; C[3, 2] = 0.2
+    comp, α = branch_peak_phase(C, [A1, A2])
+    @test comp == LinearIndices((3, 2))[2, 1]                       # dominant component
+    # exact amplitude at the joint peak (row 2 of A1, row 1 of A2): Σ_ab C[a,b] A1[2,a] A2[1,b]
+    @test α ≈ sum(C[a, b] * A1[2, a] * A2[1, b] for a in 1:3, b in 1:2)
+    # child sign flip invariance: flipping child-1 state 2 flips C[2,:] and A1[:,2] together; α unchanged
+    C2 = copy(C); C2[2, :] .*= -1; A1f = copy(A1); A1f[:, 2] .*= -1
+    @test branch_peak_phase(C2, [A1f, A2])[2] ≈ α
+    # three children recursion shape
+    @test branch_peak_phase(randn(ComplexF64, 2, 3, 2), [randn(ComplexF64, 2, 2), randn(ComplexF64, 3, 3), randn(ComplexF64, 2, 2)]) isa Tuple{Int,ComplexF64}
+end
+```
+`test/test_materialize.jl` (end to end, two transmons and three-level tree):
+```julia
+@testset "branch positive-sector phase at the dominant joint peak" begin
     spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(g=0.3)
     mk(i) = Node([Symbol("varphi_$i") => ChargeBasis(30)]; keep=lowest(8))
-    top_full = Node([mk(1), mk(2)]; keep=lowest(20), phase=:positive_sector_full, ports=[(:varphi_1, nport())])
-    top_node = Node([mk(1), mk(2)]; keep=lowest(20), ports=[(:varphi_1, nport())])
-    sf = materialize(top_full, spec, θ); sn = materialize(top_node, spec, θ)
-    @test energies(sf) ≈ energies(sn)
-    Vf = eigenvectors(sf, top_full); Vn = eigenvectors(sn, top_node)
-    @test all(abs.(abs.(Vf) .- abs.(Vn)) .< 1e-12)                          # same states up to phase
-    q1, q2 = materialized(sf, mk1), materialized(sf, mk2)                      # use the actual child Node objects
+    q1n, q2n = mk(1), mk(2); top = Node([q1n, q2n]; keep=lowest(20), ports=[(:varphi_1, nport())])
+    sys = materialize(top, spec, θ); q1, q2, t = materialized(sys, q1n), materialized(sys, q2n), materialized(sys, top)
+    V = t.vectors; mask1 = positive_mask(ChargeBasis(30))
     for j in 1:20
-        ψ = kron(q2.vectors, q1.vectors) * Vf[:, j]                             # explicit full-space vector, axis 1 fastest
-        mask = kron(positive_mask(ChargeBasis(30)), positive_mask(ChargeBasis(30)))
-        i = argmax(abs.(ψ) .* mask)
-        @test imag(ψ[i]) ≈ 0 atol=1e-12 && real(ψ[i]) > 0
-        @test vec(full_space_vector(q_top, j)) ≈ ψ
+        ψ = kron(q2.vectors, q1.vectors) * V[:, j]                                # brute-force full-space oracle, axis 1 fastest
+        a, b = Tuple(CartesianIndices((8, 8))[t.peak_component[j]])
+        p = LinearIndices((61, 61))[q1.peak_component[a], q2.peak_component[b]]
+        @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0                            # real positive at the joint peak
+        @test ψ[p] ≈ t.peak_amplitudes[j, j]
+        @test mask1[q1.peak_component[a]] && mask1[q2.peak_component[b]]           # the joint peak lies in the positive sector
+        @test (a, b) == Tuple(argmax(abs.(reshape(V[:, j], 8, 8))))               # dominant component
     end
-    @test port(sf, :varphi_1, nport()) ≈ port(sn, :varphi_1, nport()) atol=1e-10 broken=false  # ports differ only by the diagonal phase rotation; compare |·|
-    @test abs.(port(sf, :varphi_1, nport())) ≈ abs.(port(sn, :varphi_1, nport()))
-    # leaf: identical to :positive_sector
-    leaf_full = Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(5), phase=:positive_sector_full)
-    leaf_node = Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(5))
-    @test eigenvectors(materialize(leaf_full, load_spec(fixture("transmon.json")), (E_J=30.0, E_C=1.2, n_g=0.25)), leaf_full) ≈
-          eigenvectors(materialize(leaf_node, load_spec(fixture("transmon.json")), (E_J=30.0, E_C=1.2, n_g=0.25)), leaf_node)
-    # three-level tree: expansion recurses
-    ... (three_transmons.json: inner = two coupled, outer = inner + third; compare full_space_vector against kron(V3, kron(V2, V1)) * Vinner-expanded)
-    # size warning
-    @test_logs (:warn, r"expanded") materialize(top_full, spec, θ; full_phase_max_entries=10)
+    # leaf peak amplitudes equal the vectors at the peaks
+    @test q1.peak_amplitudes == q1.vectors[q1.peak_component, :]
+    # ports and energies unchanged in modulus relative to a run with the old rule are not testable directly; check Hermiticity and spectrum
+    @test port(sys, :varphi_1, nport()) ≈ port(sys, :varphi_1, nport())'
+    # three-level tree: peak amplitudes of the outer node agree with a brute-force expansion through two levels
+    spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
+    inner = Node([mk(1), mk(2)]; keep=lowest(12)); third = Node([:varphi_3 => ChargeBasis(10)]; keep=lowest(4))
+    outer = Node([inner, third]; keep=lowest(10)); sys3 = materialize(outer, spec3, θ3)
+    o, inn, th = materialized(sys3, outer), materialized(sys3, inner), materialized(sys3, third)
+    l1, l2 = materialized(sys3, inner.children[1]), materialized(sys3, inner.children[2])
+    Vinner_full = kron(l2.vectors, l1.vectors) * inn.vectors                       # inner kept states in the leaf basis
+    for j in 1:10
+        ψ = kron(th.vectors, Vinner_full) * o.vectors[:, j]
+        ai, c = Tuple(CartesianIndices((12, 4))[o.peak_component[j]])
+        a, b = Tuple(CartesianIndices((8, 8))[inn.peak_component[ai]])
+        p = LinearIndices((61, 61, 21))[l1.peak_component[a], l2.peak_component[b], th.peak_component[c]]
+        @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0
+        @test ψ[p] ≈ o.peak_amplitudes[j, j]
+    end
 end
 ```
 
-- [ ] **Step 2: Run to verify it fails.**
-- [ ] **Step 3: Implement** `full_space_vector`, `full_space_mask`, `expanded_size`, the new convention in `fix_phases!`'s caller in `materialize.jl` (the convention needs the materialized children, so it is handled in `materialize.jl`, not in `phase.jl`'s column-local function), accept the symbol in `Node`, update the `Node` docstring and the README's phase sentence.
-- [ ] **Step 4: Run tests → PASS**, including the full suite.
-- [ ] **Step 5: Commit** `"Add :positive_sector_full phase fixing by expanding kept vectors down the tree"`.
+- [ ] **Step 2: Run to verify they fail.**
+- [ ] **Step 3: Implement** `branch_peak_phase`, the new fields (leaf and branch), the branch phase step with the diagnostic, docstrings, README sentence.
+- [ ] **Step 4: Run both suites → PASS.**
+- [ ] **Step 5: Commit** `"Fix branch phases at the dominant joint peak via children's stored peak amplitudes"`.
+
+---
+
+### Task 3 (tabled): exact full-space sector maximum by Cauchy–Schwarz branch-and-bound
+
+Not scheduled. Recorded so the design is not lost. For a node whose children are leaves, with `W = V₁ C V₂ᵀ` the (never formed) full-space matrix of one kept state: compute `r_i = ‖(V₁C)[i,:]‖` for sector rows `i` and `s_j = ‖V₂[j,:]‖` for sector columns `j` (cost `d·k` each); enumerate sector pairs `(i, j)` lazily in decreasing `r_i s_j` with a heap over `i` against `s` sorted descending; evaluate `W_ij` exactly (`k₁k₂`) for each; stop with proof when the next bound is below the best exact `|W_ij|` found. Restricting to the all-positive sector cuts the candidate set by `2ⁿ` for `n` grid axes. Cap the number of evaluations (default 10⁴) with a `@warn` and fall back to Task 2's joint peak. Deeper trees need recursive bounds or fall back to Task 2. Eli's expectation: in practice the peaks line up, so the search should terminate after a handful of evaluations; the cap guards the delocalized case.
 
 ---
 
