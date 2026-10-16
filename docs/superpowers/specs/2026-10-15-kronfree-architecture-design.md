@@ -239,7 +239,7 @@ Memory: LOBPCGEigensolver holds roughly ten blocks of $M$ vectors; at 90 000 dim
 The default is a single chunk when it fits in device memory **(my call)**.
 
 Every node carries two counts: `compute`, how many eigenpairs the solver returns, and the selection rule (Section 9.1), which picks the kept subset.
-The dense solver ignores `compute` and returns everything.
+The dense solver computes every eigenpair but returns only the lowest `compute` when `compute > 0` (`compute = 0` means all), so that selection ports are not formed on every vector of a large dense node **(amended 2026-10-16 after implementation; the original text said Dense ignores `compute`)**.
 
 ### 9.1 Selection (decided)
 
@@ -490,6 +490,17 @@ The three questions raised by the builder check were answered by Eli on 2026-10-
 first-version losses are a handful of energies and matrix elements among a handful of states (Section 11.2);
 losses do involve near-degenerate clusters, so cluster handling, the `follow` rule, and the `:follow` phase convention are first-version work (Sections 9.1 and 11.4);
 dynamics move to Julia with the two-zero-pi project as the acceptance goal, and an NPZ export is a stretch goal (Sections 2 and 12).
+
+## 20a. Amendments after implementation (plan 1, 2026-10-16)
+
+Recorded here so the document stays the authority; each is also in the plan-1 ledger with its reasoning.
+
+- Section 9: Dense returns the lowest `compute` pairs when `compute > 0` (above). `Lanczos` has `maxiter` (default 1000; KrylovKit's 100 did not converge a 9k-dimensional zero-pi leaf) and `verbosity` fields.
+- Section 9.1: `:follow` phase with no previous materialization (the first point of a sweep) falls back to `:positive_sector` instead of erroring; a node whose rule is `follow` defaults to the `:follow` phase.
+- Section 4 / 7.3: composite ports (a term routed to a branch with two factors inside the same child) are not supported in plan 1 and raise a clear error; multi-mode port keys are design debt for a later plan. `Factor` carries only a single-mode `Port`, so a data-valued operator (Section 13.1's surface fed back as a potential) has no entry into a `Term` yet; the mechanism is to be designed before plan 2 wraps `materialize` in differentiation rules.
+- Section 5.3: coefficient expressions are restricted to an allowlist of arithmetic and elementary functions and may not execute arbitrary code; the allowlist must include SymPy's dotted operators (`.* ./ .^ .+ .-`), which plan 1's implementation still lacks (ledger: parked, load-bearing for plan 5).
+- Section 6: the grid `exp2pin(k)` shift has the opposite sign from the plan's first draft (`ShiftOp(N, -2πk/Δ)`), fixed during implementation and pinned by a plane-wave test; the Fock `n` port is the charge operator $i n_{\rm zpf}(a^\dagger - a)$, not the number operator.
+- Section 16: the two-zero-pi acceptance test is gated behind `KRONFREE_SLOW_TESTS=1`; the ITensor reference implementation is deferred to plan 3. The scqubits references were generated with scqubits 4.3.1 from `/opt/anaconda3/envs/circuit_quantization`; the zero-pi leaf test does not pin port sign conventions (the symmetric spectrum is invariant under θ→−θ and φ→−φ), so matrix-element sign tests belong in plan 4.
 
 ## 21. Builder check
 
