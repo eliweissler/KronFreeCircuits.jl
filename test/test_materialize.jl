@@ -13,19 +13,19 @@ end
     sys = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(5)), load_spec(fixture("transmon.json")), θ)
     @test energies(sys) ≈ ref.energies atol=1e-10
 end
-@testset "zero-pi leaf vs scqubits, identical discretization (7-point stencil, 201 points)" begin
+@testset "zero-pi leaf vs scqubits, identical discretization (7-point stencil, 101 points)" begin
     ref = reference("zero_pi_small"); θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
-    leaf = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Dense(), keep=lowest(8), ports=[(:theta, nport())])
+    leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(8), ports=[(:theta, nport())])
     sys = @test_logs (:warn, r"PhaseGrid on mode :phi is too small") match_mode=:any materialize(leaf, spec_zp, θ)
     @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-9
     @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
-    lan = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
+    lan = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
     @test energies(@test_logs (:warn, r"PhaseGrid on mode :phi is too small") match_mode=:any materialize(lan, spec_zp, θ)) ≈ energies(sys) atol=1e-9   # Lanczos = Dense
 end
 @testset "full zero-pi vs scqubits, identical discretization" begin
     using KronFreeCircuits: modes
     ref = reference("full_zero_pi_small"); θ = full_zero_pi_params()
-    zp = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Dense(), keep=lowest(30))
+    zp = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(30))
     zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θ.E_Cz/θ.E_L)^(1/4))]; keep=lowest(20))
     full = Node([zp, zeta]; solver=Dense(), keep=lowest(10))
     sys = @test_logs (:warn, r"PhaseGrid on mode :phi is too small") match_mode=:any materialize(full, load_spec(fixture("full_zero_pi.json")), θ)

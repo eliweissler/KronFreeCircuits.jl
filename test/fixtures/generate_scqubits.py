@@ -136,16 +136,6 @@ def two_zero_pi():
     }
 
 
-def matched(entry):
-    """`entry` tagged with the stencil it was computed with.
-
-    scqubits' Grid1d derivative matrices are STENCIL-point symmetric finite differences with
-    truncated edge rows on np.linspace(min_val, max_val, pt_count): the same discretization as
-    the Julia side's PhaseGrid(min_val, max_val, pt_count; order=STENCIL - 1).
-    """
-    return {**entry, "stencil": scqubits.settings.STENCIL}
-
-
 ZP_WIDE = {**ZP, "ncut": 20}
 GRID_WIDE = dict(min_val=-10 * np.pi, max_val=10 * np.pi, pt_count=1601)
 
@@ -162,10 +152,12 @@ def zero_pi_wide():
     }
 
 
-# Small grids for the default suite: the same physics and ±6π range as above on scqubits' own
-# discretization (see `matched`), small enough to diagonalize densely on the Julia side.
-ZP_SMALL = {**ZP, "ncut": 10}
-GRID_SMALL = dict(min_val=-6 * np.pi, max_val=6 * np.pi, pt_count=201)
+# Small grids for the default suite: the same physics and ±6π range as above, small enough to
+# diagonalize densely on the Julia side.  scqubits' Grid1d derivative matrices are STENCIL-point
+# symmetric finite differences with truncated edge rows on np.linspace(min_val, max_val, pt_count):
+# the same discretization as the Julia side's PhaseGrid(min_val, max_val, pt_count; order=STENCIL - 1).
+ZP_SMALL = {**ZP, "ncut": 6}
+GRID_SMALL = dict(min_val=-6 * np.pi, max_val=6 * np.pi, pt_count=101)
 
 
 def zero_pi_small():
@@ -181,7 +173,7 @@ def zero_pi_small():
 
 def full_zero_pi_small():
     p = dict(EJ=10.0, EL=0.04, ECJ=20.0, EC=None, ECS=0.5, dEJ=0.05, dCJ=0.05, dC=0.08,
-             dEL=0.1, ng=0.1, flux=0.23, ncut=10, zeropi_cutoff=30, zeta_cutoff=20)
+             dEL=0.1, ng=0.1, flux=0.23, ncut=6, zeropi_cutoff=30, zeta_cutoff=20)
     q = scqubits.FullZeroPi(**p, grid=scqubits.Grid1d(**GRID_SMALL), truncated_dim=10)
     E_Cz = float(q.EC)
     params = zp_julia_params(p)
@@ -196,18 +188,20 @@ def full_zero_pi_small():
     }
 
 
-def two_zero_pi_small():
+def two_zero_pi_small(ng=ZP_SMALL["ng"]):
+    """Two coupled small zero-pi qubits; `ng` (both qubits) defaults to the shared value."""
     g = 0.05
-    z1, z2 = (scqubits.ZeroPi(**ZP_SMALL, grid=scqubits.Grid1d(**GRID_SMALL), truncated_dim=10) for _ in range(2))
+    zp = {**ZP_SMALL, "ng": ng}
+    z1, z2 = (scqubits.ZeroPi(**zp, grid=scqubits.Grid1d(**GRID_SMALL), truncated_dim=10) for _ in range(2))
     # g (n_theta1 + ng1)(n_theta2 + ng2), from explicit native-basis matrices.
-    m1 = z1.n_theta_operator() + ZP_SMALL["ng"] * sparse.identity(z1.hilbertdim(), format="csc")
-    m2 = z2.n_theta_operator() + ZP_SMALL["ng"] * sparse.identity(z2.hilbertdim(), format="csc")
+    m1 = z1.n_theta_operator() + zp["ng"] * sparse.identity(z1.hilbertdim(), format="csc")
+    m2 = z2.n_theta_operator() + zp["ng"] * sparse.identity(z2.hilbertdim(), format="csc")
     term = scqubits.InteractionTerm(g_strength=g, operator_list=[(0, m1), (1, m2)])
     hs = scqubits.HilbertSpace([z1, z2], interaction_list=[term])
-    params = {**zp_julia_params(ZP_SMALL, "1"), **zp_julia_params(ZP_SMALL, "2"), "g": g}
+    params = {**zp_julia_params(zp, "1"), **zp_julia_params(zp, "2"), "g": g}
     return {
         "scqubits_class": "HilbertSpace[ZeroPi, ZeroPi]",
-        "scqubits_params": {"zero_pi1": {**ZP_SMALL, "grid": GRID_SMALL}, "zero_pi2": {**ZP_SMALL, "grid": GRID_SMALL},
+        "scqubits_params": {"zero_pi1": {**zp, "grid": GRID_SMALL}, "zero_pi2": {**zp, "grid": GRID_SMALL},
                             "g": g, "truncated_dim": 10,
                             "interaction": "g*(n_theta1 + ng1*I) (x) (n_theta2 + ng2*I)"},
         "params": params,
@@ -231,13 +225,11 @@ def main():
         "zero_pi": zero_pi(),
         "full_zero_pi": full_zero_pi(),
         "two_zero_pi": two_zero_pi(),
-        "zero_pi_matched": matched(zero_pi()),
-        "full_zero_pi_matched": matched(full_zero_pi()),
-        "two_zero_pi_matched": matched(two_zero_pi()),
         "zero_pi_wide": zero_pi_wide(),
         "zero_pi_small": zero_pi_small(),
         "full_zero_pi_small": full_zero_pi_small(),
         "two_zero_pi_small": two_zero_pi_small(),
+        "two_zero_pi_small_ng0": two_zero_pi_small(ng=0.0),
     }
     with open(OUT, "w") as f:
         json.dump(out, f, indent=2)
