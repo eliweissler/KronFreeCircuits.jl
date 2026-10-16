@@ -13,5 +13,6 @@ include("terms.jl")
 include("localops.jl")
 include("bases.jl")
 include("apply.jl")
+include("tree.jl")
 
 end # module
