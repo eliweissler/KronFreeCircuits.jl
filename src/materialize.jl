@@ -45,11 +45,28 @@ A parameter missing from `θ` raises an `ArgumentError` naming it.
 """
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)
     routed = route(root, circuit_terms(spec))
+    _check_composite(routed)
     needed = required_ports(root, routed)
     constant = constant_term(spec)(θ)
     prev = previous === nothing ? nothing : previous.root
     mroot = _materialize(root, θ, routed, needed, constant, prev)
     return System(mroot, spec, θ)
+end
+
+# A term routed to a branch with two or more factors inside one child node would need a port on
+# several of that child's modes at once (a composite port); plan 1 does not form them.
+function _check_composite(routed)
+    for (node, ts) in routed, t in ts
+        axes_ = [axis_of(node, f.mode) for f in t.factors]
+        for a in unique(axes_)
+            count(==(a), axes_) > 1 || continue
+            ch = node.children[a]
+            ch isa Node ||
+                throw(ArgumentError("a term on modes $(modes(t)) has several factors on mode :$(ch.first)"))
+            throw(ArgumentError("a term on modes $(modes(t)) has several factors inside the child node " *
+                                "with modes $(modes(ch)); composite (multi-mode) ports are not yet supported"))
+        end
+    end
 end
 
 _childdim(b::Basis) = dimension(b)
@@ -98,7 +115,10 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
               _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i)) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
-    prev === nothing || prev.dims == dims ||
+    # Only the :follow phase convention and a previous-referenced follow rule consume `prev` here;
+    # elsewhere a changed child kept count must not make `previous` unusable for the whole tree.
+    uses_prev = node.phase === :follow || (node.keep isa Follow && node.keep.reference === nothing)
+    prev === nothing || !uses_prev || prev.dims == dims ||
         throw(ArgumentError("previous solution at this tree position has dims $(prev.dims), expected $dims"))
 
     # (2)-(3) The node's operator.
@@ -109,13 +129,11 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
             a = axis_of(node, f.mode)
             push!(fs, (a, _childop(children[a], f.mode, f.port)))
         end
-        sort!(fs; by=first)
-        allunique(first.(fs)) ||
-            throw(ArgumentError("a term acts on several modes of one child node, $(modes(t)); products within a child are not supported"))
+        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
         push!(terms, AxisTerm(t.coeff(θ), fs))
     end
     for (a, c) in enumerate(children)
-        c isa MaterializedNode && push!(terms, AxisTerm(1, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
+        c isa MaterializedNode && push!(terms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
     end
     H = KronFreeOperator(dims, terms; constant=constant)
 

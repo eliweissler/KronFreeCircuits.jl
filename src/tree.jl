@@ -142,6 +142,10 @@ end
     required_ports(root, routed) -> IdDict{Node,Vector{Tuple{Symbol,Port}}}
 
 The `(mode, port)` operators each node must expose to its ancestors.
+In order, deduplicated: the factors inside the node of terms routed to strict ancestors; each
+strict ancestor's `ports_needed(keep)` and `ports` on modes inside the node, outermost ancestor
+first (an ancestor forms those ports from its children's, so every node on the path down to the
+mode's leaf exposes them); the node's own `ports_needed(keep)` and `ports`.
 """
 function required_ports(root::Node, routed::IdDict)
     out = IdDict{Node,Vector{Tuple{Symbol,Port}}}()
@@ -151,6 +155,9 @@ function required_ports(root::Node, routed::IdDict)
             inside = Set(modes(node))
             for a in ancestors, t in get(routed, a, Term[]), f in t.factors
                 f.mode in inside && push!(req, (f.mode, f.port))
+            end
+            for a in ancestors, (m, p) in Iterators.flatten((ports_needed(a.keep), a.ports))
+                m in inside && push!(req, (m, p))
             end
         end
         append!(req, ports_needed(node.keep))

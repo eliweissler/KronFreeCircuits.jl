@@ -56,3 +56,24 @@ end
     err = try route(bad, [T1, T2]); nothing catch e e end
     @test err isa ArgumentError && occursin(":d", err.msg)
 end
+
+@testset "ancestor port requests propagate to descendants" begin
+    using KronFreeCircuits: Coefficient, Term, Factor, connected, n2port, phi2port
+    c = ChargeBasis(2)
+    mk(fs...) = Term(Coefficient(1.0), Factor[Factor(m, p) for (m, p) in fs])
+    la = Node([:a => c]); lb = Node([:b => c])
+    root = Node([la, lb]; ports=[(:a, nport())], keep=connected([1], (:b, nport()), 0.1))
+    r = route(root, [mk((:a, n2port())), mk((:b, n2port()))])
+    rp = required_ports(root, r)
+    @test rp[la] == [(:a, nport())] && rp[lb] == [(:b, nport())]
+    @test rp[root] == [(:b, nport()), (:a, nport())]
+    # order: inferred from ancestor terms, then ancestor requests (outermost first), then own
+    la2 = Node([:a => c]; ports=[(:a, n2port())])
+    inner = Node([la2, lb]; ports=[(:a, phi2port())])
+    root2 = Node([inner, :c => c]; ports=[(:a, phiport()), (:c, nport())])
+    r2 = route(root2, [mk((:a, nport()), (:b, nport())), mk((:c, n2port()))])
+    rp2 = required_ports(root2, r2)
+    @test rp2[la2] == [(:a, nport()), (:a, phiport()), (:a, phi2port()), (:a, n2port())]
+    @test rp2[lb] == [(:b, nport())]
+    @test rp2[inner] == [(:a, phiport()), (:a, phi2port())]
+end

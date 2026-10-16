@@ -56,3 +56,96 @@ end
     V = eigenvectors(sys1, leaf)
     @test port(sys1, :varphi_1, nport()) ≈ V' * Diagonal(-10.0:10.0) * V          # ports carry the fixed phases
 end
+@testset "branch materialization" begin
+    using KronFreeCircuits: FockBasis, modes, constant_term
+    θ = two_transmons_params(g=0.3); spec = load_spec(fixture("two_transmons.json"))
+    mk(i) = Node([Symbol("varphi_$i") => ChargeBasis(30)]; keep=lowest(8))
+    top = Node([mk(1), mk(2)]; solver=Dense(), keep=lowest(20), ports=[(:varphi_1, nport())])
+    sys = materialize(top, spec, θ)
+    @testset "branch equals explicit product-basis construction" begin
+        q1, q2 = materialized(sys, top.children[1]), materialized(sys, top.children[2])
+        Hprod = kron(I(8), Diagonal(q1.energies)) + kron(Diagonal(q2.energies), I(8)) +
+                0.3 * kron(q2.ports[(:varphi_2, nport())], q1.ports[(:varphi_1, nport())])
+        # The linear pieces of g (n1 - n_g1)(n2 - n_g2) are single-mode terms routed to the leaves; the
+        # constant 4 n_gᵀ E_C n_g = 4·1.2·0.25² is added at the root only, so it is not in the leaf energies.
+        c = real(constant_term(spec)(θ)); @test c ≈ 0.3
+        @test energies(sys) ≈ eigvals(Hermitian(Hprod))[1:20] .+ c atol=1e-10
+        @test size(port(sys, :varphi_1, nport())) == (20, 20)
+    end
+    @testset "two transmons vs scqubits HilbertSpace" begin
+        ref = reference("two_transmons").energies
+        # scqubits truncates each *bare* transmon to 8 levels and adds g (n1 - n_g1)(n2 - n_g2) in that
+        # truncated space.  Here the linear piece -g n_g1 n2 is routed to the varphi_2 leaf and diagonalized
+        # before truncation, so the 8 kept transmon-2 states span a different subspace: the two composites
+        # are different truncations of one Hamiltonian (observed max difference 2.1e-4, state 17; the lowest
+        # three states agree to 2.5e-9).  scqubits' own construction, built from bare materialized leaves,
+        # reproduces the reference exactly (observed 6e-13).
+        @test energies(sys)[1:3] ≈ ref[1:3] atol=1e-8
+        @test energies(sys) ≈ ref atol=5e-4
+        spec_t = load_spec(fixture("transmon.json"))
+        bare(E_J, E_C, n_g) = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(8), ports=[(:varphi_1, nport())]),
+                                          spec_t, (E_J=E_J, E_C=E_C, n_g=n_g))
+        b1, b2 = bare(θ.E_J1, θ.E_C1, θ.n_g1), bare(θ.E_J2, θ.E_C2, θ.n_g2)
+        n1, n2 = port(b1, :varphi_1, nport()), port(b2, :varphi_1, nport())
+        Hsc = kron(I(8), Diagonal(energies(b1))) + kron(Diagonal(energies(b2)), I(8)) +
+              θ.g * kron(n2 - θ.n_g2 * I, n1 - θ.n_g1 * I)
+        @test eigvals(Hermitian(Hsc))[1:20] ≈ ref atol=1e-10
+    end
+    @testset "lanczos at the top matches dense" begin
+        top_l = Node([mk(1), mk(2)]; solver=Lanczos(), compute=6, keep=lowest(6))
+        @test energies(materialize(top_l, spec, θ)) ≈ energies(sys)[1:6] atol=1e-8
+    end
+    @testset "full zero-pi: all three mode types in a two-level tree vs scqubits FullZeroPi" begin
+        ref = reference("full_zero_pi"); θz = full_zero_pi_params()
+        zp = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 301; order=8)]; solver=Lanczos(), compute=30, keep=lowest(30))
+        zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θz.E_Cz/θz.E_L)^(1/4))]; keep=lowest(20))   # scqubits' oscillator basis for zeta
+        full = Node([zp, zeta]; solver=Dense(), keep=lowest(10))
+        # 30 kept zero-pi states on the ±6π grid reach its edge (cf. the zero-pi leaf test)
+        sysz = @test_logs (:warn, r"PhaseGrid on mode :phi") materialize(full, load_spec(fixture("full_zero_pi.json")), θz)
+        @test energies(sysz) ≈ ref.energies atol=1e-4      # same truncations as scqubits (zeropi_cutoff=30, zeta_cutoff=20)
+        @test modes(full) == [:theta, :phi, :zeta]
+    end
+    @testset "three-level tree" begin
+        spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
+        inner = Node([mk(1), mk(2)]; keep=lowest(12))
+        third = Node([:varphi_3 => ChargeBasis(10)]; keep=lowest(4))
+        outer = Node([inner, third]; keep=lowest(10))
+        sys3 = materialize(outer, spec3, θ3)
+        Ein = materialized(sys3, inner).energies; Eth = materialized(sys3, third).energies
+        # The constant 4 n_gᵀ E_C n_g is added at the root only: 0.3 for the two-transmon top,
+        # 0.3 + 4·0.8·0.1² for this outer node; the inner node carries none.
+        c2, c3 = real(constant_term(spec)(θ)), real(constant_term(spec3)(θ3)); @test c3 ≈ 0.332
+        @test energies(sys3) ≈ sort(vec(Ein .+ Eth'))[1:10] .+ c3 atol=1e-10   # uncoupled third mode: energies add
+        @test Ein .+ c2 ≈ energies(sys)[1:12] atol=1e-10                       # inner node equals the two-transmon top
+    end
+end
+@testset "composite ports are rejected" begin
+    json = """
+    {"format": "kronfree-spec", "version": 1, "units": "GHz",
+     "parameters": ["E_C", "E_J"],
+     "modes": [{"name": "a", "type": "c"}, {"name": "b", "type": "c"}, {"name": "c", "type": "c"}],
+     "E_C": [["E_C", "0", "0"], ["0", "E_C", "0"], ["0", "0", "E_C"]],
+     "E_L": [["0", "0", "0"], ["0", "0", "0"], ["0", "0", "0"]],
+     "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
+     "cosines": [{"energy": "E_J", "omega": [1, 1, 1], "offset": "0"}]}
+    """
+    spec = KronFreeCircuits.parse_spec(json)
+    tree = Node([Node([:a => ChargeBasis(3), :b => ChargeBasis(3)]), Node([:c => ChargeBasis(3)])])
+    err = try materialize(tree, spec, (E_C=1.0, E_J=1.0)); nothing catch e e end
+    @test err isa ArgumentError
+    @test occursin("[:a, :b]", err.msg) && occursin("[:a, :b, :c]", err.msg) &&
+          occursin("composite (multi-mode) ports are not yet supported", err.msg)
+end
+@testset "previous with a changed child kept count" begin
+    θ = two_transmons_params(g=0.3); spec = load_spec(fixture("two_transmons.json"))
+    l1 = Node([:varphi_1 => ChargeBasis(10)]; keep=lowest(4)); l2 = Node([:varphi_2 => ChargeBasis(10)]; keep=lowest(4))
+    top = Node([l1, l2]; keep=lowest(6))
+    sys0 = materialize(top, spec, θ)
+    l1.keep = lowest(5)                                           # the child's kept count changes
+    sys1 = materialize(top, spec, θ; previous=sys0)                # previous unused at the top: accepted
+    @test materialized(sys1, top).dims == [5, 4]
+    topf = Node([l1, l2]; keep=lowest(6), phase=:follow)
+    l1.keep = lowest(4); sys0f = materialize(topf, spec, θ)
+    l1.keep = lowest(5)
+    @test_throws ArgumentError materialize(topf, spec, θ; previous=sys0f)   # :follow consumes previous
+end
