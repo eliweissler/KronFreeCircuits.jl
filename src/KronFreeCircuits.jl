@@ -7,6 +7,15 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backe
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
+export Spec, load_spec, parse_spec, Coefficient, Port, nport,
+       n2port, phiport, phi2port, expiphi, exp2pin, Factor,
+       Term, circuit_terms, LocalOp, DenseOp, DiagonalOp, BandedOp,
+       ShiftOp, dense, diagonal, Basis, ChargeBasis, PhaseGrid,
+       FockBasis, localop, apply_axis!, KronFreeOperator, Node, Dense,
+       Lanczos, lowest, indices, connected, follow, materialize,
+       System, energies, port, eigenvectors, materialized, bare_labels,
+       bare_overlaps, decompose, dressed_index
+
 include("parameters.jl")
 include("spec.jl")
 include("terms.jl")
