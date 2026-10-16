@@ -10,6 +10,13 @@ child's number of kept states); `vectors` is `prod(dims) × length(kept)` in tha
 `energies` the kept eigenvalues (absolute, GHz) and `kept` their indices among the computed
 eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 `children` holds, in axis order, the child's `Basis` or `MaterializedNode`.
+
+`peak_component[j]` is the linear index, in the node's product basis, of kept state `j`'s peak
+point: at a leaf (all children bases) the positive-sector argmax used by `:positive_sector`, at a
+branch the dominant coefficient `argmax |c|`, whose physical point is resolved recursively through
+the children's `peak_component` (a basis child's index is its own point).
+`peak_amplitudes[p, j]` is the exact full-space amplitude of kept state `j` at the peak point of
+kept state `p`; a leaf's is `vectors[peak_component, :]`.
 """
 struct MaterializedNode
     node::Node
@@ -19,6 +26,8 @@ struct MaterializedNode
     kept::Vector{Int}
     ports::Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}
     children::Vector{Any}
+    peak_component::Vector{Int}
+    peak_amplitudes::Matrix{ComplexF64}
 end
 
 """
@@ -119,6 +128,11 @@ _childdim(mn::MaterializedNode) = length(mn.kept)
 _childmask(b::Basis) = Vector{Bool}(positive_mask(b))
 _childmask(mn::MaterializedNode) = fill(true, length(mn.kept))
 
+# The peak-amplitude matrix a branch contracts with on a child's axis: a node child's stored
+# `peak_amplitudes`, or for a basis child the identity (its peak point is the basis index itself).
+_childamps(b::Basis) = Diagonal(ones(ComplexF64, dimension(b)))
+_childamps(mn::MaterializedNode) = mn.peak_amplitudes
+
 _childop(b::Basis, ::Symbol, p::Port) = localop(b, p)
 function _childop(mn::MaterializedNode, mode::Symbol, p::Port)
     haskey(mn.ports, (mode, p)) ||
@@ -202,19 +216,46 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     E, V = E[idx], V[:, idx]
 
     # :follow makes each overlap with the previous kept vector real and positive; with no previous
-    # solution, :positive_sector is used instead.
+    # solution, :positive_sector is used instead.  :positive_sector makes, at a leaf, the largest
+    # entry on the positive sector real and positive; at a branch, the exact full-space amplitude at
+    # the joint peak of the dominant product component (`branch_peak_phase`).
+    # Peaks are taken on the unphased vectors, as fix_phases! and branch_peak_phase do.
     mask = _kronaxes(_childmask(c) for c in children)
+    isleaf = all(c -> c isa Basis, children)
+    amps = isleaf ? AbstractMatrix{ComplexF64}[] : AbstractMatrix{ComplexF64}[_childamps(c) for c in children]
     V0 = copy(V)
+    sector = findall(mask)
+    peak = Int[isleaf ? _sector_peak(view(V0, :, j), sector)[1] : argmax(abs.(view(V0, :, j))) for j in axes(V0, 2)]
     if node.phase === :follow && prev !== nothing
         size(prev.vectors) == size(V) ||
             throw(ArgumentError("phase :follow: the previous solution keeps $(size(prev.vectors, 2)) states, this one $(size(V, 2))"))
         fix_phases!(V, :follow, mask, prev.vectors)
-    else
+    elseif isleaf
         fix_phases!(V, :positive_sector, mask, nothing)
+    else
+        for j in axes(V, 2)
+            _, α = branch_peak_phase(reshape(view(V0, :, j), dims...), amps)
+            abs(α) < 0.1 && @warn "Branch node on modes $(modes(node)): kept state $j has amplitude $(abs(α)) < 0.1 " *
+                                  "at the joint peak of its dominant product component (heavy hybridization); " *
+                                  "its phase is fixed by a small amplitude" maxlog=10
+            view(V, :, j) .*= exp(-im * angle(α))
+        end
     end
     ph = [dot(view(V0, :, j), view(V, :, j)) for j in axes(V, 2)]    # V[:, j] = ph[j] V0[:, j]
     for k in keys(ports)
         ports[k] = conj.(ph) .* ports[k][idx, idx] .* transpose(ph)
+    end
+
+    # Exact full-space amplitudes of the kept states at each kept state's peak point.
+    if isleaf
+        peak_amps = V[peak, :]
+    else
+        peak_amps = Matrix{ComplexF64}(undef, length(peak), length(peak))
+        cis = CartesianIndices(Tuple(dims))
+        for (p, comp) in enumerate(peak)
+            ci = cis[comp]
+            peak_amps[p, :] = _contract_rows(V, [view(amps[a], ci[a], :) for a in eachindex(dims)])
+        end
     end
 
     # (8) The remaining required ports, on the kept vectors.
@@ -232,7 +273,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
-    return MaterializedNode(node, dims, E, V, collect(Int, idx), ports, children)
+    return MaterializedNode(node, dims, E, V, collect(Int, idx), ports, children, peak, peak_amps)
 end
 
 """

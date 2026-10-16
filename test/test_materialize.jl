@@ -218,3 +218,59 @@ end
     l1.keep = lowest(5)
     @test_throws ArgumentError materialize(topf, spec, θ; previous=sys0f)   # :follow consumes previous
 end
+
+using KronFreeCircuits: positive_mask
+
+@testset "branch positive-sector phase at the dominant joint peak" begin
+    spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(g=0.3)
+    mk(i) = Node([Symbol("varphi_$i") => ChargeBasis(30)]; keep=lowest(8))
+    q1n, q2n = mk(1), mk(2); top = Node([q1n, q2n]; keep=lowest(20), ports=[(:varphi_1, nport())])
+    sys = materialize(top, spec, θ); q1, q2, t = materialized(sys, q1n), materialized(sys, q2n), materialized(sys, top)
+    V = t.vectors; mask1 = positive_mask(ChargeBasis(30))
+    for j in 1:20
+        ψ = kron(q2.vectors, q1.vectors) * V[:, j]                                # brute-force full-space oracle, axis 1 fastest
+        a, b = Tuple(CartesianIndices((8, 8))[t.peak_component[j]])
+        p = LinearIndices((61, 61))[q1.peak_component[a], q2.peak_component[b]]
+        @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0                            # real positive at the joint peak
+        @test ψ[p] ≈ t.peak_amplitudes[j, j]
+        @test mask1[q1.peak_component[a]] && mask1[q2.peak_component[b]]           # the joint peak lies in the positive sector
+        @test (a, b) == Tuple(argmax(abs.(reshape(V[:, j], 8, 8))))               # dominant component
+    end
+    # leaf peak amplitudes equal the vectors at the peaks
+    @test q1.peak_amplitudes == q1.vectors[q1.peak_component, :]
+    # ports and energies unchanged in modulus relative to a run with the old rule are not testable directly; check Hermiticity and spectrum
+    @test port(sys, :varphi_1, nport()) ≈ port(sys, :varphi_1, nport())'
+    # three-level tree: peak amplitudes of the outer node agree with a brute-force expansion through two levels
+    spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
+    inner = Node([mk(1), mk(2)]; keep=lowest(12)); third = Node([:varphi_3 => ChargeBasis(10)]; keep=lowest(4))
+    outer = Node([inner, third]; keep=lowest(10)); sys3 = materialize(outer, spec3, θ3)
+    o, inn, th = materialized(sys3, outer), materialized(sys3, inner), materialized(sys3, third)
+    l1, l2 = materialized(sys3, inner.children[1]), materialized(sys3, inner.children[2])
+    Vinner_full = kron(l2.vectors, l1.vectors) * inn.vectors                       # inner kept states in the leaf basis
+    for j in 1:10
+        ψ = kron(th.vectors, Vinner_full) * o.vectors[:, j]
+        ai, c = Tuple(CartesianIndices((12, 4))[o.peak_component[j]])
+        a, b = Tuple(CartesianIndices((8, 8))[inn.peak_component[ai]])
+        p = LinearIndices((61, 61, 21))[l1.peak_component[a], l2.peak_component[b], th.peak_component[c]]
+        @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0
+        @test ψ[p] ≈ o.peak_amplitudes[j, j]
+    end
+end
+
+@testset "mixed branch (node child and basis child): joint peak through the basis index" begin
+    spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(g=0.3)
+    q1n = Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(8))
+    top = Node([q1n, :varphi_2 => ChargeBasis(10)]; keep=lowest(10))
+    sys = materialize(top, spec, θ); q1, t = materialized(sys, q1n), materialized(sys, top)
+    W = kron(Matrix{ComplexF64}(I, 21, 21), q1.vectors)                           # top product basis -> full space
+    function point(q)                                                              # a basis child's peak point is its index
+        a, b = Tuple(CartesianIndices((8, 21))[t.peak_component[q]])
+        return LinearIndices((61, 21))[q1.peak_component[a], b]
+    end
+    pts = [point(q) for q in 1:10]
+    for j in 1:10
+        ψ = W * t.vectors[:, j]
+        @test abs(imag(ψ[pts[j]])) < 1e-12 && real(ψ[pts[j]]) > 0
+        @test ψ[pts] ≈ t.peak_amplitudes[:, j]                                     # every row of the peak-amplitude matrix
+    end
+end

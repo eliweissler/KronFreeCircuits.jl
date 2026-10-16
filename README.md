@@ -28,6 +28,7 @@ dressed_index(sys, top, (2, 1))        # dressed state that best matches bare st
 ```
 
 Selection rules are `lowest`, `indices`, `connected`, and `follow`.
+By default each kept state's phase makes its full-space amplitude real and positive at one point: at a leaf, its largest entry with nonnegative coordinates; at a branch, the joint peak of its dominant product component.
 The spec's scalar constant is added at the root only, so the `energies` of child nodes exclude it.
 Bare-state bookkeeping (labels, overlaps) is available through `bare_labels` and `bare_overlaps`.
 

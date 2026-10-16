@@ -48,6 +48,10 @@ Each child is a `mode => basis` pair or another `Node`; a node's product basis h
   the lowest `compute` pairs.
 - `keep`: the [`SelectionRule`](@ref) choosing the kept states among the computed ones.
 - `phase`: the global-phase convention of the kept eigenvectors, `:positive_sector` or `:follow`.
+  `:positive_sector` makes, at a leaf (all children bases), the largest entry with all coordinates
+  nonnegative real and positive; at a branch, each state's exact full-space amplitude at the joint
+  peak of its dominant product component, computed from the children's stored peak amplitudes,
+  so the children's phase conventions do not leak into it.
   It defaults to `:follow` when `keep` is a `follow` rule and to `:positive_sector` otherwise; an
   explicit `phase` always wins. `:follow` needs the previous materialization (`previous`); at the
   first point of a sweep, with none, `:positive_sector` is used.
