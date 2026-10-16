@@ -68,7 +68,7 @@ test/helpers.jl                                   kron_reference(dims, axisterms
 - Create: `Project.toml`, `src/KronFreeCircuits.jl`, `test/runtests.jl`, `test/helpers.jl`, `test/Project.toml`
 
 **Interfaces:**
-- Produces: module `KronFreeCircuits`; test helper `kron_reference(dims::Vector{Int}, terms::Vector{<:Tuple{ComplexF64,Vector{Tuple{Int,<:AbstractMatrix}}}})::Matrix{ComplexF64}` that builds $\sum_t c_t\, A_{t,N}\otimes\cdots\otimes A_{t,1}$ with identities on absent axes, first axis fastest.
+- Produces: module `KronFreeCircuits`; test helper `kron_reference(dims::Vector{Int}, terms::Vector{<:Tuple{ComplexF64,Vector{Tuple{Int,<:AbstractMatrix}}}})::Matrix{ComplexF64}` that builds $\sum_t c_t\, A_{t,N}\otimes\cdots\otimes A_{t,1}$ with identities on absent axes, first axis fastest; test helper `fixture(name::AbstractString)::String` returning `joinpath(@__DIR__, "fixtures", name)` (used from Task 3 on).
 
 - [ ] **Step 1: Write the failing test** in `test/test_helpers.jl`
 
@@ -363,7 +363,7 @@ end
 - Consumes: `Basis` (Task 6), `Term`, `Port` (Task 4).
 - Produces:
   - `abstract type Solver end`; `struct Dense <: Solver end`; `struct Lanczos <: Solver; tol::Float64; krylovdim::Int; end` with `Lanczos(; tol=1e-10, krylovdim=0)` where `0` means "chosen by the solver" (Task 9).
-  - `abstract type SelectionRule end` (implemented in Task 10; `tree.jl` only declares it).
+  - `abstract type SelectionRule end`, plus the one rule the `Node` default needs: `struct Lowest <: SelectionRule; k::Int; end` with `lowest(k::Int) = Lowest(k)`, and the generic fallback `ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]`. Task 10 adds `select` for `Lowest`, the other rules, and `ports_needed` for `connected`.
   - `mutable struct Node; children::Vector{Any}; solver::Solver; compute::Int; keep::SelectionRule; phase::Symbol; ports::Vector{Tuple{Symbol,Port}}; end`
   - `Node(children::AbstractVector; solver=Dense(), compute=0, keep=lowest(0), phase=:positive_sector, ports=Tuple{Symbol,Port}[])` where each child is `Pair{Symbol,<:Basis}` or `Node`; mixing is allowed. `compute == 0` means all eigenpairs (only valid with `Dense`); `lowest(0)` means keep all computed. `phase ∈ (:positive_sector, :follow)`.
   - `modes(node::Node)::Vector{Symbol}` recursive, axis order; `isleaf(node)::Bool`; `axis_of(node, mode::Symbol)::Int` the child axis containing that mode.
@@ -613,7 +613,7 @@ end
     d = decompose(sys, top, 1)
     @test d[1].first == (1, 1) && sum(abs2, last.(d)) ≈ 1 atol=1e-3
     @test dressed_index(sys, top, d[1].first) == 1
-    @test dressed_index(sys, top, (8, 8)) === nothing || isa(dressed_index(sys, top, (8, 8)), Int)
+    @test dressed_index(sys0, top, (8, 8)) === nothing            # uncoupled: product state (8,8) ranks 64th, not among the 20 kept
     @test length(bare_labels(sys, top; depth=2)[1]) == 2 && bare_labels(sys, top; depth=2)[1][1] isa Tuple
 end
 ```
