@@ -4,6 +4,10 @@ abstract type LocalOp end
 
 struct DenseOp <: LocalOp
     M::Matrix{ComplexF64}
+    function DenseOp(M::Matrix{ComplexF64})
+        size(M, 1) == size(M, 2) || throw(DimensionMismatch("DenseOp requires a square matrix, got $(size(M))"))
+        return new(M)
+    end
 end
 DenseOp(A::AbstractMatrix{<:Number}) = DenseOp(Matrix{ComplexF64}(A))
 
@@ -16,14 +20,28 @@ struct BandedOp{T<:Number} <: LocalOp
     n::Int
     offsets::Vector{Int}
     weights::Vector{Vector{T}}
+    function BandedOp{T}(n::Int, offsets::Vector{Int}, weights::Vector{Vector{T}}) where {T<:Number}
+        n >= 0 || throw(ArgumentError("BandedOp requires n >= 0, got $n"))
+        length(offsets) == length(weights) ||
+            throw(DimensionMismatch("BandedOp: $(length(offsets)) offsets but $(length(weights)) weight vectors"))
+        all(w -> length(w) == n, weights) ||
+            throw(DimensionMismatch("BandedOp: every weights[b] must have length n = $n"))
+        return new{T}(n, offsets, weights)
+    end
 end
+BandedOp(n::Int, offsets::Vector{Int}, weights::Vector{Vector{T}}) where {T<:Number} = BandedOp{T}(n, offsets, weights)
 
 # Y[i + s] = factor * X[i] for valid indices
 struct ShiftOp{T<:Number} <: LocalOp
     n::Int
     s::Int
     factor::T
+    function ShiftOp{T}(n::Int, s::Int, factor::T) where {T<:Number}
+        n >= 0 || throw(ArgumentError("ShiftOp requires n >= 0, got $n"))
+        return new{T}(n, s, factor)
+    end
 end
+ShiftOp(n::Int, s::Int, factor::T) where {T<:Number} = ShiftOp{T}(n, s, factor)
 
 dimension(op::DenseOp) = size(op.M, 1)
 dimension(op::DiagonalOp) = length(op.d)
