@@ -2,11 +2,12 @@
     θ = two_zero_pi_params(g=0.05)
     mk(i) = Node([Symbol("theta$i") => ChargeBasis(15), Symbol("phi$i") => PhaseGrid(-6π, 6π, 301)]; solver=Lanczos(), compute=10, keep=lowest(10))
     top = Node([mk(1), mk(2)]; solver=Dense(), keep=lowest(20))
-    sys = materialize(top, load_spec(fixture("two_zero_pi.json")), θ)
+    sys = @test_logs (:warn, r"PhaseGrid on mode :phi\d is too small") match_mode=:any materialize(top, load_spec(fixture("two_zero_pi.json")), θ)
     # `≈` with atol compares the 2-norm of the difference over all 20 levels.
     # Observed: max elementwise error 6.8e-5 (passes 1e-4), 2-norm about 2e-4 (misses 1e-4, within 1e-3).
-    # Cause is leaf-level (Task 11): grid convergence on the shared ±6π range
-    # (scqubits' 7-point stencil on 1001 points vs our order-8 stencil on 301 points).
+    # Two causes: grid convergence on the shared ±6π range (scqubits' 7-point stencil on 1001 points vs
+    # our order-8 stencil on 301 points), and about 1.5e-5 from the truncation order of the routed n_g
+    # pieces (see the identical-discretization test below).
     @test energies(sys) ≈ reference("two_zero_pi").energies atol=1e-3
     @test maximum(abs.(energies(sys) .- reference("two_zero_pi").energies)) < 1e-4
     @test length(bare_labels(sys, top)) == 100
@@ -42,7 +43,7 @@ end
         # The φ range ±6π (scqubits' and this test's) is too small for these parameters: the states reach
         # the grid edge (edge support ~2e-3, hence the warning), so the result depends on the discretization
         # at the 3e-4 level (observed max error 3.0e-4, state 7).  scqubits 4.3.1 uses its default 7-point
-        # stencil on 1001 points; on that exact discretization (PhaseGrid order 6, N = 1001) the agreement is 3e-12.
+        # stencil on 1001 points; on identical discretizations the agreement is ~1e-12 (the identical-discretization tests in test_materialize.jl).
         sys = @test_logs (:warn, r"PhaseGrid on mode :phi") materialize(leaf, spec_zp, θ)
         @test energies(sys) ≈ ref.energies atol=5e-4
         @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
