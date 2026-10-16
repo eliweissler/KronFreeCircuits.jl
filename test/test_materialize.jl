@@ -67,7 +67,6 @@ end
     @test port(sys1, :varphi_1, nport()) ≈ V' * Diagonal(-10.0:10.0) * V          # ports carry the fixed phases
 end
 @testset "follow sweep over n_g" begin
-    using Logging
     using KronFreeCircuits: follow
     spec = load_spec(fixture("transmon.json")); k = 4
     θ(ng) = (E_J=30.0, E_C=1.2, n_g=ng)
@@ -77,7 +76,7 @@ end
     # sweep point then follows the previous one through follow() with no explicit reference.
     prev = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(k)), spec, θ(0.0))
     for ng in range(0.0, 0.4; length=5)
-        sys = @test_logs min_level=Logging.Warn materialize(leaf, spec, θ(ng); previous=prev)
+        sys = @test_logs min_level=Base.CoreLogging.Warn materialize(leaf, spec, θ(ng); previous=prev)
         Vp, V = eigenvectors(prev), eigenvectors(sys)
         @test size(V, 2) == k
         O = [dot(Vp[:, j], V[:, j]) for j in 1:k]
