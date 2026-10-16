@@ -6,6 +6,17 @@ using KronFreeCircuits: SelectionContext, select, lowest, indices, connected, fo
     ctx = SelectionContext(collect(1.0:6), Matrix{ComplexF64}(I, 6, 6), Dict((:m, nport()) => P), nothing)
     @test select(connected([1, 2], (:m, nport()), 0.1), ctx) == [1, 2, 3, 4, 6]
     @test ports_needed(connected([1], (:m, nport()), 0.1)) == [(:m, nport())]
+    @test select(connected([2, 1, 2], (:m, nport()), 0.1), ctx) == [1, 2, 3, 4, 6]     # core deduplicated
+    @test connected([2, 1, 2], (:m, nport()), 0.1).core == [2, 1]
+    err = try select(connected([1, 7], (:m, nport()), 0.1), ctx); nothing catch e e end
+    @test err isa ArgumentError && occursin("connected", err.msg) && occursin("[7]", err.msg)
+    @test_throws ArgumentError select(connected([0], (:m, nport()), 0.1), ctx)
+    # keyword (spec) form: port as (mode, Port) or (kind, mode)
+    fields(r) = (r.core, r.port, r.thresh)
+    @test fields(connected(; core=[1, 2], port=(:m, nport()), thresh=0.1)) == fields(connected([1, 2], (:m, nport()), 0.1))
+    @test fields(connected(; core=[1, 2], port=(:n, :m), thresh=0.1)) == fields(connected([1, 2], (:m, nport()), 0.1))
+    @test connected(; core=[1], port=(:phi2, :m), thresh=0.1).port == (:m, KronFreeCircuits.phi2port())
+    @test_throws ArgumentError connected(; core=[1], port=(:bogus, :m), thresh=0.1)
     @test select(lowest(3), ctx) == [1, 2, 3] && select(lowest(0), ctx) == 1:6
     @test_throws ArgumentError validate_selection([1, 1], 6, lowest(2))     # Review Focus 5
     @test_throws ArgumentError validate_selection(Int[], 6, lowest(0))

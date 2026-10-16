@@ -265,3 +265,12 @@ function port(sys::System, mode::Symbol, p::Port, node::Node=sys.root.node)
     throw(ArgumentError("port $(_portname(p)) on mode :$mode was not formed for this node; available: " *
                         (isempty(avail) ? "none" : avail)))
 end
+
+"""
+    port(sys, kind::Symbol, mode::Symbol, node=root; k=0.0) -> Matrix{ComplexF64}
+
+The spec-form spelling `port(sys, :n, :varphi_2)`: `kind` is one of `:n, :n2, :phi, :phi2,
+:expiphi, :exp2pin`, and `k` the exponent coefficient of the exponential ports.
+"""
+port(sys::System, kind::Symbol, mode::Symbol, node::Node=sys.root.node; k::Real=0.0) =
+    port(sys, mode, port_of_kind(kind, k), node)

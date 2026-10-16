@@ -19,8 +19,13 @@ end
 indices(v::AbstractVector{<:Integer}) = Indices(collect(Int, v))
 
 """
-Keep `core` plus every state reachable from it through port matrix elements above `thresh`
-(Eli's `trunc_by_thresh`).
+    connected(core, (mode, port), thresh)
+    connected(; core, port, thresh)
+
+Keep `core` plus every state reachable from it through matrix elements of `port` on `mode`
+with modulus above `thresh`, iterated to closure, sorted (Eli's `trunc_by_thresh`).
+In the keyword form `port` is either `(mode::Symbol, p::Port)` or `(kind::Symbol, mode::Symbol)`
+with `kind` one of `:n, :n2, :phi, :phi2, :expiphi, :exp2pin`.
 """
 struct Connected <: SelectionRule
     core::Vector{Int}
@@ -28,7 +33,12 @@ struct Connected <: SelectionRule
     thresh::Float64
 end
 connected(core::AbstractVector{<:Integer}, port::Tuple{Symbol,Port}, thresh::Real) =
-    Connected(collect(Int, core), port, Float64(thresh))
+    Connected(unique(Int.(core)), port, Float64(thresh))
+connected(; core::AbstractVector{<:Integer}, port::Tuple{Symbol,Union{Symbol,Port}}, thresh::Real) =
+    connected(core, _mode_port(port), thresh)
+
+_mode_port(p::Tuple{Symbol,Port}) = p
+_mode_port((kind, mode)::Tuple{Symbol,Symbol}) = (mode, port_of_kind(kind))
 
 """
     follow(reference=nothing; minoverlap=0.5)
@@ -59,12 +69,18 @@ function select(rule::Connected, ctx::SelectionContext)
     haskey(ctx.ports, rule.port) ||
         throw(ArgumentError("connected selection needs port $(rule.port), which the context lacks"))
     P = ctx.ports[rule.port]
-    list = copy(rule.core)
+    n = size(P, 1)
+    bad = filter(i -> !(1 <= i <= n), rule.core)
+    isempty(bad) || throw(ArgumentError("connected selection with core $(rule.core): core states $bad lie outside 1:$n"))
+    inlist = fill(false, n)
+    list = unique(rule.core)
+    inlist[list] .= true
     i = 1
     while i <= length(list)
         s = list[i]
         for j in 1:size(P, 2)
-            if abs(P[s, j]) > rule.thresh && j ∉ list
+            if !inlist[j] && abs(P[s, j]) > rule.thresh
+                inlist[j] = true
                 push!(list, j)
             end
         end

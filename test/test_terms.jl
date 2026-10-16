@@ -18,6 +18,12 @@ end
     @test expiphi(1) == expiphi(1.0) && hash(expiphi(1)) == hash(expiphi(1.0))
     @test expiphi(1) != exp2pin(1) && expiphi(1) != expiphi(-1)
     @test Dict(nport() => 1)[Port(:n, 0)] == 1
+    @test hash(expiphi(-0.0)) == hash(expiphi(0.0)) && expiphi(-0.0) == expiphi(0.0)
+    using KronFreeCircuits: port_of_kind
+    @test port_of_kind(:n) == nport() && port_of_kind(:phi2) == phi2port() && port_of_kind(:expiphi, 0.5) == expiphi(0.5)
+    @test port_of_kind(:exp2pin, -1) == exp2pin(-1)
+    @test_throws ArgumentError port_of_kind(:n, 1.0)
+    @test_throws ArgumentError port_of_kind(:cos)
 end
 
 @testset "circuit_terms branches" begin

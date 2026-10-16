@@ -8,7 +8,7 @@ A named single-mode operator: `:n` (charge), `:n2` (charge squared), `:phi`, `:p
 struct Port
     kind::Symbol
     k::Float64
-    Port(kind::Symbol, k::Real) = new(kind, Float64(k))
+    Port(kind::Symbol, k::Real) = new(kind, Float64(k) + 0.0)     # + 0.0 maps -0.0 to 0.0 (hash)
 end
 
 Base.:(==)(a::Port, b::Port) = a.kind === b.kind && a.k == b.k
@@ -20,6 +20,24 @@ phiport() = Port(:phi, 0)
 phi2port() = Port(:phi2, 0)
 expiphi(k::Real) = Port(:expiphi, k)
 exp2pin(k::Real) = Port(:exp2pin, k)
+
+const _POLY_PORTS = (n=nport, n2=n2port, phi=phiport, phi2=phi2port)
+
+"""
+    port_of_kind(kind::Symbol, k=0.0) -> Port
+
+The `Port` named by `kind` (`:n, :n2, :phi, :phi2, :expiphi, :exp2pin`); `k` is the exponent
+coefficient of the exponential ports and must be zero for the polynomial ones.
+"""
+function port_of_kind(kind::Symbol, k::Real=0.0)
+    if haskey(_POLY_PORTS, kind)
+        iszero(k) || throw(ArgumentError("port kind :$kind takes no exponent, got k = $k"))
+        return _POLY_PORTS[kind]()
+    end
+    kind === :expiphi && return expiphi(k)
+    kind === :exp2pin && return exp2pin(k)
+    throw(ArgumentError("unknown port kind :$kind; expected :n, :n2, :phi, :phi2, :expiphi or :exp2pin"))
+end
 
 """
     Factor(mode, port)

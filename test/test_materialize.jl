@@ -96,6 +96,19 @@ end
         @test energies(sys) ≈ eigvals(Hermitian(Hprod))[1:20] .+ c atol=1e-10
         @test size(port(sys, :varphi_1, nport())) == (20, 20)
     end
+    @testset "spec-form port and connected" begin
+        using KronFreeCircuits: connected
+        @test port(sys, :n, :varphi_1) == port(sys, :varphi_1, nport())
+        @test port(sys, :n, :varphi_2, top.children[2]) == port(sys, :varphi_2, nport(), top.children[2])
+        @test_throws ArgumentError port(sys, :n2, :varphi_1)                     # not formed
+        @test_throws ArgumentError port(sys, :n, :varphi_1; k=1.0)
+        kw = Node([mk(1), mk(2)]; keep=connected(; core=[1], port=(:n, :varphi_1), thresh=0.05))
+        pos = Node([mk(1), mk(2)]; keep=connected([1], (:varphi_1, nport()), 0.05))
+        skw, spos = materialize(kw, spec, θ), materialize(pos, spec, θ)
+        @test materialized(skw, kw).kept == materialized(spos, pos).kept && length(materialized(skw, kw).kept) > 1
+        @test energies(skw) ≈ energies(spos)
+        @test port(skw, :n, :varphi_1) ≈ port(spos, :varphi_1, nport())
+    end
     @testset "two transmons vs scqubits HilbertSpace" begin
         ref = reference("two_transmons").energies
         # scqubits truncates each *bare* transmon to 8 levels and adds g (n1 - n_g1)(n2 - n_g2) in that
