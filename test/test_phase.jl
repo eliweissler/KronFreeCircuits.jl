@@ -11,6 +11,10 @@ using KronFreeCircuits: branch_peak_phase
     # child sign flip invariance: flipping child-1 state 2 flips C[2,:] and A1[:,2] together; α unchanged
     C2 = copy(C); C2[2, :] .*= -1; A1f = copy(A1); A1f[:, 2] .*= -1
     @test branch_peak_phase(C2, [A1f, A2])[2] ≈ α
+    # a mask restricts the dominant component (axis 1 fastest); with no weight on it, the global argmax
+    m = trues(3, 2); m[2, 1] = false
+    @test branch_peak_phase(C, [A1, A2]; mask=vec(m))[1] == LinearIndices((3, 2))[1, 2]
+    @test branch_peak_phase(C, [A1, A2]; mask=falses(6))[1] == comp
     # three children recursion shape
     @test branch_peak_phase(randn(ComplexF64, 2, 3, 2), [randn(ComplexF64, 2, 2), randn(ComplexF64, 3, 3), randn(ComplexF64, 2, 2)]) isa Tuple{Int,ComplexF64}
 end

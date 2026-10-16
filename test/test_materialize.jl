@@ -274,3 +274,29 @@ end
         @test ψ[pts] ≈ t.peak_amplitudes[:, j]                                     # every row of the peak-amplitude matrix
     end
 end
+
+@testset "mixed branch with a PhaseGrid child: dominant component in the basis's positive sector" begin
+    # a transmon coupled through g n_1 n_2 to a symmetric extended mode on a phase grid
+    src = """
+    {"format": "kronfree-spec", "version": 1, "units": "GHz",
+     "parameters": ["E_J1", "E_C1", "n_g1", "E_J2", "E_C2", "E_L", "g"],
+     "modes": [{"name": "varphi_1", "type": "c"}, {"name": "varphi_2", "type": "e"}],
+     "E_C": [["E_C1", "g/8"], ["g/8", "E_C2"]], "E_L": [["0", "0"], ["0", "E_L"]],
+     "flux_linear": ["0", "0"], "n_g": ["n_g1", "0"],
+     "cosines": [{"energy": "E_J1", "omega": [1, 0], "offset": "0"}, {"energy": "E_J2", "omega": [0, 1], "offset": "0"}]}
+    """
+    θ = (E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=2.0, E_C2=1.0, E_L=4.0, g=0.3)
+    grid = PhaseGrid(-10, 10, 101); q1n = Node([:varphi_1 => ChargeBasis(10)]; keep=lowest(4))
+    top = Node([q1n, :varphi_2 => grid]; keep=lowest(8))
+    sys = @test_logs min_level=Base.CoreLogging.Warn materialize(top, KronFreeCircuits.parse_spec(src), θ)   # no edge or hybridization warning
+    q1, t = materialized(sys, q1n), materialized(sys, top)
+    W = kron(Matrix{ComplexF64}(I, 101, 101), q1.vectors)                         # top product basis -> full space
+    for j in 1:8
+        ψ = W * t.vectors[:, j]
+        a, b = Tuple(CartesianIndices((4, 101))[t.peak_component[j]])
+        @test positive_mask(grid)[b]                                               # the symmetric partner at -φ is excluded
+        p = LinearIndices((21, 101))[q1.peak_component[a], b]
+        @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0
+        @test ψ[p] ≈ t.peak_amplitudes[j, j]
+    end
+end

@@ -59,9 +59,8 @@ end
         zp = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 301; order=8)]; solver=Lanczos(), compute=30, keep=lowest(30))
         zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θz.E_Cz/θz.E_L)^(1/4))]; keep=lowest(20))   # scqubits' oscillator basis for zeta
         full = Node([zp, zeta]; solver=Dense(), keep=lowest(10))
-        # 30 kept zero-pi states on the ±6π grid reach its edge (cf. the zero-pi leaf test); the branch
-        # also warns of small joint-peak amplitudes
-        sysz = @test_logs (:warn, r"PhaseGrid on mode :phi") match_mode=:any materialize(full, load_spec(fixture("full_zero_pi.json")), θz)
+        # 30 kept zero-pi states on the ±6π grid reach its edge (cf. the zero-pi leaf test)
+        sysz = @test_logs (:warn, r"PhaseGrid on mode :phi") materialize(full, load_spec(fixture("full_zero_pi.json")), θz)
         @test energies(sysz) ≈ ref.energies atol=1e-4      # same truncations as scqubits (zeropi_cutoff=30, zeta_cutoff=20)
         @test modes(full) == [:theta, :phi, :zeta]
     end

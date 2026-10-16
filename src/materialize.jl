@@ -13,8 +13,9 @@ eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 
 `peak_component[j]` is the linear index, in the node's product basis, of kept state `j`'s peak
 point: at a leaf (all children bases) the positive-sector argmax used by `:positive_sector`, at a
-branch the dominant coefficient `argmax |c|`, whose physical point is resolved recursively through
-the children's `peak_component` (a basis child's index is its own point).
+branch the dominant coefficient `argmax |c|` (restricted to the positive sector on basis-child
+axes), whose physical point is resolved recursively through the children's `peak_component` (a
+basis child's index is its own point).
 `peak_amplitudes[p, j]` is the exact full-space amplitude of kept state `j` at the peak point of
 kept state `p`; a leaf's is `vectors[peak_component, :]`.
 """
@@ -44,6 +45,7 @@ struct System
 end
 
 const _EDGE_TOL = 1e-6
+const _HYBRID_RATIO = 0.5
 
 """
     materialize(root, spec, θ; previous=nothing) -> System
@@ -218,14 +220,15 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # :follow makes each overlap with the previous kept vector real and positive; with no previous
     # solution, :positive_sector is used instead.  :positive_sector makes, at a leaf, the largest
     # entry on the positive sector real and positive; at a branch, the exact full-space amplitude at
-    # the joint peak of the dominant product component (`branch_peak_phase`).
+    # the joint peak of the dominant product component (`branch_peak_phase`), the argmax restricted
+    # to the positive sector on basis-child axes only (node-child masks are all true).
     # Peaks are taken on the unphased vectors, as fix_phases! and branch_peak_phase do.
     mask = _kronaxes(_childmask(c) for c in children)
     isleaf = all(c -> c isa Basis, children)
     amps = isleaf ? AbstractMatrix{ComplexF64}[] : AbstractMatrix{ComplexF64}[_childamps(c) for c in children]
     V0 = copy(V)
     sector = findall(mask)
-    peak = Int[isleaf ? _sector_peak(view(V0, :, j), sector)[1] : argmax(abs.(view(V0, :, j))) for j in axes(V0, 2)]
+    peak = Int[_sector_peak(view(V0, :, j), sector)[1] for j in axes(V0, 2)]
     if node.phase === :follow && prev !== nothing
         size(prev.vectors) == size(V) ||
             throw(ArgumentError("phase :follow: the previous solution keeps $(size(prev.vectors, 2)) states, this one $(size(V, 2))"))
@@ -234,10 +237,12 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         fix_phases!(V, :positive_sector, mask, nothing)
     else
         for j in axes(V, 2)
-            _, α = branch_peak_phase(reshape(view(V0, :, j), dims...), amps)
-            abs(α) < 0.1 && @warn "Branch node on modes $(modes(node)): kept state $j has amplitude $(abs(α)) < 0.1 " *
-                                  "at the joint peak of its dominant product component (heavy hybridization); " *
-                                  "its phase is fixed by a small amplitude" maxlog=10
+            C = reshape(view(V0, :, j), dims...)
+            comp, α = branch_peak_phase(C, amps; mask=mask)
+            r = _peak_ratio(C, amps, comp, α)
+            r < _HYBRID_RATIO && @warn "Branch node on modes $(modes(node)): kept state $j has joint-peak amplitude " *
+                                       "$(abs(α)), ratio $r < $_HYBRID_RATIO to its dominant product component's " *
+                                       "(heavy hybridization); its phase is fixed by a small amplitude" maxlog=10
             view(V, :, j) .*= exp(-im * angle(α))
         end
     end
