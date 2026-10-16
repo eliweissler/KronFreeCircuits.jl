@@ -18,5 +18,6 @@ include("solvers.jl")
 include("selection.jl")
 include("phase.jl")
 include("materialize.jl")
+include("dressed.jl")
 
 end # module
