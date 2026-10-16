@@ -143,6 +143,37 @@ end
         @test Ein .+ c2 ≈ energies(sys)[1:12] atol=1e-10                       # inner node equals the two-transmon top
     end
 end
+@testset "term-list entry point" begin
+    using KronFreeCircuits: circuit_terms, constant_term, modes, Coefficient, System
+    θ = two_transmons_params(g=0.3); spec = load_spec(fixture("two_transmons.json"))
+    mk(i) = Node([Symbol("varphi_$i") => ChargeBasis(30)]; keep=lowest(8))
+    top = Node([mk(1), mk(2)]; keep=lowest(20))
+    ts = filter(t -> !(:varphi_1 in modes(t) && :varphi_2 in modes(t)), circuit_terms(spec))
+    @test length(ts) < length(circuit_terms(spec))
+    c = constant_term(spec)
+    sys = materialize(top, ts, θ; constant=c)
+    @test sys isa System && sys.spec === nothing && sys.terms == ts
+    E1, E2 = energies(sys, top.children[1]), energies(sys, top.children[2])
+    @test energies(sys) ≈ sort(vec(E1 .+ E2'))[1:20] .+ real(c(θ)) atol=1e-10   # uncoupled: energies add
+    @test energies(materialize(top, ts, θ)) ≈ energies(sys) .- real(c(θ)) atol=1e-10   # default constant 0
+    s2 = materialize(top, spec, θ)
+    @test s2.spec === spec && length(s2.terms) == length(circuit_terms(spec))
+end
+@testset "basis must match the mode type" begin
+    spec = load_spec(fixture("transmon.json")); θ = (E_J=30.0, E_C=1.2, n_g=0.25)
+    leaf = Node([:varphi_1 => PhaseGrid(-π, π, 41)])
+    err = try materialize(leaf, spec, θ); nothing catch e e end
+    @test err isa ArgumentError && occursin(":varphi_1", err.msg) && occursin(":c", err.msg) &&
+          occursin("PhaseGrid", err.msg)
+    using KronFreeCircuits: circuit_terms, FockBasis
+    ts = circuit_terms(spec)
+    @test_throws ArgumentError materialize(leaf, ts, θ; modetypes=Dict(:varphi_1 => :c))
+    @test_throws ArgumentError materialize(Node([:varphi_1 => ChargeBasis(5)]), ts, θ; modetypes=Dict(:varphi_1 => :e))
+    @test_throws ArgumentError materialize(Node([:varphi_1 => ChargeBasis(5)]), ts, θ; modetypes=Dict(:varphi_1 => :q))
+    @test materialize(Node([:varphi_1 => ChargeBasis(5)]; keep=lowest(2)), ts, θ; modetypes=Dict(:varphi_1 => :c)) isa KronFreeCircuits.System
+    flux = load_spec(fixture("fluxonium.json"))
+    @test_throws ArgumentError materialize(Node([:varphi_1 => ChargeBasis(5)]), flux, (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π))
+end
 @testset "composite ports are rejected" begin
     json = """
     {"format": "kronfree-spec", "version": 1, "units": "GHz",

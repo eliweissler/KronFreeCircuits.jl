@@ -24,12 +24,13 @@ end
 """
     System
 
-A materialized tree: the root `MaterializedNode`, the `spec` and the parameters `θ` it was
-evaluated at.
+A materialized tree: the root `MaterializedNode`, the `spec` it was built from (`nothing` when
+built from a term list), the `terms` it was built from, and the parameters `θ` it was evaluated at.
 """
 struct System
     root::MaterializedNode
-    spec::Spec
+    spec::Union{Nothing,Spec}
+    terms::Vector{Term}
     θ::NamedTuple
 end
 
@@ -37,20 +38,63 @@ const _EDGE_TOL = 1e-6
 
 """
     materialize(root, spec, θ; previous=nothing) -> System
+    materialize(root, terms, θ; constant=Coefficient(0), previous=nothing, modetypes=Dict()) -> System
 
 Diagonalize every node of the tree under `root` at parameters `θ`, children first.
+The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref) and
+delegates to the second, which takes a user-built (filtered, transformed) term list and a
+scalar `constant`.
+
+The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
 position) to the `:follow` phase convention and to selection rules.
 A parameter missing from `θ` raises an `ArgumentError` naming it.
+
+Each `mode => basis` leaf child is checked against the mode's type: a compact mode (`:c`) needs
+a `ChargeBasis`, an extended (`:e`) or harmonic (`:h`) mode a `PhaseGrid` or `FockBasis`.
+The spec form takes the types from the spec; the term-list form from `modetypes` (mode => type),
+skipping modes absent from it (an empty dictionary skips the check).
+
+A term routed to a branch node with two or more factors inside the same child would need a
+composite (multi-mode) port of that child; these are not supported and throw an `ArgumentError`.
 """
-function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)
-    routed = route(root, circuit_terms(spec))
+function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
+                     previous::Union{Nothing,System}=nothing,
+                     modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}())
+    _check_bases(root, modetypes)
+    routed = route(root, terms)
     _check_composite(routed)
     needed = required_ports(root, routed)
-    constant = constant_term(spec)(θ)
+    c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, constant, prev)
-    return System(mroot, spec, θ)
+    mroot = _materialize(root, θ, routed, needed, c, prev)
+    return System(mroot, nothing, terms, θ)
+end
+
+function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)
+    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
+    sys = materialize(root, circuit_terms(spec), θ; constant=constant_term(spec), previous=previous,
+                      modetypes=modetypes)
+    return System(sys.root, spec, sys.terms, sys.θ)
+end
+
+const _MODE_TYPE_NAMES = Dict(:c => "compact", :e => "extended", :h => "harmonic")
+
+# Every `mode => basis` child against the mode's type (modes absent from `modetypes` are skipped).
+function _check_bases(root::Node, modetypes::Dict{Symbol,Symbol})
+    isempty(modetypes) && return nothing
+    for node in _all_nodes(root), ch in node.children
+        ch isa Pair || continue
+        m, b = ch.first, ch.second
+        t = get(modetypes, m, nothing)
+        t === nothing && continue
+        ok = t === :c ? b isa ChargeBasis : t in (:e, :h) && (b isa PhaseGrid || b isa FockBasis)
+        ok && continue
+        want = t === :c ? "a ChargeBasis" : t in (:e, :h) ? "a PhaseGrid or FockBasis" : "a known mode type (c, e or h)"
+        throw(ArgumentError("mode :$m has type :$t ($(get(_MODE_TYPE_NAMES, t, "unknown"))), which needs " *
+                            "$want, but is given $(repr(b))"))
+    end
+    return nothing
 end
 
 # A term routed to a branch with two or more factors inside one child node would need a port on
