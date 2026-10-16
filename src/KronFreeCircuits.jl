@@ -8,5 +8,6 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 
 include("parameters.jl")
 include("spec.jl")
+include("terms.jl")
 
 end # module
