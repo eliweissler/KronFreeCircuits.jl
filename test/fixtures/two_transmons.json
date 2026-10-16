@@ -1,0 +1,19 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": "Two transmons, sum_i [4 E_Ci (n_i - n_gi)^2 - E_Ji cos(varphi_i)], coupled by the off-diagonal E_C entries g/8, which expand to g (n_1 - n_g1)(n_2 - n_g2).",
+  "parameters": ["E_J1", "E_C1", "n_g1", "E_J2", "E_C2", "n_g2", "g"],
+  "modes": [
+    {"name": "varphi_1", "type": "c"},
+    {"name": "varphi_2", "type": "c"}
+  ],
+  "E_C": [["E_C1", "g/8"], ["g/8", "E_C2"]],
+  "E_L": [["0", "0"], ["0", "0"]],
+  "flux_linear": ["0", "0"],
+  "n_g": ["n_g1", "n_g2"],
+  "cosines": [
+    {"energy": "E_J1", "omega": [1, 0], "offset": "0"},
+    {"energy": "E_J2", "omega": [0, 1], "offset": "0"}
+  ]
+}

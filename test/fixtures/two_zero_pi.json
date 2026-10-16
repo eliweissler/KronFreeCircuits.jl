@@ -1,0 +1,34 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": [
+    "Two copies of zero_pi.json (suffixes 1 and 2 on modes and parameters), constant 2*E_J1 + 2*E_J2.",
+    "Coupling: E_C[theta1,theta2] = E_C[theta2,theta1] = g/8, which expands to g (n_theta1 - n_g1)(n_theta2 - n_g2)."
+  ],
+  "parameters": ["E_J1", "E_L1", "E_CJ1", "E_CS1", "varphi_ext1", "n_g1",
+                 "E_J2", "E_L2", "E_CJ2", "E_CS2", "varphi_ext2", "n_g2", "g"],
+  "modes": [
+    {"name": "theta1", "type": "c"},
+    {"name": "phi1", "type": "e"},
+    {"name": "theta2", "type": "c"},
+    {"name": "phi2", "type": "e"}
+  ],
+  "E_C": [["E_CS1/2", "0", "g/8", "0"],
+          ["0", "E_CJ1/2", "0", "0"],
+          ["g/8", "0", "E_CS2/2", "0"],
+          ["0", "0", "0", "E_CJ2/2"]],
+  "E_L": [["0", "0", "0", "0"],
+          ["0", "2*E_L1", "0", "0"],
+          ["0", "0", "0", "0"],
+          ["0", "0", "0", "2*E_L2"]],
+  "flux_linear": ["0", "0", "0", "0"],
+  "n_g": ["n_g1", "0", "n_g2", "0"],
+  "cosines": [
+    {"energy": "E_J1", "omega": [1, 1, 0, 0], "offset": "-varphi_ext1/2"},
+    {"energy": "E_J1", "omega": [1, -1, 0, 0], "offset": "varphi_ext1/2"},
+    {"energy": "E_J2", "omega": [0, 0, 1, 1], "offset": "-varphi_ext2/2"},
+    {"energy": "E_J2", "omega": [0, 0, 1, -1], "offset": "varphi_ext2/2"}
+  ],
+  "constant": "2*E_J1 + 2*E_J2"
+}

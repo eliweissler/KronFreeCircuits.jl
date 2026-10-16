@@ -1,0 +1,47 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": [
+    "Asymmetric zero-pi with its zeta mode, transcribed from scqubits 4.3.1 source: FullZeroPi.hamiltonian, ZeroPi.sparse_kinetic_mat, ZeroPi.sparse_potential_mat, FullZeroPi.g_phi_coupling_matrix and g_theta_coupling_matrix.",
+    "scqubits names: EJ = E_J, EL = E_L, ECJ = E_CJ, ECS = E_CS, dEJ = dE_J, dCJ = dC_J, dC = dC, dEL = dE_L, ng = n_g, flux = varphi_ext/(2*pi).",
+    "E_Cz is scqubits' EC (charging energy of the large shunt capacitances, derived as 1/(1/ECS - 1/ECJ) when ECS is passed); scqubits' E_zeta = sqrt(8*EL*EC) = sqrt(8*E_L*E_Cz).",
+    "Notation: n_x = -i d/dx; scqubits' i d/dphi is -n_phi.",
+    "ZeroPi kinetic, -2 ECJ d^2/dphi^2 -> 2 E_CJ n_phi^2 -> E_C[phi,phi] = E_CJ/2.",
+    "ZeroPi kinetic, 2 ECS (n_theta + ng)^2 -> 2 E_CS n_theta^2 -> E_C[theta,theta] = E_CS/2, plus the offset (see n_g below).",
+    "ZeroPi kinetic, -2 ECS dCJ (i d/dphi) n_theta = +2 E_CS dC_J n_phi n_theta -> 8 E_C[theta,phi] = 2 E_CS dC_J -> E_C[theta,phi] = E_C[phi,theta] = E_CS*dC_J/4 (the source sign; the class docstring writes +2 ECS dCJ d_phi d_theta, which is the opposite sign).",
+    "ZeroPi potential, EL phi^2 -> E_L[phi,phi] = 2*E_L.",
+    "ZeroPi potential, -2 EJ cos(theta) cos(phi - x), x = varphi_ext/2 -> -E_J cos(theta + phi - x) - E_J cos(theta - phi + x): cosines 1 and 2.",
+    "ZeroPi potential, +EJ dEJ sin(theta) sin(phi - x) = (E_J dE_J/2) cos(theta - phi + x) - (E_J dE_J/2) cos(theta + phi - x): cosines 3 (energy E_J*dE_J/2, omega [1,1,0], offset -x) and 4 (energy -E_J*dE_J/2, omega [1,-1,0], offset +x). The source has EJ*dEJ, not 2*EJ*dEJ; cosines 1+3 and 2+4 give junction energies E_J(1 +- dE_J/2).",
+    "ZeroPi potential, +2 EJ -> constant 2*E_J.",
+    "zeta: FullZeroPi adds E_zeta a^dag a. Here zeta = (2 E_Cz/E_L)^(1/4) (a + a^dag) and n_zeta = i (a^dag - a)/(2 (2 E_Cz/E_L)^(1/4)), so 4 E_Cz n_zeta^2 + (1/2) E_L zeta^2 = E_zeta (a^dag a + 1/2): E_C[zeta,zeta] = E_Cz, E_L[zeta,zeta] = E_L, and constant -E_zeta/2 = -sqrt(2*E_Cz*E_L). This zeta is sqrt(2) times the zeta of the docstring's E_L dE_L phi zeta.",
+    "g_phi: EL (dEL/2) (8 EC/EL)^(1/4) phi (a + a^dag) = (E_L dE_L/sqrt(2)) phi zeta -> E_L[phi,zeta] = E_L[zeta,phi] = E_L*dE_L/sqrt(2).",
+    "g_theta: G = i ECS (dC/2) (32 EL/EC)^(1/4) n_theta, coupling G a + G^dag a^dag = -2 sqrt(2) E_CS dC n_theta n_zeta (scqubits' n_theta has no ng) -> 8 E_C[theta,zeta] = -2 sqrt(2) E_CS dC -> E_C[theta,zeta] = E_C[zeta,theta] = -sqrt(2)*E_CS*dC/4.",
+    "Offset charge: scqubits puts ng only in 2 ECS (n_theta + ng)^2; its n_theta n_phi and n_theta n_zeta cross terms carry no ng. In the canonical 4 (n - nu)^T E_C (n - nu) the linear terms are -8 (E_C nu)_i n_i, so this file chooses nu with E_C nu = (E_CS n_g/2, 0, 0): nu = (n_g/D) (1, -E_CS dC_J/(2 E_CJ), sqrt(2) E_CS dC/(4 E_Cz)) with D = 1 - E_CS dC_J^2/(4 E_CJ) - E_CS dC^2/(4 E_Cz). The expansion then has linear term -4 E_CS n_g n_theta only, as scqubits does.",
+    "Offset-charge sign: as in zero_pi.json the file uses 2 E_CS (n_theta - n_g)^2 where scqubits has (n_theta + ng)^2; the two Hamiltonians are related by time reversal, so the spectra coincide.",
+    "Constant: 4 nu^T E_C nu = 2 E_CS n_g^2/D, while scqubits' constant is 2 E_CS n_g^2, so the constant carries 2 E_CS n_g^2 - 2 E_CS n_g^2/D in addition to 2 E_J - sqrt(2 E_Cz E_L)."
+  ],
+  "parameters": ["E_J", "E_L", "E_CJ", "E_CS", "E_Cz", "dE_J", "dC_J", "dC", "dE_L", "varphi_ext", "n_g"],
+  "modes": [
+    {"name": "theta", "type": "c"},
+    {"name": "phi", "type": "e"},
+    {"name": "zeta", "type": "h"}
+  ],
+  "E_C": [["E_CS/2", "E_CS*dC_J/4", "-sqrt(2)*E_CS*dC/4"],
+          ["E_CS*dC_J/4", "E_CJ/2", "0"],
+          ["-sqrt(2)*E_CS*dC/4", "0", "E_Cz"]],
+  "E_L": [["0", "0", "0"],
+          ["0", "2*E_L", "E_L*dE_L/sqrt(2)"],
+          ["0", "E_L*dE_L/sqrt(2)", "E_L"]],
+  "flux_linear": ["0", "0", "0"],
+  "n_g": ["n_g/(1 - E_CS*dC_J^2/(4*E_CJ) - E_CS*dC^2/(4*E_Cz))",
+          "-n_g*E_CS*dC_J/(2*E_CJ)/(1 - E_CS*dC_J^2/(4*E_CJ) - E_CS*dC^2/(4*E_Cz))",
+          "n_g*sqrt(2)*E_CS*dC/(4*E_Cz)/(1 - E_CS*dC_J^2/(4*E_CJ) - E_CS*dC^2/(4*E_Cz))"],
+  "cosines": [
+    {"energy": "E_J", "omega": [1, 1, 0], "offset": "-varphi_ext/2"},
+    {"energy": "E_J", "omega": [1, -1, 0], "offset": "varphi_ext/2"},
+    {"energy": "E_J*dE_J/2", "omega": [1, 1, 0], "offset": "-varphi_ext/2"},
+    {"energy": "-E_J*dE_J/2", "omega": [1, -1, 0], "offset": "varphi_ext/2"}
+  ],
+  "constant": "2*E_J - sqrt(2*E_Cz*E_L) + 2*E_CS*n_g^2 - 2*E_CS*n_g^2/(1 - E_CS*dC_J^2/(4*E_CJ) - E_CS*dC^2/(4*E_Cz))"
+}

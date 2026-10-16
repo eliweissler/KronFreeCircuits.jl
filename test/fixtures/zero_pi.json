@@ -1,0 +1,28 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": [
+    "Symmetric zero-pi (scqubits ZeroPi with dEJ = dCJ = 0), varphi_ext = 2*pi*flux:",
+    "2 E_CJ n_phi^2 + 2 E_CS (n_theta - n_g)^2 - 2 E_J cos(theta) cos(phi - varphi_ext/2) + E_L phi^2 + 2 E_J.",
+    "2 E_CJ n_phi^2 -> E_C[phi,phi] = E_CJ/2; 2 E_CS n_theta^2 -> E_C[theta,theta] = E_CS/2; E_L phi^2 -> E_L[phi,phi] = 2*E_L.",
+    "-2 E_J cos(theta) cos(phi - x) = -E_J cos(theta + phi - x) - E_J cos(theta - phi + x), x = varphi_ext/2.",
+    "constant 2*E_J: scqubits ZeroPi.sparse_potential_mat adds 2 E_J to the potential.",
+    "Offset-charge sign: scqubits ZeroPi uses 2 E_CS (n_theta + n_g)^2; this file uses (n_theta - n_g)^2, the transmon convention.",
+    "The two Hamiltonians are complex conjugates of each other in the charge/position basis (time reversal), so their spectra coincide."
+  ],
+  "parameters": ["E_J", "E_L", "E_CJ", "E_CS", "varphi_ext", "n_g"],
+  "modes": [
+    {"name": "theta", "type": "c"},
+    {"name": "phi", "type": "e"}
+  ],
+  "E_C": [["E_CS/2", "0"], ["0", "E_CJ/2"]],
+  "E_L": [["0", "0"], ["0", "2*E_L"]],
+  "flux_linear": ["0", "0"],
+  "n_g": ["n_g", "0"],
+  "cosines": [
+    {"energy": "E_J", "omega": [1, 1], "offset": "-varphi_ext/2"},
+    {"energy": "E_J", "omega": [1, -1], "offset": "varphi_ext/2"}
+  ],
+  "constant": "2*E_J"
+}

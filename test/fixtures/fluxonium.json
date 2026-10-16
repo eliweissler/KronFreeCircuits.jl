@@ -1,0 +1,18 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": "Fluxonium: 4 E_C n^2 - E_J cos(varphi) + (1/2) E_L (varphi + varphi_ext)^2.",
+  "parameters": ["E_J", "E_C", "E_L", "varphi_ext"],
+  "modes": [
+    {"name": "varphi_1", "type": "e"}
+  ],
+  "E_C": [["E_C"]],
+  "E_L": [["E_L"]],
+  "flux_linear": ["E_L*varphi_ext"],
+  "n_g": ["0"],
+  "cosines": [
+    {"energy": "E_J", "omega": [1], "offset": "0"}
+  ],
+  "constant": "E_L*varphi_ext^2/2"
+}

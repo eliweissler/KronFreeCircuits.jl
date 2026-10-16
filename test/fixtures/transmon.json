@@ -1,0 +1,17 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": "Transmon: 4 E_C (n - n_g)^2 - E_J cos(varphi).",
+  "parameters": ["E_J", "E_C", "n_g"],
+  "modes": [
+    {"name": "varphi_1", "type": "c"}
+  ],
+  "E_C": [["E_C"]],
+  "E_L": [["0"]],
+  "flux_linear": ["0"],
+  "n_g": ["n_g"],
+  "cosines": [
+    {"energy": "E_J", "omega": [1], "offset": "0"}
+  ]
+}
