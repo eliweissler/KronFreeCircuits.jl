@@ -129,7 +129,7 @@ end
 ### Task 3: Spec loading and fixtures
 
 **Files:**
-- Create: `src/spec.jl`, `test/test_spec.jl`, `test/fixtures/fluxonium.json`, `test/fixtures/transmon.json`, `test/fixtures/two_transmons.json`, `test/fixtures/three_transmons.json`, `test/fixtures/zero_pi.json`, `test/fixtures/two_zero_pi.json`
+- Create: `src/spec.jl`, `test/test_spec.jl`, `test/fixtures/fluxonium.json`, `test/fixtures/transmon.json`, `test/fixtures/two_transmons.json`, `test/fixtures/three_transmons.json`, `test/fixtures/zero_pi.json`, `test/fixtures/full_zero_pi.json`, `test/fixtures/two_zero_pi.json`
 - Modify: `Project.toml` (add `JSON3`)
 
 **Interfaces:**
@@ -146,6 +146,7 @@ end
   - `zero_pi.json` (scqubits `ZeroPi` convention with `dEJ = dCJ = 0`): parameters `[E_J, E_L, E_CJ, E_CS, varphi_ext, n_g]`; modes `[theta: c, phi: e]`; `E_C=[["E_CS/2","0"],["0","E_CJ/2"]]`, `E_L=[["0","0"],["0","2*E_L"]]`, `flux_linear=["0","0"]`, `n_g=["n_g","0"]`, cosines `[{E_J, [1, 1], "-varphi_ext/2"}, {E_J, [1, -1], "varphi_ext/2"}]`. This is $2E_{CJ}n_\varphi^2 + 2E_{CS}(n_\theta-n_g)^2 - 2E_J\cos\theta\cos(\varphi-\varphi_{\rm ext}/2) + E_L\varphi^2$.
   - `two_transmons.json`: parameters `[E_J1, E_C1, n_g1, E_J2, E_C2, n_g2, g]`; modes `[varphi_1: c, varphi_2: c]`; `E_C=[["E_C1","g/8"],["g/8","E_C2"]]`, `E_L` zero, `flux_linear` zero, `n_g=["n_g1","n_g2"]`, cosines `[{E_J1, [1, 0], "0"}, {E_J2, [0, 1], "0"}]`. The off-diagonal `g/8` yields the coupling $g\,n_1 n_2$ after expansion (Task 4). This is the cheap composite used for all branch and dressed-state tests.
   - `three_transmons.json`: `two_transmons.json` plus a third compact mode `varphi_3` with parameters `E_J3, E_C3, n_g3`, uncoupled (its `E_C` row and column are zero off the diagonal), cosine `{E_J3, [0, 0, 1], "0"}`. Used by the three-level tree test (Task 12).
+  - `full_zero_pi.json`: the asymmetric zero-pi with its zeta mode, modes `[theta: c, phi: e, zeta: h]`, transcribed by the implementer from scqubits' `FullZeroPi.hamiltonian` source (not from memory) with parameters `[E_J, E_L, E_CJ, E_CS, E_Cz, dE_J, dC_J, dC, dE_L, varphi_ext, n_g]`. The $\sin\theta\sin(\varphi-\varphi_{\rm ext}/2)$ asymmetry term is written as two cosines with energies `"E_J*dE_J"` and `"-E_J*dE_J"`; charge asymmetries become off-diagonal `E_C` entries and the inductive asymmetry an off-diagonal `E_L` entry. The file carries a `"_comment"` field recording the mapping from scqubits' expression, term by term. This fixture exercises all three mode types and a two-level tree (Task 12).
   - `two_zero_pi.json`: two copies of `zero_pi.json` with suffixes `1`, `2` on modes and parameters, plus parameter `g` and `E_C[theta1, theta2] = E_C[theta2, theta1] = "g/8"`, the coupling $g\,n_{\theta1}n_{\theta2}$. Used only by the final reference task (Task 14).
 
 - [ ] **Step 1: Write failing tests**
@@ -164,7 +165,7 @@ end
 ```
 
 - [ ] **Step 2: Run to verify it fails.**
-- [ ] **Step 3: Write the six fixture files and `src/spec.jl`.**
+- [ ] **Step 3: Write the seven fixture files and `src/spec.jl`.** For `full_zero_pi.json`, read the scqubits source in the `zp2q` conda environment: `conda run -n zp2q python -c 'import scqubits, inspect; print(inspect.getsource(scqubits.FullZeroPi.hamiltonian))'`.
 - [ ] **Step 4: Run tests → PASS.**
 - [ ] **Step 5: Commit** `"Add Spec loading with validation and hand-written circuit fixtures"`.
 
@@ -485,8 +486,8 @@ end
   - `materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)::System`. Per node, children first: build `AxisTerm`s from the routed `Term`s (coefficients evaluated at `θ`, factors from `localop(basis, port)` for a basis child or `DenseOp(child.ports[(mode, port)])` for a node child), plus one `AxisTerm(1, [(axis, DiagonalOp(child.energies))])` per node child, plus `constant_term(spec)` at the root only; `solve`; `fix_phases!` with `mask` = Kronecker product of children's `positive_mask` (all-true for node children) and the previous node's vectors as reference; form the ports in `ports_needed(keep)` on all computed vectors as `V' * apply(O, V)`; `select`; `validate_selection`; slice; form the remaining required ports. Missing `θ` entries surface as the `ArgumentError` of Task 2 (Review Focus 1).
   - `energies(sys::System, node::Node=sys.root.node)::Vector{Float64}`, `port(sys, mode::Symbol, p::Port, node=root)::Matrix{ComplexF64}` (throws `KeyError` with the available ports listed if absent), `eigenvectors(sys, node)::Matrix{ComplexF64}`, `materialized(sys, node::Node)::MaterializedNode` by tree position.
   - A grid leaf logs `@warn` when `edge_support(grid, kept vectors, order ÷ 2)` exceeds `1e-6` for any kept vector.
-- Test helpers added to `test/helpers.jl` in this task: `reference(name::String)` reads `scqubits_reference.json` and returns a NamedTuple with `energies::Vector{Float64}` and the parameters; `fixture(name)` returns the path under `test/fixtures`; `two_transmons_params(; g)` returns `(E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=25.0, E_C2=1.0, n_g2=0.0, g=g)`; `three_transmons_params(; g)` adds `E_J3=20.0, E_C3=0.8, n_g3=0.1`; `two_zero_pi_params(; g)` returns the zero-pi θ of Task 14 duplicated with suffixes `1` and `2` plus `g`.
-- Reference generator `test/fixtures/generate_scqubits.py` (run once with `conda run -n zp2q python test/fixtures/generate_scqubits.py`; its output `scqubits_reference.json` is committed): fluxonium `EJ=8.9, EC=2.5, EL=0.5, flux=0.5` with `cutoff=200`, lowest 6; transmon `EJ=30, EC=1.2, ng=0.25`, `ncut=30`, lowest 5; two transmons `EJ1=30, EC1=1.2, ng1=0.25, EJ2=25, EC2=1.0, ng2=0.0`, `ncut=30`, `truncated_dim=8` each, `InteractionTerm(g=0.3, n_operator ⊗ n_operator)`, lowest 20 of the `HilbertSpace`; zero-pi `EJ=10, EL=0.04, ECJ=20, ECS=0.5 (pass EC=None, ECS=0.5), ng=0.1, flux=0.23`, φ grid `-6π..6π` with `pt_count=1001`, `ncut=30`, lowest 8; two zero-pi: the same two subsystems with `truncated_dim=10`, `InteractionTerm(g=0.05, n_theta_operator ⊗ n_theta_operator)`, lowest 20 of the `HilbertSpace`. All energies absolute, GHz, stored with the parameters used. The zero-pi entries are consumed only by Task 14.
+- Test helpers added to `test/helpers.jl` in this task: `reference(name::String)` reads `scqubits_reference.json` and returns a NamedTuple with `energies::Vector{Float64}` and the parameters; `fixture(name)` returns the path under `test/fixtures`; `two_transmons_params(; g)` returns `(E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=25.0, E_C2=1.0, n_g2=0.0, g=g)`; `three_transmons_params(; g)` adds `E_J3=20.0, E_C3=0.8, n_g3=0.1`; `zero_pi_params()` returns `(E_J=10.0, E_L=0.04, E_CJ=20.0, E_CS=0.5, varphi_ext=2π*0.23, n_g=0.1)`; `full_zero_pi_params()` adds `E_Cz` (from the reference file), `dE_J=0.05, dC_J=0.05, dC=0.08, dE_L=0.1`; `two_zero_pi_params(; g)` returns `zero_pi_params()` duplicated with suffixes `1` and `2` plus `g`.
+- Reference generator `test/fixtures/generate_scqubits.py` (run once with `conda run -n zp2q python test/fixtures/generate_scqubits.py`; its output `scqubits_reference.json` is committed): fluxonium `EJ=8.9, EC=2.5, EL=0.5, flux=0.5` with `cutoff=200`, lowest 6; transmon `EJ=30, EC=1.2, ng=0.25`, `ncut=30`, lowest 5; two transmons `EJ1=30, EC1=1.2, ng1=0.25, EJ2=25, EC2=1.0, ng2=0.0`, `ncut=30`, `truncated_dim=8` each, `InteractionTerm(g=0.3, n_operator ⊗ n_operator)`, lowest 20 of the `HilbertSpace`; zero-pi `EJ=10, EL=0.04, ECJ=20, ECS=0.5 (pass EC=None, ECS=0.5), ng=0.1, flux=0.23`, φ grid `-6π..6π` with `pt_count=1001`, `ncut=15`, lowest 8; full zero-pi `FullZeroPi` with the same `EJ, EL, ECJ, ECS, ng, flux`, `dEJ=0.05, dCJ=0.05, dC=0.08, dEL=0.1`, `ncut=15`, same grid, `zeropi_cutoff=30, zeta_cutoff=20`, lowest 10; two zero-pi: two `ZeroPi` subsystems as above with `truncated_dim=10`, `InteractionTerm(g=0.05, n_theta_operator ⊗ n_theta_operator)`, lowest 20 of the `HilbertSpace`. All energies absolute, GHz, stored with the parameters used, including scqubits' derived zeta charging energy for the full zero-pi so the Julia side can pass the same `E_Cz`. The two-zero-pi entry is consumed only by Task 14.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -503,6 +504,17 @@ end
     sys = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(5)), load_spec(fixture("transmon.json")), θ)
     @test energies(sys) ≈ ref.energies atol=1e-10
 end
+@testset "zero-pi leaf vs scqubits (Lanczos on a 9k-dimensional leaf)" begin
+    ref = reference("zero_pi"); θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
+    leaf = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 301; order=8)];
+                solver=Lanczos(), compute=8, keep=lowest(8), ports=[(:theta, nport())])
+    sys = materialize(leaf, spec_zp, θ)
+    @test energies(sys) ≈ ref.energies atol=1e-4            # scqubits uses a 3-point stencil on 1001 points
+    @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
+    small = Node([:theta => ChargeBasis(8), :phi => PhaseGrid(-6π, 6π, 151)]; keep=lowest(8))
+    smalll = Node([:theta => ChargeBasis(8), :phi => PhaseGrid(-6π, 6π, 151)]; solver=Lanczos(), compute=8, keep=lowest(8))
+    @test energies(materialize(smalll, spec_zp, θ)) ≈ energies(materialize(small, spec_zp, θ)) atol=1e-8   # Lanczos = Dense
+end
 @testset "requested port and edge warning" begin
     θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π); spec = load_spec(fixture("fluxonium.json"))
     sys = materialize(Node([:varphi_1 => PhaseGrid(-10π, 10π, 401)]; keep=lowest(6), ports=[(:varphi_1, nport())]), spec, θ)
@@ -513,7 +525,7 @@ end
 
 - [ ] **Step 2: Run to verify it fails.**
 - [ ] **Step 3: Write `generate_scqubits.py`, run it, commit its output; implement `src/materialize.jl`.**
-- [ ] **Step 4: Run tests → PASS.**
+- [ ] **Step 4: Run tests → PASS.** If the zero-pi comparison fails at the 1e-4 level, first check the flux convention (`flux = varphi_ext / 2π`) and the `E_L` factor of 2 against scqubits' `ZeroPi.hamiltonian` source before touching the solver.
 - [ ] **Step 5: Commit** `"Add leaf materialization with scqubits reference tests"`.
 
 ---
@@ -547,6 +559,15 @@ end
 @testset "lanczos at the top matches dense" begin
     top_l = Node([mk(1), mk(2)]; solver=Lanczos(), compute=6, keep=lowest(6))
     @test energies(materialize(top_l, spec, θ)) ≈ energies(sys)[1:6] atol=1e-8
+end
+@testset "full zero-pi: all three mode types in a two-level tree vs scqubits FullZeroPi" begin
+    ref = reference("full_zero_pi"); θ = full_zero_pi_params()
+    zp = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 301; order=8)]; solver=Lanczos(), compute=30, keep=lowest(30))
+    zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θ.E_Cz/θ.E_L)^(1/4))]; keep=lowest(20))   # scqubits' oscillator basis for zeta
+    full = Node([zp, zeta]; solver=Dense(), keep=lowest(10))
+    sys = materialize(full, load_spec(fixture("full_zero_pi.json")), θ)
+    @test energies(sys) ≈ ref.energies atol=1e-4      # same truncations as scqubits (zeropi_cutoff=30, zeta_cutoff=20)
+    @test modes(full) == [:theta, :phi, :zeta]
 end
 @testset "three-level tree" begin
     spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
@@ -613,22 +634,14 @@ end
 **Interfaces:**
 - Consumes: everything above; the `zero_pi` and `two_zero_pi` entries of `scqubits_reference.json` (Task 11).
 
-These are the project's acceptance tests against the system that motivated it. They are slow (a 12 000-dimensional dense leaf solve and a 100-state composite) and run only when the flag is set, so the normal suite stays fast. Eli's instruction: do not let these drive the schedule; everything else lands first.
+This is the project's acceptance test against the system that motivated it: two coupled zero-pi qubits. It is slow and runs only when the flag is set, so the normal suite stays fast. Eli's instruction: do not let it drive the schedule; everything else lands first. The single zero-pi and the full zero-pi are already covered in Tasks 11 and 12.
 
 - [ ] **Step 1: Write the tests**
 
 ```julia
-@testset "zero-pi leaf vs scqubits" begin
-    ref = reference("zero_pi"); θ = (E_J=10.0, E_L=0.04, E_CJ=20.0, E_CS=0.5, varphi_ext=2π*0.23, n_g=0.1)
-    leaf = Node([:theta => ChargeBasis(30), :phi => PhaseGrid(-6π, 6π, 401; order=8)];
-                keep=lowest(8), ports=[(:theta, nport())])
-    sys = materialize(leaf, load_spec(fixture("zero_pi.json")), θ)
-    @test energies(sys) ≈ ref.energies atol=1e-4            # scqubits uses a 3-point stencil on 1001 points
-    @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
-end
 @testset "two zero-pi vs scqubits HilbertSpace" begin
     θ = two_zero_pi_params(g=0.05)
-    mk(i) = Node([Symbol("theta$i") => ChargeBasis(30), Symbol("phi$i") => PhaseGrid(-6π, 6π, 401)]; keep=lowest(10))
+    mk(i) = Node([Symbol("theta$i") => ChargeBasis(15), Symbol("phi$i") => PhaseGrid(-6π, 6π, 301)]; solver=Lanczos(), compute=10, keep=lowest(10))
     top = Node([mk(1), mk(2)]; solver=Dense(), keep=lowest(20))
     sys = materialize(top, load_spec(fixture("two_zero_pi.json")), θ)
     @test energies(sys) ≈ reference("two_zero_pi").energies atol=1e-4
@@ -636,9 +649,9 @@ end
 end
 ```
 
-- [ ] **Step 2: Run with the flag**: `KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'` → PASS. If the leaf comparison fails at the 1e-4 level, first check the flux convention (`flux = varphi_ext / 2π`) and the `E_L` factor of 2 against scqubits' `ZeroPi.hamiltonian` source before touching the solver. Record the wall time of this run in the commit message.
+- [ ] **Step 2: Run with the flag**: `KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'` → PASS. Record the wall time of this run in the commit message.
 - [ ] **Step 3: Run without the flag** and confirm the file is skipped.
-- [ ] **Step 4: Commit** `"Add gated zero-pi acceptance tests against scqubits"`.
+- [ ] **Step 4: Commit** `"Add gated two-zero-pi acceptance test against scqubits"`.
 
 ---
 
@@ -656,6 +669,6 @@ end
 
 ## Self-review notes
 
-- Spec coverage for this plan's scope: Sections 4, 5.2–5.3, 6, 7, 8 (CPU), 9 (Dense, Lanczos, selection), 9.1 phase conventions, 10.1–10.3, 13 (shape), 14, 16 (CPU parts) are covered by Tasks 2–14. The two-zero-pi system is the final, gated acceptance test (Task 14) rather than the development vehicle, per Eli: the two-transmon composite drives Tasks 12 and 13. Deferred by design to later plans: 5.1, 8 (CUDA), 9 (LOBPCG), 10.4, 11, 12, 13.1, 13.2, the `FockBasis` default `phi_zpf`.
+- Spec coverage for this plan's scope: Sections 4, 5.2–5.3, 6, 7, 8 (CPU), 9 (Dense, Lanczos, selection), 9.1 phase conventions, 10.1–10.3, 13 (shape), 14, 16 (CPU parts) are covered by Tasks 2–14. Per Eli: the two-transmon composite drives Tasks 12 and 13; the single zero-pi (Task 11) and the full asymmetric zero-pi with all three mode types (Task 12) are in the main line; only the two coupled zero-pis are the gated final acceptance test (Task 14). Deferred by design to later plans: 5.1, 8 (CUDA), 9 (LOBPCG), 10.4, 11, 12, 13.1, 13.2, the `FockBasis` default `phi_zpf`.
 - Names used consistently across tasks: `apply_axis!`, `AxisTerm`, `KronFreeOperator`, `localop`, `dimension`, `diagonal`, `dense`, `nport()` etc., `route`, `required_ports`, `ports_needed`, `select`, `validate_selection`, `fix_phases!`, `MaterializedNode`, `System`, `materialized`, `energies`, `port`.
 - Review Focus items are pinned: 1 → Tasks 2 and 11; 2 → Task 3; 3 → Task 6; 4 → Task 7; 5 → Task 10.
