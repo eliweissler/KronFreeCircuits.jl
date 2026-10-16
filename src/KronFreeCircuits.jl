@@ -10,5 +10,6 @@ include("parameters.jl")
 include("spec.jl")
 include("terms.jl")
 include("localops.jl")
+include("bases.jl")
 
 end # module
