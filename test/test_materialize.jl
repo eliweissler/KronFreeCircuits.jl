@@ -56,6 +56,30 @@ end
     V = eigenvectors(sys1, leaf)
     @test port(sys1, :varphi_1, nport()) ≈ V' * Diagonal(-10.0:10.0) * V          # ports carry the fixed phases
 end
+@testset "follow sweep over n_g" begin
+    using Logging
+    using KronFreeCircuits: follow
+    spec = load_spec(fixture("transmon.json")); k = 4
+    θ(ng) = (E_J=30.0, E_C=1.2, n_g=ng)
+    leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=follow(; minoverlap=0.9))
+    @test leaf.phase === :follow
+    # Seed: the lowest k states at n_g = 0 from a lowest(k) node in the same tree position; every
+    # sweep point then follows the previous one through follow() with no explicit reference.
+    prev = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(k)), spec, θ(0.0))
+    for ng in range(0.0, 0.4; length=5)
+        sys = @test_logs min_level=Logging.Warn materialize(leaf, spec, θ(ng); previous=prev)
+        Vp, V = eigenvectors(prev), eigenvectors(sys)
+        @test size(V, 2) == k
+        O = [dot(Vp[:, j], V[:, j]) for j in 1:k]
+        @test all(real.(O) .> 0.9) && all(abs.(imag.(O)) .< 1e-12)          # phase continuity
+        @test energies(sys) ≈ sort(energies(sys))
+        prev = sys
+    end
+    # first point with an explicit reference and no previous: :positive_sector fallback, no error
+    R = eigenvectors(materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(k)), spec, θ(0.0)))
+    sys0 = materialize(Node([:varphi_1 => ChargeBasis(30)]; keep=follow(R)), spec, θ(0.0))
+    @test abs.(diag(R' * eigenvectors(sys0))) ≈ ones(k)
+end
 @testset "branch materialization" begin
     using KronFreeCircuits: FockBasis, modes, constant_term
     θ = two_transmons_params(g=0.3); spec = load_spec(fixture("two_transmons.json"))

@@ -31,8 +31,15 @@ connected(core::AbstractVector{<:Integer}, port::Tuple{Symbol,Port}, thresh::Rea
     Connected(collect(Int, core), port, Float64(thresh))
 
 """
-Keep the states with largest overlap with the `reference` columns
-(`nothing`: the node's previous eigenvectors), in reference order.
+    follow(reference=nothing; minoverlap=0.5)
+
+Adiabatic following: keep one current eigenstate per reference column, in reference order.
+The reference is the node's previous kept eigenvectors when a previous materialization exists;
+the explicit `reference` matrix (columns in the node's product basis) is used only when there is none.
+Assignment is global greedy by overlap: all (reference, current) pairs are taken in order of
+decreasing `|⟨ref|cur⟩|`, a pair being assigned when both states are still free.
+A warning lists the reference states whose assigned overlap is below `minoverlap`.
+A node with this rule defaults to the `:follow` phase convention.
 """
 struct Follow <: SelectionRule
     reference::Union{Nothing,Matrix{ComplexF64}}
@@ -67,29 +74,33 @@ function select(rule::Connected, ctx::SelectionContext)
 end
 
 function select(rule::Follow, ctx::SelectionContext)
-    R = if rule.reference !== nothing
-        rule.reference
-    elseif ctx.previous !== nothing
+    R = if ctx.previous !== nothing
         ctx.previous.vectors
+    elseif rule.reference !== nothing
+        rule.reference
     else
         throw(ArgumentError("follow selection needs a reference or a previous solution"))
     end
+    size(R, 1) == size(ctx.vectors, 1) ||
+        throw(ArgumentError("follow selection: reference vectors have $(size(R, 1)) rows, current vectors $(size(ctx.vectors, 1))"))
+    nref, ncur = size(R, 2), size(ctx.vectors, 2)
+    nref <= ncur ||
+        throw(ArgumentError("follow selection has $nref reference columns but only $ncur computed states"))
     O = abs.(R' * ctx.vectors)
-    assigned = falses(size(O, 2))
-    idx = Int[]
-    weak = Int[]
-    for r in 1:size(O, 1)
-        best, bestval = 0, -Inf
-        for c in 1:size(O, 2)
-            if !assigned[c] && O[r, c] > bestval
-                best, bestval = c, O[r, c]
-            end
-        end
-        best == 0 && throw(ArgumentError("follow selection has more reference columns than computed states"))
-        assigned[best] = true
-        push!(idx, best)
-        bestval < rule.minoverlap && push!(weak, r)
+    # Global greedy assignment: take (reference, current) pairs in order of decreasing overlap.
+    order = sortperm(vec(O); rev=true)
+    idx = zeros(Int, nref)
+    taken = falses(ncur)
+    nassigned = 0
+    for lin in order
+        r, c = Tuple(CartesianIndices(O)[lin])
+        (idx[r] != 0 || taken[c]) && continue
+        idx[r] = c
+        taken[c] = true
+        nassigned += 1
+        nassigned == nref && break
     end
+    weak = [r for r in 1:nref if O[r, idx[r]] < rule.minoverlap]
     isempty(weak) ||
         @warn "follow: overlap below minoverlap = $(rule.minoverlap) for reference states $weak"
     return idx

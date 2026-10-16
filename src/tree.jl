@@ -43,13 +43,14 @@ mutable struct Node
     ports::Vector{Tuple{Symbol,Port}}
 
     function Node(children::AbstractVector; solver::Solver=Dense(), compute::Int=0,
-                  keep::SelectionRule=lowest(0), phase::Symbol=:positive_sector,
+                  keep::SelectionRule=lowest(0), phase::Union{Nothing,Symbol}=nothing,
                   ports=Tuple{Symbol,Port}[])
         isempty(children) && throw(ArgumentError("a Node needs at least one child"))
         for ch in children
             ok = ch isa Node || (ch isa Pair && ch.first isa Symbol && ch.second isa Basis)
             ok || throw(ArgumentError("each child must be a `mode => basis` pair or a Node, got $(repr(ch))"))
         end
+        phase === nothing && (phase = keep isa Follow ? :follow : :positive_sector)
         phase in (:positive_sector, :follow) ||
             throw(ArgumentError("phase must be :positive_sector or :follow, got :$phase"))
         compute >= 0 || throw(ArgumentError("compute must be nonnegative"))

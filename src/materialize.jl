@@ -115,9 +115,10 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
               _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i)) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
-    # Only the :follow phase convention and a previous-referenced follow rule consume `prev` here;
-    # elsewhere a changed child kept count must not make `previous` unusable for the whole tree.
-    uses_prev = node.phase === :follow || (node.keep isa Follow && node.keep.reference === nothing)
+    # Only the :follow phase convention and the follow rule (whose previous vectors take precedence
+    # over an explicit reference) consume `prev` here; elsewhere a changed child kept count must not
+    # make `previous` unusable for the whole tree.
+    uses_prev = node.phase === :follow || node.keep isa Follow
     prev === nothing || !uses_prev || prev.dims == dims ||
         throw(ArgumentError("previous solution at this tree position has dims $(prev.dims), expected $dims"))
 
