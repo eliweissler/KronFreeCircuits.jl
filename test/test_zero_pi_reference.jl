@@ -11,3 +11,11 @@
     @test maximum(abs.(energies(sys) .- reference("two_zero_pi").energies)) < 1e-4
     @test length(bare_labels(sys, top)) == 100
 end
+@testset "two zero-pi vs scqubits HilbertSpace, matched discretization" begin
+    θ = two_zero_pi_params(g=0.05)
+    mk(i) = Node([Symbol("theta$i") => ChargeBasis(15), Symbol("phi$i") => PhaseGrid(-6π, 6π, 1001; order=6)];
+                 solver=Lanczos(tol=1e-12), compute=10, keep=lowest(10))
+    top = Node([mk(1), mk(2)]; solver=Dense(), keep=lowest(20))
+    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(top, load_spec(fixture("two_zero_pi.json")), θ)
+    @test maximum(abs.(energies(sys) .- reference("two_zero_pi_matched").energies)) < 1e-9
+end

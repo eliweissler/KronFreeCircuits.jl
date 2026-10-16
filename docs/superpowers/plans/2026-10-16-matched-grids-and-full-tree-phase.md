@@ -19,7 +19,7 @@
 
 ## Review Focus
 
-1. A matched-discretization test must fail if either code's stencil, range, or point count differs: pin `order=6` and `N=1001` explicitly and assert agreement at `1e-9` or tighter, never looser. Pinned in Task 1.
+1. A matched-discretization test must fail if either code's stencil, range, or point count differs: pin `order=6` and `N=201` explicitly and assert agreement at `1e-9` or tighter, never looser. Pinned in Task 1.
 2. `:positive_sector_full` on a leaf must give exactly the same result as `:positive_sector`. Pinned in Task 2.
 3. `:positive_sector_full` must estimate the expanded size and `@warn` above a threshold (default 2e8 complex entries, about 3.2 GB) before allocating. Pinned in Task 2.
 4. The expansion must use the children's kept vectors AFTER their own phase fixing, so that the full-space vector is the physical state; the convention changes only the global phase of the branch vector. Pinned in Task 2 by comparing against a direct Kronecker reconstruction.
@@ -27,46 +27,47 @@
 
 ---
 
-### Task 1: Matched-discretization and converged scqubits comparisons
+### Task 1: Matched-discretization scqubits comparisons on small grids; convergence tests gated
 
 **Files:**
-- Modify: `test/fixtures/generate_scqubits.py` (add entries, record `STENCIL`, numpy/scipy versions, interpreter), regenerate `test/fixtures/scqubits_reference.json`
-- Modify: `test/test_materialize.jl` (zero-pi leaf and full zero-pi), `test/test_zero_pi_reference.jl` (two zero-pi), `test/helpers.jl` if a helper is needed
+- Modify: `test/fixtures/generate_scqubits.py` (add entries, record `STENCIL`, numpy/scipy versions, interpreter), regenerate `test/fixtures/scqubits_reference.json` (existing entries byte-identical)
+- Modify: `test/test_materialize.jl` (replace the 301-point zero-pi and full zero-pi comparisons with small matched ones), `test/test_zero_pi_reference.jl` (gated: the moved 301-point comparisons, the existing two-zero-pi test, a matched two-zero-pi, and a wide-grid converged zero-pi), `test/helpers.jl` if a helper is needed
 
 **Interfaces:**
-- Consumes: `reference(name)`, `zero_pi_params()`, `full_zero_pi_params()`, `two_zero_pi_params(; g)`, `PhaseGrid(a, b, N; order)`, `Lanczos(; …)`, `materialize`, `energies`.
-- Produces: reference entries `zero_pi_matched`, `full_zero_pi_matched`, `two_zero_pi_matched` (same physics parameters as the existing entries, same ±6π range, `pt_count=1001`, `ncut=15`; the stencil recorded), and `zero_pi_wide` (range ±10π, `pt_count=1601`, `ncut=20`, lowest 8) for the converged check. The existing entries are unchanged.
+- Consumes: `reference(name)`, `zero_pi_params()`, `full_zero_pi_params()`, `two_zero_pi_params(; g)`, `PhaseGrid(a, b, N; order)`, `Dense()`, `Lanczos(; …)`, `materialize`, `energies`.
+- Produces: reference entries, all with the same physics parameters as their existing counterparts and the ±6π range unless stated:
+  `zero_pi_small` (`pt_count=201`, `ncut=10`, lowest 8), `full_zero_pi_small` (`pt_count=201`, `ncut=10`, `zeropi_cutoff=30`, `zeta_cutoff=20`, lowest 10), `two_zero_pi_small` (`pt_count=201`, `ncut=10`, `truncated_dim=10`, `g=0.05`, lowest 20), `zero_pi_wide` (range ±10π, `pt_count=1601`, `ncut=20`, lowest 8). Metadata records `scqubits.settings.STENCIL` (7), numpy and scipy versions, and `sys.executable`.
 
-- [ ] **Step 1: Write the failing tests**
+Eli's direction (2026-10-16): the default suite checks agreement with a trusted tool on identical discretizations and small bases; physical correctness and convergence are a few gated slow tests to be grown later.
+
+- [ ] **Step 1: Write the failing tests.** In `test/test_materialize.jl`, replacing the existing "zero-pi leaf vs scqubits (Lanczos on a 9k-dimensional leaf)" and "full zero-pi: all three mode types …" testsets (which move to the gated file):
 
 ```julia
-@testset "zero-pi leaf, matched discretization (order 6 on scqubits' 1001 points)" begin
-    ref = reference("zero_pi_matched"); θ = zero_pi_params()
-    leaf = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 1001; order=6)];
-                solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
-    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, load_spec(fixture("zero_pi.json")), θ)
+@testset "zero-pi leaf vs scqubits, identical discretization (7-point stencil, 201 points)" begin
+    ref = reference("zero_pi_small"); θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
+    leaf = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Dense(), keep=lowest(8), ports=[(:theta, nport())])
+    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec_zp, θ)
     @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-9
+    @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
+    lan = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
+    @test energies(@test_logs (:warn, r"edge") match_mode=:any materialize(lan, spec_zp, θ)) ≈ energies(sys) atol=1e-9   # Lanczos = Dense
 end
-@testset "zero-pi leaf, converged on a wide grid" begin
-    ref = reference("zero_pi_wide"); θ = zero_pi_params()
-    leaf = Node([:theta => ChargeBasis(20), :phi => PhaseGrid(-10π, 10π, 1601; order=8)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
-    sys = materialize(leaf, load_spec(fixture("zero_pi.json")), θ)     # no edge warning expected
-    @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-6            # different stencils, both converged
-end
-@testset "full zero-pi, matched discretization" begin
-    ref = reference("full_zero_pi_matched"); θ = full_zero_pi_params()
-    zp = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 1001; order=6)]; solver=Lanczos(tol=1e-12), compute=30, keep=lowest(30))
+@testset "full zero-pi vs scqubits, identical discretization" begin
+    ref = reference("full_zero_pi_small"); θ = full_zero_pi_params()
+    zp = Node([:theta => ChargeBasis(10), :phi => PhaseGrid(-6π, 6π, 201; order=6)]; solver=Dense(), keep=lowest(30))
     zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θ.E_Cz/θ.E_L)^(1/4))]; keep=lowest(20))
-    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(Node([zp, zeta]; keep=lowest(10)), load_spec(fixture("full_zero_pi.json")), θ)
+    full = Node([zp, zeta]; solver=Dense(), keep=lowest(10))
+    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(full, load_spec(fixture("full_zero_pi.json")), θ)
     @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-9
+    @test modes(full) == [:theta, :phi, :zeta]
 end
 ```
-and in `test/test_zero_pi_reference.jl` the same pattern for `two_zero_pi_matched` with `PhaseGrid(-6π, 6π, 1001; order=6)` leaves, `Lanczos(tol=1e-12), compute=10, keep=lowest(10)`, `atol` on the elementwise maximum `< 1e-9`. Keep the existing `two_zero_pi` test as is.
+In `test/test_zero_pi_reference.jl` (gated by `KRONFREE_SLOW_TESTS=1`): keep the existing two-zero-pi test; add `two_zero_pi_small` with `ChargeBasis(10)`, `PhaseGrid(-6π, 6π, 201; order=6)` leaves (`Dense`, `keep=lowest(10)`), top `Dense`, `keep=lowest(20)`, elementwise `< 1e-9`; move the two removed 301-point testsets here under a `@testset "convergence (different stencils, shared grid)"` with their existing tolerances; add the wide-grid converged check: `zero_pi_wide` against `Node([:theta => ChargeBasis(20), :phi => PhaseGrid(-10π, 10π, 1601; order=8)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))`, no edge warning expected, elementwise `< 1e-6`.
 
 - [ ] **Step 2: Run to verify they fail** (missing reference entries).
-- [ ] **Step 3: Extend the generator**: add the four entries; record `scqubits.settings.STENCIL`, `numpy.__version__`, `scipy.__version__`, and `sys.executable` in the metadata; run with `/opt/anaconda3/envs/circuit_quantization/bin/python test/fixtures/generate_scqubits.py`; confirm existing entries are byte-identical (diff the old and new JSON for those keys).
-- [ ] **Step 4: Run tests → PASS.** If the matched comparison is worse than 1e-9, find the discretization difference (first-derivative stencil for `n_φ`, edge rows, the `n_θ n_φ` cross term in the full zero-pi) rather than loosening; report the observed maxima in the commit body.
-- [ ] **Step 5: Commit** `"Compare grid systems to scqubits on matched and converged discretizations"`.
+- [ ] **Step 3: Extend the generator**, run it with `/opt/anaconda3/envs/circuit_quantization/bin/python test/fixtures/generate_scqubits.py`, confirm existing entries byte-identical.
+- [ ] **Step 4: Run both suites → PASS.** If a matched comparison is worse than 1e-9, find the discretization difference (first-derivative stencil for `n_φ`, edge rows, `range` vs `linspace` endpoints, the `n_θ n_φ` cross term in the full zero-pi) rather than loosening; report observed maxima in the commit body. Report the default suite's wall time before and after.
+- [ ] **Step 5: Commit** `"Compare grid systems to scqubits on identical small discretizations; gate convergence tests"`.
 
 ---
 

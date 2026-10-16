@@ -30,6 +30,19 @@ end
     El = energies(@test_logs (:warn, r"PhaseGrid") materialize(smalll, spec_zp, θ))
     @test El ≈ Ed atol=1e-8   # Lanczos = Dense
 end
+@testset "zero-pi leaf, matched discretization (order 6 on scqubits' 1001 points)" begin
+    ref = reference("zero_pi_matched"); θ = zero_pi_params()
+    leaf = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 1001; order=6)];
+                solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
+    sys = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, load_spec(fixture("zero_pi.json")), θ)
+    @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-9
+end
+@testset "zero-pi leaf, converged on a wide grid" begin
+    ref = reference("zero_pi_wide"); θ = zero_pi_params()
+    leaf = Node([:theta => ChargeBasis(20), :phi => PhaseGrid(-10π, 10π, 1601; order=8)]; solver=Lanczos(tol=1e-12), compute=8, keep=lowest(8))
+    sys = materialize(leaf, load_spec(fixture("zero_pi.json")), θ)     # no edge warning expected
+    @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-6            # different stencils, both converged
+end
 @testset "requested port and edge warning" begin
     θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π); spec = load_spec(fixture("fluxonium.json"))
     sys = materialize(Node([:varphi_1 => PhaseGrid(-10π, 10π, 401)]; keep=lowest(6), ports=[(:varphi_1, nport())]), spec, θ)
@@ -150,6 +163,13 @@ end
         sysz = @test_logs (:warn, r"PhaseGrid on mode :phi") materialize(full, load_spec(fixture("full_zero_pi.json")), θz)
         @test energies(sysz) ≈ ref.energies atol=1e-4      # same truncations as scqubits (zeropi_cutoff=30, zeta_cutoff=20)
         @test modes(full) == [:theta, :phi, :zeta]
+    end
+    @testset "full zero-pi, matched discretization" begin
+        ref = reference("full_zero_pi_matched"); θz = full_zero_pi_params()
+        zp = Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 1001; order=6)]; solver=Lanczos(tol=1e-12), compute=30, keep=lowest(30))
+        zeta = Node([:zeta => FockBasis(20; phi_zpf=(2θz.E_Cz/θz.E_L)^(1/4))]; keep=lowest(20))
+        sysz = @test_logs (:warn, r"edge") match_mode=:any materialize(Node([zp, zeta]; keep=lowest(10)), load_spec(fixture("full_zero_pi.json")), θz)
+        @test maximum(abs.(energies(sysz) .- ref.energies)) < 1e-9
     end
     @testset "three-level tree" begin
         spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
