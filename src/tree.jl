@@ -17,6 +17,15 @@ struct Lanczos <: Solver
 end
 Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
 
+"""
+    SelectionRule
+
+A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `connected` or `follow`.
+A custom rule subtypes `SelectionRule` and implements `KronFreeCircuits.select(rule, ctx::SelectionContext)`,
+returning the kept indices among the computed eigenpairs (in the order they are to be kept);
+if it inspects ports it also implements `KronFreeCircuits.ports_needed(rule)`, returning the
+`(mode, port)` pairs it needs in `ctx.ports`.
+"""
 abstract type SelectionRule end
 
 "Keep the `k` lowest eigenstates (`k == 0`: keep all computed)."
@@ -28,11 +37,22 @@ lowest(k::Int) = Lowest(k)
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 
 """
-    Node(children; solver=Dense(), compute=0, keep=lowest(0), phase=:positive_sector, ports=[])
+    Node(children; solver=Dense(), compute=0, keep=lowest(0), phase, ports=[])
 
 A hierarchical unit.
-Each child is a `mode => basis` pair or another `Node`.
-`compute == 0` means all eigenpairs (only valid with `Dense`).
+Each child is a `mode => basis` pair or another `Node`; a node's product basis has one axis per child.
+
+- `solver`: `Dense()` or `Lanczos()`.
+- `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
+  `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
+  the lowest `compute` pairs.
+- `keep`: the [`SelectionRule`](@ref) choosing the kept states among the computed ones.
+- `phase`: the global-phase convention of the kept eigenvectors, `:positive_sector` or `:follow`.
+  It defaults to `:follow` when `keep` is a `follow` rule and to `:positive_sector` otherwise; an
+  explicit `phase` always wins. `:follow` needs the previous materialization (`previous`); at the
+  first point of a sweep, with none, `:positive_sector` is used.
+- `ports`: extra `(mode, port)` operators to form in this node's kept eigenbasis, beyond those
+  its ancestors need (which are inferred).
 """
 mutable struct Node
     children::Vector{Any}

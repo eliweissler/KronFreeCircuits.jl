@@ -36,6 +36,16 @@ end
     P = port(sys, :varphi_1, nport()); @test size(P) == (6, 6) && P ≈ P'
     @test_logs (:warn,) materialize(Node([:varphi_1 => PhaseGrid(-2, 2, 41)]; keep=lowest(6)), spec, θ)   # too-small grid warns
 end
+@testset "selection ports are rotated to the fixed phases" begin
+    using KronFreeCircuits: connected, localop, dense
+    b = ChargeBasis(10); spec = load_spec(fixture("transmon.json")); θ = (E_J=30.0, E_C=1.2, n_g=0.25)
+    leaf = Node([:varphi_1 => b]; keep=connected([1], (:varphi_1, nport()), 0.3))
+    sys = materialize(leaf, spec, θ)
+    V = eigenvectors(sys); P = port(sys, :varphi_1, nport())
+    @test size(V, 2) > 1
+    @test P ≈ V' * dense(localop(b, nport())) * V atol=1e-12
+    @test P ≈ P'
+end
 @testset "materialized accessors" begin
     θ = (E_J=30.0, E_C=1.2, n_g=0.25); leaf = Node([:varphi_1 => ChargeBasis(10)]; keep=lowest(3))
     sys = materialize(leaf, load_spec(fixture("transmon.json")), θ)

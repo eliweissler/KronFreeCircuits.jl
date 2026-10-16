@@ -46,3 +46,7 @@ end
     r = reshape(exp(0.4im) .* v, :, 1)
     @test fix_phases!(reshape(copy(v), :, 1), :follow, mask, r) ≈ r
 end
+@testset "selection exports" begin
+    @test all(s -> Base.isexported(KronFreeCircuits, s), (:constant_term, :SelectionRule, :SelectionContext))
+    @test !Base.isexported(KronFreeCircuits, :select)          # custom rules extend KronFreeCircuits.select
+end

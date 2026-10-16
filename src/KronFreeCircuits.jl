@@ -14,7 +14,8 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        FockBasis, localop, apply_axis!, KronFreeOperator, Node, Dense,
        Lanczos, lowest, indices, connected, follow, materialize,
        System, energies, port, eigenvectors, materialized, bare_labels,
-       bare_overlaps, decompose, dressed_index
+       bare_overlaps, decompose, dressed_index, constant_term, SelectionRule,
+       SelectionContext
 
 include("parameters.jl")
 include("spec.jl")
