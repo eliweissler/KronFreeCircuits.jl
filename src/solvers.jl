@@ -16,9 +16,11 @@ end
 function solve(s::Lanczos, H::KronFreeOperator, m::Int)
     n = size(H, 1)
     m >= 1 || throw(ArgumentError("Lanczos requires m >= 1, got $m"))
+    m <= n || throw(ArgumentError("Lanczos: m = $m exceeds the operator dimension $n"))
     krylovdim = max(2m + 10, s.krylovdim)
     vals, vecs, info = KrylovKit.eigsolve(v -> H * v, randn(ComplexF64, n), m, :SR;
-                                          ishermitian=true, tol=s.tol, krylovdim=krylovdim)
+                                          ishermitian=true, tol=s.tol, krylovdim=krylovdim,
+                                          maxiter=s.maxiter, verbosity=s.verbosity)
     length(vals) >= m && info.converged >= m ||
         error("Lanczos: only $(info.converged) of $m eigenpairs converged (normres = $(info.normres))")
     E = real.(vals[1:m])

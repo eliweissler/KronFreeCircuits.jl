@@ -4,15 +4,18 @@ abstract type Solver end
 struct Dense <: Solver end
 
 """
-    Lanczos(; tol=1e-10, krylovdim=0)
+    Lanczos(; tol=1e-10, krylovdim=0, maxiter=100, verbosity=0)
 
 Iterative solver; `krylovdim == 0` lets the solver choose.
+`maxiter` bounds the restarts and `verbosity` is passed to KrylovKit (0 is silent).
 """
 struct Lanczos <: Solver
     tol::Float64
     krylovdim::Int
+    maxiter::Int
+    verbosity::Int
 end
-Lanczos(; tol=1e-10, krylovdim=0) = Lanczos(tol, krylovdim)
+Lanczos(; tol=1e-10, krylovdim=0, maxiter=100, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
 
 abstract type SelectionRule end
 

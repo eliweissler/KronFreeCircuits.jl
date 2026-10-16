@@ -13,8 +13,14 @@ using KronFreeCircuits: Dense, Lanczos, solve
     @test issorted(El)
 end
 
-@testset "Lanczos non-convergence throws" begin
+@testset "Lanczos failure modes" begin
     Random.seed!(1)
     H = three_oscillators(6)
-    @test_throws ErrorException solve(Lanczos(tol=1e-14), H, size(H, 1) + 1)
+    n = size(H, 1)
+    # genuine stall: one restart cycle cannot reach tol = 1e-14
+    err = try solve(Lanczos(tol=1e-14, maxiter=1), H, 5); nothing catch e; e end
+    @test err isa ErrorException
+    @test occursin("converged", err.msg) && occursin("normres", err.msg)
+    @test_throws ArgumentError solve(Lanczos(), H, n + 1)
+    @test_throws ArgumentError solve(Lanczos(), H, 0)
 end
