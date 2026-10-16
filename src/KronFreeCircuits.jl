@@ -15,5 +15,7 @@ include("bases.jl")
 include("apply.jl")
 include("tree.jl")
 include("solvers.jl")
+include("selection.jl")
+include("phase.jl")
 
 end # module
