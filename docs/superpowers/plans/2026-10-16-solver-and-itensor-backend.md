@@ -17,6 +17,8 @@
 - LOBPCGEigensolver is used only through `lobpcg`, `precondprep!`, `ldiv!`, and the `callback` keyword; no method is defined on its internal types and no source is copied. Compat is pinned to `"=0.1.4"` until the callback-contract test (Task 4) is rerun against a newer release.
 - ITensors compat `"0.9"`; KernelAbstractions compat `"0.9, 0.10"`; KrylovKit `"0.10.4"` unchanged. CUDA and cuTENSOR are weak dependencies only; the default test suite runs without a GPU and stays under about 60 s.
 - Workspace contract (spec §8): block `mul!(Y, H, X)` writes into caller-owned output through two preallocated scratch arrays reserved for the solver's maximum block width; shrinking active blocks reuse contiguous prefixes; after warm-up no state-sized allocation occurs on CPU or device. Small metadata allocations are allowed.
+- User callbacks handed to a solver may return anything; the solver's own bookkeeping never depends on their return value.
+- Every solver test validates independently: true residuals `H v − λ v` and orthonormality through `check_eigenpairs` (Task 4), and subspace projectors wherever eigenvalues repeat. Energies alone never establish that independent eigenvectors were recovered.
 - Physics conventions, fixtures and the scqubits reference file are unchanged.
 - Commits end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
@@ -184,74 +186,120 @@ end
 **Interfaces:**
 - Consumes: `KronFreeOperator` (`mul!`, `diagonal`, `size`, `eltype`, `on`), `LOBPCGEigensolver.lobpcg`, `LOBPCGEigensolver.precondprep!`.
 - Produces:
-  - `struct LOBPCG <: Solver` with fields `tol::Float64`, `maxiter::Int`, `preconditioner::Symbol` (`:ritz`, `:jacobi`, `:none`), `eta::Float64`, `on::Any`, `callback::Any`; constructor `LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, on=Array, callback=identity)`. `eta` is in the Hamiltonian's energy units; the docstring says the default is taken from the audit fixture (GHz) and must be set for other scales.
+  - `struct LOBPCG <: Solver` with fields `tol::Float64`, `maxiter::Int`, `preconditioner::Symbol` (`:ritz`, `:jacobi`, `:none`), `eta::Float64`, `guard::Int`, `on::Any`, `callback::Any`; constructor `LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)`. `eta` is in the Hamiltonian's energy units; the docstring says the default is taken from the audit fixture (GHz) and must be set for other scales. `guard` extra random columns are appended to every block (cold or warm), convergence is checked on the lowest `m` only (`n_conv_check=m`), and the lowest `m` converged pairs are returned; the docstring states that guards make exact excited-state seeds and sector-confined seeds recoverable in practice and are not a completeness guarantee.
   - `struct FixedJacobi{V}` with field `inv::V` (= `1 ./ (D .- σ)`, `σ = minimum(D) - 1`, real) and `LinearAlgebra.ldiv!(P::FixedJacobi, R)` = `R .*= P.inv`.
-  - `mutable struct RitzJacobi{V,W}` with fields `D::V` (real diagonal), `theta::W` (real, length = block capacity), `eta`, `locked::Int`, `width::Int`, `ready::Bool`, `trace::Union{Nothing,Vector{Any}}`; `RitzJacobi(D, capacity; eta, trace=false)`; `LOBPCGEigensolver.precondprep!(P::RitzJacobi, X)` (on first call, `theta[j] = Σ_i D[i]|X[i,j]|² / Σ_i |X[i,j]|²` per active column through `_diagonal_expectation!(theta, D, X)`, a column loop on host arrays; afterwards no-op except width bookkeeping; when `trace` is on, push `(width, copy(theta[1:width]))`), `LinearAlgebra.ldiv!(P::RitzJacobi, R)` = `R ./= hypot.(P.D .- transpose(view(P.theta, 1:width)), P.eta)`, and `ritz_callback(P::RitzJacobi)` returning the function `info -> (copy the active Ritz values from info.λs into P.theta, dropping the newly locked prefix; update P.locked)` composed with the user's callback. The exact copy logic follows `docs/spikes/2026-10-16-itensor-audit/ritz-preconditioner.jl` (`LO.precondprep!`, `ldiv!`, the callback block) and `RITZ-PRECONDITIONER-REPORT.md` ("Question and implementation").
-  - `lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing) -> (E::Vector{Float64}, V::Matrix, result)` where `result` is `lobpcg`'s named tuple (`λ, X, residual_norms, n_matvec, …`); `X0` is an `N×m` initial block on the host or `nothing` (then `randn(rng, eltype(H), N, m)` with `Random.default_rng()`); `H` is rebuilt or checked to have `block_capacity ≥ m` and storage `s.on`; the block is `adapt(s.on, X0)`; `E` and `V` return as host arrays sorted ascending. Throws `ArgumentError("LOBPCG needs N ≥ 3m + 5 … use Dense()")` when `size(H, 1) < 3m + 5`, `ArgumentError` for `m < 1`.
+  - `mutable struct RitzJacobi{V,W}` with fields `D::V` (real diagonal), `theta::W` (real, length = block capacity), `eta`, `locked::Int`, `width::Int`, `ready::Bool`, `trace::Union{Nothing,Vector{Any}}`; `RitzJacobi(D, capacity; eta, trace=false)`; `LOBPCGEigensolver.precondprep!(P::RitzJacobi, X)` (on first call, `theta[j] = Σ_i D[i]|X[i,j]|² / Σ_i |X[i,j]|²` per active column through `_diagonal_expectation!(theta, D, X)`, a column loop on host arrays; afterwards no-op except width bookkeeping; when `trace` is on, push `(width, copy(theta[1:width]))`), `LinearAlgebra.ldiv!(P::RitzJacobi, R)` = `R ./= hypot.(P.D .- transpose(view(P.theta, 1:width)), P.eta)`, and `_ritz_update!(P::RitzJacobi, info)` (copy the active Ritz values from `info.λs` into `P.theta`, dropping the newly locked prefix; update `P.locked`). The exact copy logic follows `docs/spikes/2026-10-16-itensor-audit/ritz-preconditioner.jl` (`LO.precondprep!`, `ldiv!`, the callback block) and `RITZ-PRECONDITIONER-REPORT.md` ("Question and implementation").
+  - `solver_callback(P, user)` returns the single closure handed to `lobpcg`: `info -> begin; user === nothing || user(info); P isa RitzJacobi && _ritz_update!(P, info); nothing; end`. Both callbacks receive the original `info`; return values are ignored. Never compose with `∘`, which would feed the user's return value to the cache update.
+  - `_full_diagonal(H::KronFreeOperator)` returns the real diagonal of `H` as an array on `H.on` (fused part plus the diagonals of the remaining terms, computed on the device); `diagonal(H)` keeps returning a host `Vector` and is `Array(_full_diagonal(H))`. The fused `H.diag` used by `mul!` never includes diagonals of terms that stay in the contraction sum (Task 2); only `_full_diagonal` adds them.
+  - `lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing) -> (E::Vector{Float64}, V::Matrix, result)` where `result` is `lobpcg`'s named tuple (`λ, X, residual_norms, n_matvec, …`) for the full block; `X0` is an `N×m` host block or `nothing` (then `randn(Random.default_rng(), eltype(H), N, m)`); the block handed to `lobpcg` is `adapt(s.on, hcat(X0, randn(N, g)))` with `g = min(s.guard, (N - 5) ÷ 3 - m)` (the guard shrinks to fit `N ≥ 3(m + g) + 5`); `H` is replaced by `with_block_capacity(H, m + g)` when its capacity is smaller; `miniter` stays at the library default of 1. Throws `ArgumentError("LOBPCG needs N ≥ 3m + 5 … use Dense()")` when `size(H, 1) < 3m + 5`, `ArgumentError` for `m < 1`.
+    Recovery policy (bounded): if `lobpcg` throws with a warm-start block (the library's orthogonalization can fail on a block whose residual is exactly zero), warn once and retry from a random block; a second failure propagates. Nonconvergence (`any(result.residual_norms[1:m] .> s.tol)`) raises an `ErrorException` naming the unconverged count and the maximum residual, like `Lanczos`; it is never retried silently. `E` and `V` return as host arrays, ascending, the lowest `m` of the block.
   - `solve(s::LOBPCG, H, m)` = the first two outputs of `lobpcg_solve`, same return types as the other solvers.
-  - `with_block_capacity(H::KronFreeOperator, m::Integer)::KronFreeOperator` in `src/apply.jl`: the same operator (shared factor data and `diag`) with scratch reserved for `m` columns; `lobpcg_solve` uses it when `H`'s capacity is below `m`.
+  - `with_block_capacity(H::KronFreeOperator, m::Integer)::KronFreeOperator` in `src/apply.jl`: the same operator (shared factor data and `diag`) with scratch reserved for `m` columns.
+  - `check_eigenpairs(H, E, V; tol)` in `test/helpers.jl`: asserts `norm(H * V[:, j] - E[j] * V[:, j]) < tol` for every column and `norm(V' * V - I) < 1e-10`; used by every solver test from here on.
   - `_dense_too_large` warning text in `materialize.jl` changes "Lanczos is advised" to "LOBPCG is advised".
   - `Lanczos` docstring gains the sentence: "A single-vector Krylov space does not resolve repeated eigenvalues (KrylovKit documents this); use `LOBPCG` or `Dense` where exact degeneracies are expected."
 
-- [ ] **Step 1: Write the failing tests** in `test/test_solvers.jl`:
+- [ ] **Step 1: Write the failing tests** in `test/test_solvers.jl` (and `check_eigenpairs` in `test/helpers.jl`; add `LOBPCGEigensolver` to `test/Project.toml`):
 
 ```julia
-using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, ritz_callback, with_block_capacity
-import LOBPCGEigensolver   # add to test/Project.toml
+using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal
+import LOBPCGEigensolver
 
-@testset "LOBPCG agrees with Dense; all preconditioners" begin
+@testset "LOBPCG agrees with Dense; all preconditioners; independent validation" begin
     Random.seed!(7)
     H = three_oscillators(6)                       # N = 216
     Ed, Vd = solve(Dense(), H, 0)
     for pc in (:none, :jacobi, :ritz)
         E, V = solve(LOBPCG(tol=1e-9, preconditioner=pc), H, 8)
         @test E ≈ Ed[1:8] atol=1e-7
-        @test all(abs.(diag(V' * Vd[:, 1:8])) .≈ 1)
+        check_eigenpairs(H, E, V; tol=1e-8)
+        @test V * V' ≈ Vd[:, 1:8] * Vd[:, 1:8]' atol=1e-7       # same subspace
         @test issorted(E) && typeof((E, V)) == Tuple{Vector{Float64},Matrix{ComplexF64}}
     end
+    @test Array(_full_diagonal(H)) ≈ diagonal(H)
 end
 
-@testset "LOBPCG argument errors" begin
+@testset "LOBPCG argument errors and nonconvergence" begin
     H = three_oscillators(3)                       # N = 27
     @test_throws ArgumentError solve(LOBPCG(), H, 8)          # 3*8+5 > 27
     err = try solve(LOBPCG(), H, 8); nothing catch e; e end
     @test occursin("Dense", err.msg)
     @test_throws ArgumentError solve(LOBPCG(), H, 0)
     @test_throws ArgumentError LOBPCG(preconditioner=:magic)
+    @test_throws ArgumentError LOBPCG(guard=-1)
+    H6 = three_oscillators(6)
+    err = try solve(LOBPCG(tol=1e-14, maxiter=1), H6, 5); nothing catch e; e end
+    @test err isa ErrorException && occursin("converged", err.msg) && occursin("residual", err.msg)
+    # the guard shrinks to fit: N = 27, m = 7 leaves room for g = 0
+    E, V = solve(LOBPCG(tol=1e-10, guard=4), H, 7)
+    @test E ≈ solve(Dense(), H, 7)[1] atol=1e-8
 end
 
-@testset "repeated eigenvalue is recovered twice" begin
+@testset "repeated eigenvalue is recovered twice (projector, not just energies)" begin
     H = KronFreeOperator([12], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))])])
     Random.seed!(3)
-    E, _ = solve(LOBPCG(tol=1e-10), H, 2)
-    @test E ≈ [0.0, 0.0] atol=1e-8
-    @test solve(Dense(), H, 2)[1] ≈ [0.0, 0.0] atol=1e-12
+    E, V = solve(LOBPCG(tol=1e-10, guard=0), H, 2)
+    Ed, Vd = solve(Dense(), H, 2)
+    @test E ≈ [0.0, 0.0] atol=1e-8 && Ed ≈ [0.0, 0.0] atol=1e-12
+    @test V * V' ≈ Vd * Vd' atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
 end
 
-@testset "warm start reduces work" begin
+@testset "user callbacks of any return type run with the original info" begin
+    Random.seed!(9)
+    H = three_oscillators(6)
+    seen = Int[]
+    for cb in (info -> push!(seen, info.n_iter), info -> nothing, info -> info)
+        E, _ = solve(LOBPCG(tol=1e-9, preconditioner=:ritz, callback=cb), H, 6)
+        @test E ≈ solve(Dense(), H, 6)[1] atol=1e-7
+    end
+    @test length(seen) >= 2                          # the first callback recorded iterations
+end
+
+@testset "warm starts: exact lowest, exact excited, rank-deficient and sector-confined seeds" begin
     Random.seed!(11)
     H = three_oscillators(6)
+    Ed, Vd = solve(Dense(), H, 0)
     E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9), H, 6)
     _, _, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
     @test warm.n_matvec < cold.n_matvec ÷ 2
+    for X0 in (Vd[:, 1:6],                          # exact lowest eigenvectors
+               Vd[:, 3:8],                          # exact excited subspace: guards must bring the lowest two back
+               repeat(Vd[:, 1:1], 1, 6))            # rank-deficient block
+        E2, V2 = solve(LOBPCG(tol=1e-10, guard=4), H, 6; X0=X0)
+        @test E2 ≈ Ed[1:6] atol=1e-8
+        @test V2 * V2' ≈ Vd[:, 1:6] * Vd[:, 1:6]' atol=1e-7
+        check_eigenpairs(H, E2, V2; tol=1e-9)
+    end
+    # sector-confined seed: a diagonal operator whose even sites hold the ground state; N = 40 leaves
+    # room for the full guard (g = min(4, (40 - 5) ÷ 3 - 3) = 4)
+    d = zeros(40); d[1:2:40] .= 2:2:40; d[2:2:40] .= 0.5:2:38.5
+    Hs = KronFreeOperator([40], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64.(d)))])])
+    X0 = Matrix{ComplexF64}(I, 40, 40)[:, 1:2:5]     # exact eigenvectors of odd sites (energies 2, 4, 6): zero residual
+    Es, Vs = solve(LOBPCG(tol=1e-10, guard=4), Hs, 3; X0=X0)
+    @test Es ≈ [0.5, 2.0, 2.5] atol=1e-8               # the guards must find site 2 (0.5) and site 4 (2.5)
+    check_eigenpairs(Hs, Es, Vs; tol=1e-9)
 end
 
-@testset "Ritz cache stays aligned with the solver's active columns" begin
+@testset "Ritz cache stays aligned with the solver's active columns, through locking" begin
     Random.seed!(5)
     H = three_oscillators(6); m = 10
     D = real.(diagonal(H))
     P = RitzJacobi(D, m; eta=0.05, trace=true)
     seen = Any[]
-    cb = info -> (push!(seen, (info.n_iter, info.n_locked, copy(info.λs))); info)
+    cb = info -> push!(seen, (info.n_iter, info.n_locked, copy(info.λs)))
     X0 = randn(ComplexF64, size(H, 1), m)
     Hb = with_block_capacity(H, m)
-    res = LOBPCGEigensolver.lobpcg(Hb, X0, I, P, 1e-9, 300; callback=ritz_callback(P) ∘ cb)   # cb runs first, then the cache update
+    res = LOBPCGEigensolver.lobpcg(Hb, X0, I, P, 1e-9, 300; callback=solver_callback(P, cb))
     @test res.λ ≈ solve(Dense(), H, m)[1] atol=1e-7
+    @test length(seen) >= 5                                   # enough iterations to mean something
+    @test any(w < m for (w, _) in P.trace)                    # locking actually shrank the active block
+    @test seen[end][2] == m
     # From the second prepare onward, the cached values for the active columns are exactly the
     # previous iteration's Ritz values for those same columns (locked prefix removed).
     for t in 2:min(length(P.trace), length(seen))
         width, theta = P.trace[t]
-        n_iter, n_locked, λs = seen[t - 1]
+        _, _, λs = seen[t - 1]
         @test theta == λs[end - width + 1:end]
     end
 end
@@ -259,7 +307,7 @@ end
 
 - [ ] **Step 2: Run** and confirm failures (`LOBPCG` undefined).
 
-- [ ] **Step 3: Implement** `src/lobpcg.jl` and the `LOBPCG` type. In `lobpcg_solve`: build `D = real.(diagonal(H))` on `s.on`; choose the preconditioner by `s.preconditioner`; call `LOBPCGEigensolver.lobpcg(H, X0dev, I, P, s.tol, s.maxiter; callback=ritz_callback(P) ∘ s.callback)` (`callback=s.callback` for the other two); check `all(res.residual_norms .< s.tol)` or raise `ErrorException` naming the unconverged count and the maximum residual, like `Lanczos`; return `Vector{Float64}(res.λ)`, `Matrix(Array(res.X))`.
+- [ ] **Step 3: Implement** `src/lobpcg.jl` and the `LOBPCG` type. In `lobpcg_solve`: `D = _full_diagonal(H)` on `s.on`; choose the preconditioner by `s.preconditioner`; build the guarded block; call `LOBPCGEigensolver.lobpcg(Hb, Xdev, I, P, s.tol, s.maxiter; n_conv_check=m, callback=solver_callback(P, s.callback))` inside the recovery policy; validate; return `Vector{Float64}(res.λ[1:m])`, `Matrix(Array(res.X[:, 1:m]))`.
 
 - [ ] **Step 4: Run the full default suite.** Expected: pass.
 
@@ -275,7 +323,7 @@ end
 
 **Interfaces:**
 - Consumes: `lobpcg_solve`, `LOBPCG.on`, `KronFreeOperator(…; block_capacity, on)`, `prev::MaterializedNode` (`vectors`, `dims`).
-- Produces: in `_materialize`, `storage(::Solver) = Array`, `storage(s::LOBPCG) = s.on`; `H = KronFreeOperator(dims, terms; constant, block_capacity=(node.solver isa LOBPCG ? m : 1), on=storage(node.solver))`; `_initial_block(prev, dims, m)` = `nothing` when `prev === nothing` or `prev.dims != dims`, else `prev.vectors` padded on the right with `randn` columns to `m` (and truncated to `m` columns when it has more); `solve(::LOBPCG, …)` receives it as `X0` (the other solvers ignore it). The guess is the raw previous coefficients, never the transported reference of Task 6 (spec §20c, decision 2).
+- Produces: in `_materialize`, `storage(::Solver) = Array`, `storage(s::LOBPCG) = s.on`; `H = KronFreeOperator(dims, terms; constant, block_capacity=(node.solver isa LOBPCG ? m + node.solver.guard : 1), on=storage(node.solver))`; `_initial_block(prev, dims, m)` = `nothing` when `prev === nothing` or `prev.dims != dims`, else a copy of `prev.vectors` padded on the right with `randn` columns to `m` (truncated to `m` columns when it has more); `solve(::LOBPCG, …)` receives it as `X0` (the other solvers ignore it). The guess is the raw previous coefficients, never the transported reference of Task 6 (spec §20c, decision 2). Documented limitation: only the *kept* vectors survive in a `MaterializedNode`, so when `compute > keep` the remaining columns start random and the block is only partially warm; retaining the whole computed block in an optional cache is future work. The solver's guard columns and its warm-start recovery policy (Task 4) apply unchanged.
 
 - [ ] **Step 1: Write the failing tests** in `test/test_materialize.jl`:
 
@@ -313,6 +361,28 @@ end
 
 (Check the mode names in `two_transmons.json` and `two_zero_pi.json` before writing; use the fixture's names.)
 
+Add, in the same file:
+
+```julia
+@testset "warm start: unchanged Hamiltonian, partial block, exact seeds" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    iters = Int[]; cb = info -> push!(iters, info.n_iter)          # returns a Vector, not info: must be tolerated
+    leaves() = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]
+    tree(; keep) = Node(leaves(); solver=LOBPCG(tol=1e-10, callback=cb), compute=8, keep=keep)
+    Random.seed!(4)
+    s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = maximum(iters); empty!(iters)
+    s_same = materialize(tree(; keep=lowest(8)), spec, θ; previous=s1)                 # exact eigenvectors as the seed
+    @test energies(s_same) ≈ energies(s1) atol=1e-9 && maximum(iters) < cold; empty!(iters)
+    s_part = materialize(tree(; keep=lowest(3)), spec, θ)                              # compute 8, keep 3: partial warm start
+    s_part2 = materialize(tree(; keep=lowest(3)), spec, two_transmons_params(; g=0.101); previous=s_part)
+    @test energies(s_part2) ≈ energies(materialize(Node(leaves(); solver=Dense(), keep=lowest(3)), spec, two_transmons_params(; g=0.101))) atol=1e-7
+    V = eigenvectors(s1)                                                               # 36 × 8 host matrix
+    check_eigenpairs(KronFreeCircuits.operator(s1), energies(s1), V; tol=1e-9)
+end
+```
+
+(`operator(sys)` rebuilds the root's `KronFreeOperator` from the system; add it to `materialize.jl` if absent, or build the operator in the test through the term-list entry point. `check_eigenpairs` is the helper added in Task 4.)
+
 - [ ] **Step 2: Run** and confirm failure (`LOBPCG` not accepted by `_materialize`, no `X0`).
 
 - [ ] **Step 3: Implement** the storage/capacity construction and the initial block. Update the `Node` docstring and the large-dense warning text.
@@ -332,10 +402,10 @@ end
 **Interfaces:**
 - Consumes: `prev::MaterializedNode` and the current `children` (materialized nodes or bases), `apply_axis!` with a `DenseOp`.
 - Produces:
-  - `_child_overlap(prev::MaterializedNode, cur::MaterializedNode)::Matrix{ComplexF64}` = `⟨prev kept i | cur kept j⟩` in the physical space: at a leaf `prev.vectors' * cur.vectors`; at a branch `_transport_previous(prev, cur.children, cur.dims)' * cur.vectors`. Requires `prev.dims == cur.dims` (throws `ArgumentError` otherwise).
-  - `_transport_previous(prev::MaterializedNode, children, dims)::Matrix{ComplexF64}` = `(⊗_a S_a') prev.vectors`, applying `DenseOp(Matrix(S_a'))` along each axis `a` whose child is a `MaterializedNode` (`S_a = _child_overlap(prev.children[a], children[a])`), identity on basis axes. At a leaf it returns `prev.vectors` unchanged.
+  - `_child_overlap(prev::MaterializedNode, cur::MaterializedNode)::Matrix{ComplexF64}` = `⟨prev kept i | cur kept j⟩` in the physical space: at a leaf `prev.vectors' * cur.vectors`; at a branch `_transport_previous(prev, cur.children, cur.dims)' * cur.vectors`. Requires `prev.dims == cur.dims` and, on every basis axis, `prev.children[a] == cur.children[a]` (bases are immutable isbits structs, so `==` compares range, point count, order, cutoff, `phi_zpf`); otherwise throws `ArgumentError` saying that physical overlaps across different primitive bases are not implemented. Equal dimensions alone never establish the same basis.
+  - `_transport_previous(prev::MaterializedNode, children, dims)::Matrix{ComplexF64}` = `(⊗_a S_a') prev.vectors`, applying `DenseOp(Matrix(S_a'))` along each axis `a` whose child is a `MaterializedNode` (`S_a = _child_overlap(prev.children[a], children[a])`), identity on basis axes (after the same basis-equality check). `apply_axis!` forbids aliasing, so the chain copies `prev.vectors` into a fresh array and alternates between two distinct work arrays, one application per transformed axis; `prev.vectors` is never written. At a leaf it returns a copy of `prev.vectors`.
   - `SelectionContext(energies, vectors, ports, previous, reference)`; the four-argument constructor keeps working with `reference = previous === nothing ? nothing : previous.vectors`. `select(::Follow, ctx)` uses `ctx.reference` where it used `ctx.previous.vectors`.
-  - In `_materialize`, when `uses_prev` and `prev !== nothing`: `R̃ = _transport_previous(prev, children, dims)` once; it is the `reference` of the `SelectionContext` and the reference handed to `fix_phases!(V, :follow, mask, R̃)`.
+  - In `_materialize`, when `uses_prev` and `prev !== nothing`: `R̃ = _transport_previous(prev, children, dims)` once; it is the `reference` of the `SelectionContext` and the reference handed to `fix_phases!(V, :follow, mask, R̃)`. The basis-equality check runs at every node that uses `prev`, leaves included: a `follow` at a leaf whose grid changed is as wrong as at a branch.
 
 - [ ] **Step 1: Write the failing tests.** In `test/test_selection.jl` a unit test against brute force on hand-built nodes (construct `MaterializedNode` positionally; `ports` empty, `peak_component`/`peak_amplitudes` arbitrary valid values):
 
@@ -360,6 +430,34 @@ end
     bn = mk(bnode, [3, 3], Cnew, Any[ln, ChargeBasis(1)])
     @test _child_overlap(bo, bn) ≈ Matrix{ComplexF64}(I, 4, 4) atol=1e-12
     @test_throws ArgumentError _child_overlap(bo, mk(bnode, [3, 2], Cold[1:6, :], Any[ln, ChargeBasis(1)]))
+end
+```
+
+Add to the same file a second unit test with two transformed children and the contracts above:
+
+```julia
+@testset "transport through two changed children; input untouched; basis change rejected" begin
+    using KronFreeCircuits: MaterializedNode, _child_overlap, _transport_previous, Node, ChargeBasis, PhaseGrid, FockBasis, lowest, Port
+    rng = MersenneTwister(52)
+    orth(n, k) = Matrix(qr(randn(rng, ComplexF64, n, k)).Q)[:, 1:k]
+    mk(node, dims, V, children) = MaterializedNode(node, dims, zeros(size(V, 2)), V, collect(1:size(V, 2)),
+                                                  Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}(), children, ones(Int, size(V, 2)), Matrix{ComplexF64}(I, size(V, 2), size(V, 2)))
+    la = Node([:a => ChargeBasis(2)]; keep=lowest(3)); lb = Node([:b => ChargeBasis(3)]; keep=lowest(2))   # dims 5 and 7
+    Ua, Ub = orth(5, 3), orth(7, 2)
+    Wa = Ua * Matrix(qr(randn(rng, ComplexF64, 3, 3)).Q); Wb = Ub * Matrix(qr(randn(rng, ComplexF64, 2, 2)).Q)   # same spans, rotated
+    ao, an = mk(la, [5], Ua, Any[ChargeBasis(2)]), mk(la, [5], Wa, Any[ChargeBasis(2)])
+    bo, bn = mk(lb, [7], Ub, Any[ChargeBasis(3)]), mk(lb, [7], Wb, Any[ChargeBasis(3)])
+    Sa, Sb = _child_overlap(ao, an), _child_overlap(bo, bn)
+    top = Node([la, lb, :c => ChargeBasis(1)]; keep=lowest(5))        # dims [3, 2, 3]
+    C = orth(18, 5); Csaved = copy(C)
+    po = mk(top, [3, 2, 3], C, Any[ao, bo, ChargeBasis(1)])
+    R̃ = _transport_previous(po, Any[an, bn, ChargeBasis(1)], [3, 2, 3])
+    @test R̃ ≈ kron(Matrix{ComplexF64}(I, 3, 3), Sb', Sa') * C         # axis 1 fastest
+    @test po.vectors == Csaved                                        # input untouched
+    @test_throws ArgumentError _transport_previous(po, Any[an, bn, FockBasis(3; phi_zpf=1.0)], [3, 2, 3])   # same dimension, different basis on axis 3
+    lg = Node([:g => PhaseGrid(-2π, 2π, 9; order=2)]; keep=lowest(2)); lg2 = Node([:g => PhaseGrid(-3π, 3π, 9; order=2)]; keep=lowest(2))
+    V9 = orth(9, 2)
+    @test_throws ArgumentError _child_overlap(mk(lg, [9], V9, Any[PhaseGrid(-2π, 2π, 9; order=2)]), mk(lg2, [9], V9, Any[PhaseGrid(-3π, 3π, 9; order=2)]))
 end
 ```
 
@@ -435,6 +533,7 @@ end
     for pc in (:jacobi, :ritz)
         E, V = solve(LOBPCG(tol=1e-9, preconditioner=pc, on=CuArray), H, 8)
         @test E ≈ Ed[1:8] atol=1e-7 && V isa Matrix{ComplexF64}
+        check_eigenpairs(H, E, V; tol=1e-8)
     end
     θ = two_zero_pi_params(; g=0.05); spec = load_spec(fixture("two_zero_pi.json"))
     leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(10))
@@ -447,11 +546,11 @@ end
 - [ ] **Step 2: Run on ewdesktop.** Sync and run:
 
 ```bash
-rsync -a --delete --exclude .git --exclude Manifest.toml --exclude 'test/cuda/Manifest.toml' --exclude docs/spikes /Users/eweissler/src/KronFreeCircuits.jl/ ewdesktop:~/src/KronFreeCircuits.jl/
-ssh ewdesktop 'cd ~/src/KronFreeCircuits.jl && ~/.juliaup/bin/julia --project=test/cuda -e "using Pkg; Pkg.develop(path=\".\"); Pkg.instantiate()" && ~/.juliaup/bin/julia --project=test/cuda test/cuda/runtests.jl'
+rsync -a --delete --exclude .git --exclude Manifest.toml --exclude 'test/cuda/Manifest.toml' --exclude docs/spikes /Users/eweissler/src/KronFreeCircuits.jl/ ewdesktop:~/kronfree-plan2-ci/
+ssh ewdesktop 'cd ~/kronfree-plan2-ci && ~/.juliaup/bin/julia --project=test/cuda -e "using Pkg; Pkg.develop(path=\".\"); Pkg.instantiate()" && ~/.juliaup/bin/julia --project=test/cuda test/cuda/runtests.jl'
 ```
 
-Expected on the first run: failures in the fused-expectation test (not defined for `CuArray`) and possibly in the allocation bound.
+`~/kronfree-plan2-ci/` is a disposable copy used only by this plan; never sync into a regular checkout on ewdesktop, since `--delete` removes whatever is not in the source tree. Expected on the first run: failures in the fused-expectation test (not defined for `CuArray`) and possibly in the allocation bound.
 
 - [ ] **Step 3: Implement** the extension kernel and fix whatever the device run reveals (a host-only `Vector` constructor, a `Matrix(...)` on a `CuArray`, an `ITensors.Index` path that allocates). The CPU suite must stay green after each fix.
 
@@ -464,21 +563,24 @@ Expected on the first run: failures in the fused-expectation test (not defined f
 ### Task 8: Benchmark against the audit and documentation
 
 **Files:**
-- Create: `bench/parent_solve.jl`, `docs/spikes/2026-10-17-plan2-benchmark/results.md`
-- Modify: `README.md` (solvers, devices, how to run the device tests and the benchmark)
+- Create: `bench/parent_solve.jl` (part A: stored-fixture regression), `bench/end_to_end.jl` (part B: full materialization with separated timings), `docs/spikes/2026-10-17-plan2-benchmark/results.md`
+- Modify: `README.md` (solvers, devices, how to run the device tests and the benchmarks)
 
 **Interfaces:**
-- Consumes: the package as built; `two_zero_pi.json`; the audit's numbers in `docs/spikes/2026-10-16-itensor-audit/RITZ-CPU-PACKING-REPORT.md` (120 states, 300×300 retained parent: A4500 fixed 10.18 s, ritz 3.20 s; CPU eight threads fixed 15.67 s, ritz 5.72 s) and REPORT.md §3 (native 300-state leaf solve 90.4 s).
-- Produces: a script that materializes the two coupled symmetric zero-pis with `ChargeBasis(15)`, `PhaseGrid(-6π, 6π, 301; order=8)`, 300 kept states per leaf (leaf solver from the command line: `Dense` is out of reach at dimension 9 331 only by time, `LOBPCG` with `:ritz` is the one to time), then the 300×300 parent for 120 states with `:jacobi` and `:ritz`, cold and warm-started from a 1 % coupling step, on `Array` with eight BLAS threads and on `CuArray`; it prints leaf and parent times, iteration counts and `n_matvec`, and checks residuals and host/device energy agreement.
+- Consumes: the package as built; `two_zero_pi.json`; the audit's stored retained parent `docs/spikes/2026-10-16-itensor-audit/profiling/larger-real300-operators.bin` (a `Serialization` file holding a one-element vector of `Dict`s with `"dims"`, `"constant"`, `"terms" => [(coeff, [(axis, "diag" | "dense", M)])]`, `"x"`, `"y"`; untracked, so the script takes its path from `BENCH_FIXTURE` and skips part A when unset); the audit's numbers in `docs/spikes/2026-10-16-itensor-audit/RITZ-CPU-PACKING-REPORT.md` (120 states on that parent: A4500 fixed 10.18 s, ritz 3.20 s; CPU eight threads fixed 15.67 s, ritz 5.72 s) and REPORT.md §3 (native 300-state leaf solve 90.4 s with single-vector Lanczos).
+- Produces:
+  - Part A, `bench/parent_solve.jl`: rebuilds the stored parent as a `KronFreeOperator` (checking `H * x ≈ y`), solves the stored coupling point cold for `BENCH_NEV` states, then the coupling scaled by 1.01 warm-started from those vectors, with `:jacobi` and `:ritz`, timing only the resident solve (operator and block already on the device; the audit's boundary), `BENCH_REPEATS` repetitions after a warm-up, validating true residuals, orthonormality and agreement between the two preconditioners. This is the regression against the audit's rows.
+  - Part B, `bench/end_to_end.jl`: materializes the two coupled symmetric zero-pis (`ChargeBasis(15)`, `PhaseGrid(-6π, 6π, 301; order=8)`, 300 kept states per leaf with `LOBPCG(:ritz)`, then the parent for `BENCH_NEV` states), reporting separately: leaf solves, operator construction and transfers, parent solve, and port formation (which runs on the host after a device solve in plan 2; see spec §20c decision 4). The cold 300-state adaptive leaf solve is a new measurement with no audit counterpart.
+  - Both scripts are driven by `BENCH_DEVICE=cpu|gpu`, `BENCH_NEV` (default 120), `BENCH_REPEATS` (default 3), `BENCH_SMOKE=1` (reduced sizes), print one line per configuration and write a JSON file of all samples next to `results.md`.
 
-- [ ] **Step 1: Write the script**, driven by environment variables `BENCH_DEVICE=cpu|gpu`, `BENCH_NEV=120`, `BENCH_REPEATS=3`, printing one line per configuration and a JSON file of all samples next to the results.
+- [ ] **Step 1: Write both scripts.**
 
-- [ ] **Step 2: Run on the Mac (CPU) for a smoke check** at reduced size (`BENCH_SMOKE=1`: 101 points, `ncut=6`, 30 kept states, 12 parent states) and confirm it completes and validates.
+- [ ] **Step 2: Smoke-check on the Mac** with `BENCH_SMOKE=1 BENCH_DEVICE=cpu` (part B at 101 points, `ncut=6`, 30 kept states, 12 parent states; part A at `BENCH_NEV=6` if the fixture is present) and confirm both complete and validate.
 
-- [ ] **Step 3: Run on ewdesktop**, CPU (eight threads) then GPU, sequentially, with the rsync command of Task 7. Expected: parent 120-state `:ritz` on the A4500 within 1.5× of 3.20 s; `:ritz` at least 2× faster than `:jacobi` on both devices; residuals below tolerance; host and device energies agree to 1e-9. Record the leaf solve time for `LOBPCG(:ritz)` against the audit's 90.4 s for single-vector Lanczos.
+- [ ] **Step 3: Run on ewdesktop** in the disposable directory of Task 7, CPU with eight BLAS threads then GPU, sequentially, with the fixture copied alongside. Expectations to investigate, not gates: part A `:ritz` on the A4500 within 1.5× of 3.20 s and at least 2× faster than `:jacobi` on both devices; part B's leaf solve well under the audit's 90 s; port formation after the device solve visible as its own line. Residuals below tolerance and host/device agreement to 1e-9 are requirements.
 
-- [ ] **Step 4: Write `results.md`** with the table (configuration, median seconds, iterations, `n_matvec`, validation), the exact commands, package versions, and one paragraph each on what met and what missed the expectations above.
+- [ ] **Step 4: Write `results.md`** with two tables (part A against the audit's rows; part B's stage breakdown), the exact commands, package versions, and one paragraph on each expectation met or missed, naming the stage to optimize next (device-side port formation, leaf solver) if the breakdown shows it.
 
-- [ ] **Step 5: Update `README.md`**: the three solvers and when to use each, `LOBPCG(; preconditioner, eta, on)`, warm starts through `previous`, the device test command, the benchmark command, the KernelAbstractions 0.9/0.10 note.
+- [ ] **Step 5: Update `README.md`**: the three solvers and when to use each, `LOBPCG(; preconditioner, eta, guard, on)`, warm starts through `previous` and their partial nature when `compute > keep`, the device test command, the benchmark commands, the KernelAbstractions 0.9/0.10 note.
 
 - [ ] **Step 6: Commit** `bench/`, `docs/spikes/2026-10-17-plan2-benchmark/`, `README.md`.
