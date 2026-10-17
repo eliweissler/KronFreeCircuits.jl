@@ -29,10 +29,14 @@ function apply_axis! end
 
 function apply_axis!(Y::AbstractArray, op::DenseOp, X::AbstractArray, k::Int)
     _check_axis(Y, op, X, k)
+    return _dense_axis!(Y, op.M, X, k)
+end
+
+# Y = M applied along axis k of X, with M already stored like Y.
+function _dense_axis!(Y::AbstractArray, M::AbstractMatrix, X::AbstractArray, k::Int)
     isempty(Y) && return Y
     left, d = _axis_layout(X, k)
     right = length(X) ÷ (left * d)
-    M = op.M
     if left == 1
         mul!(reshape(Y, d, right), M, reshape(X, d, right))
     elseif right == 1
@@ -49,8 +53,11 @@ end
 
 function apply_axis!(Y::AbstractArray, op::DiagonalOp, X::AbstractArray, k::Int)
     _check_axis(Y, op, X, k)
-    d = size(X, k)
-    Y .= reshape(op.d, ntuple(i -> i == k ? d : 1, ndims(X))) .* X
+    return _diagonal_axis!(Y, op.d, X, k)
+end
+
+function _diagonal_axis!(Y::AbstractArray, dvec::AbstractVector, X::AbstractArray, k::Int)
+    Y .= reshape(dvec, ntuple(i -> i == k ? size(X, k) : 1, ndims(X))) .* X
     return Y
 end
 
@@ -70,18 +77,29 @@ end
     Y[t] = acc
 end
 
+# Kernel-ready host data of a BandedOp: weights as a (d_k × nbands) matrix, and the offsets.
+function _banded_data(op::BandedOp{T}) where {T}
+    Wh = Matrix{T}(undef, op.n, length(op.offsets))
+    for b in eachindex(op.weights)
+        Wh[:, b] .= op.weights[b]
+    end
+    return Wh, copy(op.offsets)
+end
+
 function apply_axis!(Y::AbstractArray, op::BandedOp{T}, X::AbstractArray, k::Int) where {T}
     _check_axis(Y, op, X, k)
     isempty(Y) && return Y
+    # Kernel-ready weights and offsets, allocated like Y so they live on its device.
+    Wh, offsh = _banded_data(op)
+    W = copyto!(similar(Y, T, size(Wh)), Wh)
+    offs = copyto!(similar(Y, Int, length(offsh)), offsh)
+    return _banded_axis!(Y, W, offs, X, k)
+end
+
+# W and offs already stored like Y.
+function _banded_axis!(Y::AbstractArray, W::AbstractMatrix, offs::AbstractVector, X::AbstractArray, k::Int)
+    isempty(Y) && return Y
     stride, d = _axis_layout(X, k)
-    nb = length(op.offsets)
-    # Kernel-ready weights (d_k × nbands) and offsets, allocated like Y so they live on its device.
-    Wh = Matrix{T}(undef, d, nb)
-    for b in 1:nb
-        Wh[:, b] .= op.weights[b]
-    end
-    W = copyto!(similar(Y, T, d, nb), Wh)
-    offs = copyto!(similar(Y, Int, nb), op.offsets)
     backend = get_backend(Y)
     _banded_kernel!(backend, 256)(vec(Y), vec(X), W, offs, stride, d; ndrange=length(Y))
     KernelAbstractions.synchronize(backend)
@@ -108,6 +126,28 @@ function apply_axis!(Y::AbstractArray, op::ShiftOp, X::AbstractArray, k::Int)
     return Y
 end
 
+# The array data an application of `op` reads, stored as `on`: the matrix of a DenseOp, the
+# diagonal of a DiagonalOp, (weights, offsets) of a BandedOp; a ShiftOp needs only scalars.
+_factor_data(on, op::DenseOp) = adapt(on, op.M)
+_factor_data(on, op::DiagonalOp) = adapt(on, op.d)
+_factor_data(on, op::BandedOp) = adapt(on, _banded_data(op))
+_factor_data(on, ::ShiftOp) = nothing
+
+# apply_axis! reading the factor's data from `data` (see `_factor_data`) instead of from `op`.
+function _apply_factor!(Y::AbstractArray, op::DenseOp, data, X::AbstractArray, k::Int)
+    _check_axis(Y, op, X, k)
+    return _dense_axis!(Y, data, X, k)
+end
+function _apply_factor!(Y::AbstractArray, op::DiagonalOp, data, X::AbstractArray, k::Int)
+    _check_axis(Y, op, X, k)
+    return _diagonal_axis!(Y, data, X, k)
+end
+function _apply_factor!(Y::AbstractArray, op::BandedOp, data, X::AbstractArray, k::Int)
+    _check_axis(Y, op, X, k)
+    return _banded_axis!(Y, data[1], data[2], X, k)
+end
+_apply_factor!(Y::AbstractArray, op::ShiftOp, ::Nothing, X::AbstractArray, k::Int) = apply_axis!(Y, op, X, k)
+
 """
     AxisTerm(coeff, factors)
 
@@ -124,28 +164,42 @@ struct AxisTerm
     end
 end
 
+# A term kept in the contraction sum: its coefficient and, per factor, `(axis, op, data)` with
+# `op` for dispatch and `data = _factor_data(on, op)` the stored array the application reads.
+struct _OperatorTerm
+    coeff::ComplexF64
+    factors::Vector{Tuple{Int,LocalOp,Any}}
+end
+
 """
-    KronFreeOperator(dims, terms; constant=0.0, block_capacity=1)
+    KronFreeOperator(dims, terms; constant=0.0, block_capacity=1, on=Array)
 
 `H = Σ_t c_t ⊗_k A_{t,k} + constant * I` on the tensor-product space with axis sizes `dims`
-(axis 1 fastest), applied without forming Kronecker products.  Two work buffers reserve `block_capacity` columns at construction. Calls reuse their active
+(axis 1 fastest), applied without forming Kronecker products.
+Terms whose factors are all `DiagonalOp` are fused with `constant` into one state-shaped vector
+`H.diag`, applied by a single broadcast; the remaining terms are kept in `H.terms` as records
+holding, per factor, `(axis, op, data)` with `data` the array the application reads.
+Every array `H` owns (`diag`, factor data, scratch) is `adapt(on, …)` at construction.
+Two work buffers reserve `block_capacity` columns at construction. Calls reuse their active
 prefix, growing storage only when the requested block exceeds capacity. Reserve the solver's
 maximum block width before iteration to avoid state-sized scratch reallocations.
-`mul!(y, H, x)` writes into caller-owned output; `H * x` allocates its output.
+`mul!(y, H, x)` writes into caller-owned output; `H * x` allocates its output on `on`.
 The scratch belongs to `H`, so simultaneous applications require separate operators/workspaces.
 
 `ishermitian(H)` returns `true` unconditionally: callers are responsible for building `terms`
 that sum to a Hermitian operator.
 """
-mutable struct KronFreeOperator
+mutable struct KronFreeOperator{V<:AbstractVector,B<:AbstractArray}
     dims::Vector{Int}
-    terms::Vector{AxisTerm}
-    constant::ComplexF64
-    buf1::Array{ComplexF64}
-    buf2::Array{ComplexF64}
+    diag::V
+    terms::Vector{_OperatorTerm}
+    buf1::B
+    buf2::B
+    on::Any
 end
 
-function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm}; constant::Number=0.0, block_capacity::Integer=1)
+function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm};
+                          constant::Number=0.0, block_capacity::Integer=1, on=Array)
     dims = Vector{Int}(dims)
     all(>=(1), dims) || throw(ArgumentError("KronFreeOperator: dims must be positive, got $dims"))
     for term in terms, (a, op) in term.factors
@@ -154,34 +208,45 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
             throw(DimensionMismatch("KronFreeOperator: factor on axis $a has dimension $(dimension(op)), expected $(dims[a])"))
     end
     block_capacity >= 1 || throw(ArgumentError("KronFreeOperator: block_capacity must be positive"))
+    T = promote_type(fieldtype(AxisTerm, :coeff), typeof(constant))
+    D = fill(T(constant), dims...)
+    kept = _OperatorTerm[]
+    for term in terms
+        if all(f -> f[2] isa DiagonalOp, term.factors)
+            _add_term_diagonal!(D, term.coeff, term.factors)
+        else
+            push!(kept, _OperatorTerm(term.coeff,
+                                      Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op)) for (a, op) in term.factors]))
+        end
+    end
     shape = (dims..., Int(block_capacity))
-    return KronFreeOperator(dims, Vector{AxisTerm}(terms), ComplexF64(constant),
-                            Array{ComplexF64}(undef, shape), Array{ComplexF64}(undef, shape))
+    return KronFreeOperator(dims, adapt(on, vec(D)), kept,
+                            adapt(on, Array{T}(undef, shape)), adapt(on, Array{T}(undef, shape)), on)
 end
 
 Base.size(H::KronFreeOperator) = (n = prod(H.dims); (n, n))
 Base.size(H::KronFreeOperator, i::Integer) = size(H)[i]
-Base.eltype(::KronFreeOperator) = ComplexF64
+Base.eltype(H::KronFreeOperator) = eltype(H.diag)
 LinearAlgebra.ishermitian(::KronFreeOperator) = true
 
 function _ensure_buffers!(H::KronFreeOperator, shape::Tuple)
     if length(H.buf1) < prod(shape)
-        H.buf1 = Array{ComplexF64}(undef, shape)
-        H.buf2 = Array{ComplexF64}(undef, shape)
+        H.buf1 = similar(H.buf1, shape)
+        H.buf2 = similar(H.buf2, shape)
     end
     return nothing
 end
 
 # A contiguous prefix preserves physical-axis layout as the active block shrinks.
-_active_buffer(buf::Array, shape::Tuple) =
+_active_buffer(buf::AbstractArray, shape::Tuple) =
     size(buf) == shape ? buf : reshape(view(vec(buf), 1:prod(shape)), shape)
 
 # Y .+= coeff * (⊗ factors) X, chaining factor applications through the two buffers.
-function _accumulate_term!(Y::AbstractArray, term::AxisTerm, X::AbstractArray, b1::AbstractArray, b2::AbstractArray)
+function _accumulate_term!(Y::AbstractArray, term::_OperatorTerm, X::AbstractArray, b1::AbstractArray, b2::AbstractArray)
     src = X
     dst, other = b1, b2
-    for (a, op) in term.factors
-        apply_axis!(dst, op, src, a)
+    for (a, op, data) in term.factors
+        _apply_factor!(dst, op, data, src, a)
         src = dst
         dst, other = other, dst
     end
@@ -199,32 +264,39 @@ function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::Abstrac
     X = reshape(x, shape)
     Y = reshape(y, shape)
     b1, b2 = _active_buffer(H.buf1, shape), _active_buffer(H.buf2, shape)
-    # Keep initialization on the concretely typed caller array. Filling the
-    # dynamically ranked reshape can box every element for active-column views.
-    fill!(y, zero(eltype(y)))
+    # Initialize with the fused diagonal on the concretely typed caller array. Writing
+    # the dynamically ranked reshape can box every element for active-column views.
+    y .= H.diag .* x
     for term in H.terms
         _accumulate_term!(Y, term, X, b1, b2)
     end
-    y .+= H.constant .* x
     return y
 end
 
-Base.:*(H::KronFreeOperator, x::AbstractVecOrMat) = mul!(similar(x, ComplexF64), H, x)
+Base.:*(H::KronFreeOperator, x::AbstractVecOrMat) = mul!(similar(H.diag, eltype(H), size(x)), H, x)
+
+# D .+= coeff * ⊗_k diagonal(op_k) over a term's factors (ones on axes it does not touch).
+function _add_term_diagonal!(D::Array, coeff::Number, factors)
+    N = ndims(D)
+    acc = fill(coeff, ntuple(_ -> 1, N))
+    for f in factors
+        a, op = f[1], f[2]
+        acc = acc .* reshape(diagonal(op), ntuple(i -> i == a ? size(D, a) : 1, N))
+    end
+    D .+= acc
+    return D
+end
 
 """
-    diagonal(H::KronFreeOperator) -> Vector{ComplexF64}
+    diagonal(H::KronFreeOperator) -> Vector
 
-`constant + Σ_t c_t ⊗_k diag(A_{t,k})` (ones on axes a term does not touch), axis 1 fastest.
+`H.diag + Σ_t c_t ⊗_k diag(A_{t,k})` over the terms not fused into `H.diag` (ones on axes a
+term does not touch), axis 1 fastest, returned on the host.
 """
 function diagonal(H::KronFreeOperator)
-    N = length(H.dims)
-    D = fill(H.constant, H.dims...)
+    D = copyto!(Array{eltype(H)}(undef, H.dims...), H.diag)
     for term in H.terms
-        acc = fill(term.coeff, ntuple(_ -> 1, N))
-        for (a, op) in term.factors
-            acc = acc .* reshape(diagonal(op), ntuple(i -> i == a ? H.dims[a] : 1, N))
-        end
-        D .+= acc
+        _add_term_diagonal!(D, term.coeff, term.factors)
     end
     return vec(D)
 end
