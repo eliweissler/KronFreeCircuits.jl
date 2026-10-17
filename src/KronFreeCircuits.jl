@@ -4,6 +4,9 @@ using LinearAlgebra, SparseArrays
 using RuntimeGeneratedFunctions
 using JSON3
 using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backend
+using ITensors: ITensors
+using LOBPCGEigensolver: LOBPCGEigensolver
+using Adapt: adapt
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
