@@ -111,7 +111,12 @@ end
     Ed, Vd = solve(Dense(), H, 0)
     E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9), H, 6)
     _, _, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
-    @test warm.n_matvec < cold.n_matvec ÷ 2
+    @test warm.n_matvec < cold.n_matvec
+    # an exact warm start from Dense eigenvectors: no recovery warning, same energies, less work than cold
+    Ex, Vx, exact = @test_logs lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=Vd[:, 1:6])
+    @test Ex ≈ Ed[1:6] atol=1e-8
+    @test exact.n_matvec < cold.n_matvec
+    check_eigenpairs(H, Ex, Vx; tol=1e-8)
     for X0 in (Vd[:, 1:6],                          # exact lowest eigenvectors
                Vd[:, 3:8],                          # exact excited subspace: guards must bring the lowest two back
                repeat(Vd[:, 1:1], 1, 6))            # rank-deficient block
@@ -125,8 +130,8 @@ end
     d = zeros(40); d[1:2:40] .= 2:2:40; d[2:2:40] .= 0.5:2:38.5
     Hs = KronFreeOperator([40], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64.(d)))])])
     X0 = Matrix{ComplexF64}(I, 40, 40)[:, 1:2:5]     # exact eigenvectors of odd sites (energies 2, 4, 6): zero residual
-    # the exact seed has a zero residual: the eigensolver fails on it and the recovery retries once
-    Es, Vs = @test_logs (:warn, r"warm-start") solve(LOBPCG(tol=1e-10, guard=4), Hs, 3; X0=X0)
+    # the exact seed has a zero residual; the seed perturbation keeps the eigensolver from failing on it
+    Es, Vs = @test_logs solve(LOBPCG(tol=1e-10, guard=4), Hs, 3; X0=X0)
     @test Es ≈ [0.5, 2.0, 2.5] atol=1e-8               # the guards must find site 2 (0.5) and site 4 (2.5)
     check_eigenpairs(Hs, Es, Vs; tol=1e-9)
 end
@@ -191,9 +196,10 @@ LinearAlgebra.mul!(Y::AbstractVecOrMat, W::WidthRecorder, X::AbstractVecOrMat) =
     d = collect(range(0.0, 20.0; length=40))
     H = diagonal_axis_operator(d)
     Id = Matrix{ComplexF64}(I, 40, 40)
-    # exact lowest and exact excited eigenvectors have exactly zero residuals: one warning, then a random retry
+    # exact lowest and exact excited eigenvectors have exactly zero residuals; the seed perturbation
+    # keeps them usable, so no recovery retry (and no warning) is needed
     for (X0, label) in ((Id[:, 1:3], "lowest"), (Id[:, 6:8], "excited"))
-        E, V = @test_logs (:warn, r"warm-start") solve(LOBPCG(tol=1e-10), H, 3; X0=X0)
+        E, V = @test_logs solve(LOBPCG(tol=1e-10), H, 3; X0=X0)
         @test E ≈ d[1:3] atol=1e-8
         @test V * V' ≈ Id[:, 1:3] * Id[:, 1:3]' atol=1e-8
         check_eigenpairs(H, E, V; tol=1e-9)
@@ -421,11 +427,12 @@ end
     _, Vg = solve(LOBPCG(tol=1e-10), rotor(0.5 - 1e-6), 1)
     E, V = solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 1; X0=Vg)
     check_eigenpairs(rotor(0.5 + 1e-6), E, V; tol=1e-9)          # a valid eigenpair ...
-    # ... but not the lowest: the seed's residual is already below tol after one iteration, so its column locks
-    # before the guards resolve the 1e-5 gap. Guards are not a completeness guarantee (see the LOBPCG docstring).
-    @test_broken E ≈ levels(0.5 + 1e-6)[1:1] atol=1e-9
-    # the exactly converged old ground state has a zero residual, so recovery restarts from a random block
-    E, V = @test_logs (:warn, r"warm-start") solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 1; X0=reshape(charge(0), N, 1))
+    # ... and the lowest: the seed column locks at once, but the guards are converged too and the
+    # lower state they find sorts first
+    @test E ≈ levels(0.5 + 1e-6)[1:1] atol=1e-9
+    @test abs2(dot(charge(1), V[:, 1])) ≈ 1 atol=1e-8
+    # the exactly converged old ground state (zero residual) needs no recovery either
+    E, V = @test_logs solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 1; X0=reshape(charge(0), N, 1))
     @test E ≈ levels(0.5 + 1e-6)[1:1] atol=1e-9
     # small E_J: an avoided crossing, against a dense oracle
     for ng in (0.5 - 1e-6, 0.5, 0.5 + 1e-6)

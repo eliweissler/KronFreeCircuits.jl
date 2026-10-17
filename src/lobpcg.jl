@@ -160,6 +160,20 @@ _lobpcg_preconditioner(s::LOBPCG, D, width::Int) =
     s.preconditioner === :ritz ? RitzJacobi(D, width; eta=s.eta) :
     s.preconditioner === :jacobi ? FixedJacobi(D) : I
 
+# A warm-start block with each column perturbed by sqrt(eps) times its norm along a fixed
+# pseudo-random direction (its own MersenneTwister, never the global RNG). An exactly zero
+# residual column would otherwise become NaN in the eigensolver's orthogonalization.
+function _perturbed_seed(T, X0)
+    X = Matrix{T}(Array(X0))
+    rng = Random.MersenneTwister(0x4b46)
+    δ = sqrt(eps(real(T)))
+    for j in axes(X, 2)
+        c = view(X, :, j)
+        c .+= (δ * norm(c)) .* randn(rng, T, length(c))
+    end
+    return X
+end
+
 # Thrown inside the `catch` of the eigensolver's own error, which stays attached ("caused by").
 _lobpcg_failed(err) =
     error("LOBPCG: the eigensolver failed ($(sprint(showerror, err))). An exactly zero residual block " *
@@ -172,10 +186,15 @@ _lobpcg_failed(err) =
 The lowest `m` eigenpairs of `H` (`E` ascending, host arrays) and `lobpcg`'s result for the
 full block (`λ, X, residual_norms, residual_history, n_matvec, …`).
 `X0` is an `N × m` initial block (finite, no zero column) or `nothing` (random). `s.guard`
-random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`); convergence is checked on the
-lowest `m` columns. If the eigensolver throws on a warm-start block, it is retried once from a
-random block with a warning; a failure on a random block raises an error. Unconverged pairs
-raise an error and are never retried.
+random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`); every column of the block,
+guards included, is converged (`n_conv_check = m + g`), and the lowest `m` of the sorted block
+are returned.
+Warm starts follow a bounded policy. First, each column of `X0` is perturbed by `sqrt(eps)`
+times its norm along a fixed pseudo-random direction (a seeded `MersenneTwister`, not the global
+RNG), so an exact eigenvector seed no longer has the exactly zero residual that breaks the
+eigensolver's orthogonalization. Second, if the eigensolver still throws on the warm-start
+block, it is retried once from a random block with a warning. A failure on a random block raises
+an error. Unconverged pairs raise an error and are never retried.
 """
 function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     N = size(H, 1)
@@ -210,12 +229,14 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
         X[:, 1:m] .= seed
         randn!(rng, view(X, :, m+1:w))
         P = _lobpcg_preconditioner(s, D, w)
+        # Every column, guards included, must converge: a lower state found by a guard then sorts
+        # into the lowest m of the library's final λ instead of being cut off by early locking.
         return LOBPCGEigensolver.lobpcg(H, adapt(s.on, X), I, P, s.tol, s.maxiter;
-                                        n_conv_check=m, callback=solver_callback(P, user))
+                                        n_conv_check=w, callback=solver_callback(P, user))
     end
 
     res = try
-        attempt(X0 === nothing ? randn(rng, T, N, m) : Array(X0))
+        attempt(X0 === nothing ? randn(rng, T, N, m) : _perturbed_seed(T, X0))
     catch err
         (err isa InterruptException || user_threw[]) && rethrow()
         X0 === nothing && _lobpcg_failed(err)

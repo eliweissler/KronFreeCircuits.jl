@@ -33,17 +33,19 @@ through its public interface only.
   `:jacobi` (fixed shifted Jacobi, `1 / (D − σ)` with `σ = minimum(D) − 1`) or `:none`.
 - `eta`: the regularization of `:ritz`, in the Hamiltonian's energy units. The default is taken
   from the audit fixture (GHz) and must be set for other energy scales.
-- `guard`: extra random columns appended to every block (cold or warm start). Convergence is
-  checked on the lowest `m` columns only, and the lowest `m` converged pairs are returned. Guards
-  make exact excited-state seeds and sector-confined seeds recoverable in practice; they are not
-  a completeness guarantee. The guard shrinks so that the block fits `N ≥ 3(m + guard) + 5`.
+- `guard`: extra random columns appended to every block (cold or warm start). They are extra
+  states: converged with the rest of the block, then discarded, and the lowest `m` pairs of the
+  sorted block are returned. Guards make exact excited-state seeds and sector-confined seeds
+  recoverable in practice; they are not a completeness guarantee. The guard shrinks so that the
+  block fits `N ≥ 3(m + guard) + 5`.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called with the solver's per-iteration `info` named tuple;
   its return value is ignored, and an exception it throws propagates unchanged.
 
 The operator dimension must satisfy `N ≥ 3m + 5`; smaller problems call for `Dense()`.
-A warm-start block on which the eigensolver fails (an exactly zero residual can break its
-orthogonalization) is replaced once by a random block, with a warning.
+Warm-start columns are perturbed by `sqrt(eps)` of their norm (a fixed pseudo-random direction)
+so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
+the eigensolver still fails is replaced once by a random block, with a warning.
 """
 struct LOBPCG <: Solver
     tol::Float64
