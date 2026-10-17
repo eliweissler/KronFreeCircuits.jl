@@ -35,13 +35,15 @@ end
     System
 
 A materialized tree: the root `MaterializedNode`, the `spec` it was built from (`nothing` when
-built from a term list), the `terms` it was built from, and the parameters `θ` it was evaluated at.
+built from a term list), the `terms` it was built from, the parameters `θ` it was evaluated at,
+and the scalar `constant` added at the root.
 """
 struct System
     root::MaterializedNode
     spec::Union{Nothing,Spec}
     terms::Vector{Term}
     θ::NamedTuple
+    constant::Coefficient
 end
 
 const _EDGE_TOL = 1e-6
@@ -58,7 +60,14 @@ scalar `constant`.
 
 The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
-position) to the `:follow` phase convention and to selection rules.
+position) to the `:follow` phase convention, to selection rules, and to `LOBPCG` nodes as their
+initial block.
+That block is the previous kept vectors (their raw coefficients in the node's product basis),
+padded on the right with random columns to `compute` or truncated to it; a node whose `dims`
+changed starts cold.
+Only the kept vectors survive in a `MaterializedNode`, so when `compute > keep` the remaining
+columns start random and the block is only partially warm (retaining the whole computed block is
+future work).
 A parameter missing from `θ` raises an `ArgumentError` naming it.
 
 Each `mode => basis` leaf child is checked against the mode's type: a compact mode (`:c`) needs
@@ -79,14 +88,14 @@ function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
     mroot = _materialize(root, θ, routed, needed, c, prev)
-    return System(mroot, nothing, terms, θ)
+    return System(mroot, nothing, terms, θ, constant)
 end
 
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     sys = materialize(root, circuit_terms(spec), θ; constant=constant_term(spec), previous=previous,
                       modetypes=modetypes)
-    return System(sys.root, spec, sys.terms, sys.θ)
+    return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
 end
 
 const _MODE_TYPE_NAMES = Dict(:c => "compact", :e => "extended", :h => "harmonic")
@@ -168,6 +177,55 @@ function _edge_support(V::AbstractMatrix, dims::Vector{Int}, axis::Int, w::Int)
     return [sqrt(sum(abs2, view(X, :, edge, :, j))) for j in axes(V, 2)]
 end
 
+# The array storage a solver's block lives on.
+storage(::Solver) = Array
+storage(s::LOBPCG) = s.on
+
+# How many of the lowest eigenpairs the node's solver returns.
+_compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute
+
+# (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
+# child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
+# Scratch is reserved for the solver's full block (LOBPCG: the computed pairs and its guard
+# columns), on the solver's storage.
+function _node_operator(node::Node, children, terms::Vector{Term}, θ::NamedTuple, constant)
+    dims = Int[_childdim(c) for c in children]
+    axisterms = AxisTerm[]
+    for t in terms
+        fs = Tuple{Int,LocalOp}[]
+        for f in t.factors
+            a = axis_of(node, f.mode)
+            push!(fs, (a, _childop(children[a], f.mode, f.port)))
+        end
+        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
+        push!(axisterms, AxisTerm(t.coeff(θ), fs))
+    end
+    for (a, c) in enumerate(children)
+        c isa MaterializedNode && push!(axisterms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
+    end
+    m = _compute_count(node, dims)
+    capacity = node.solver isa LOBPCG ? m + node.solver.guard : 1
+    return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(node.solver))
+end
+
+# The initial block of an LOBPCG node: `nothing` without a previous solution of the same `dims`,
+# else a copy of its kept vectors (raw coefficients, in kept order) truncated to `m` columns or
+# padded on the right with `randn` columns (never zeros, which the solver rejects) of element type `T`.
+_initial_block(prev, dims, m::Int) =
+    _initial_block(prev, dims, m, prev === nothing ? Nothing : eltype(prev.vectors))
+function _initial_block(prev, dims, m::Int, ::Type{T}) where {T}
+    (prev === nothing || prev.dims != dims) && return nothing
+    k = min(size(prev.vectors, 2), m)
+    X = Matrix{T}(undef, size(prev.vectors, 1), m)
+    X[:, 1:k] .= view(prev.vectors, :, 1:k)
+    randn!(view(X, :, k+1:m))
+    return X
+end
+
+# Diagonalize: only LOBPCG takes an initial block, built from the previous solution.
+_solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
+_solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
+
 function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev)
     children = Any[]
     for (i, ch) in enumerate(node.children)
@@ -183,27 +241,14 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         throw(ArgumentError("previous solution at this tree position has dims $(prev.dims), expected $dims"))
 
     # (2)-(3) The node's operator.
-    terms = AxisTerm[]
-    for t in routed[node]
-        fs = Tuple{Int,LocalOp}[]
-        for f in t.factors
-            a = axis_of(node, f.mode)
-            push!(fs, (a, _childop(children[a], f.mode, f.port)))
-        end
-        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
-        push!(terms, AxisTerm(t.coeff(θ), fs))
-    end
-    for (a, c) in enumerate(children)
-        c isa MaterializedNode && push!(terms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
-    end
-    H = KronFreeOperator(dims, terms; constant=constant)
+    H = _node_operator(node, children, routed[node], θ, constant)
 
     # (4) Diagonalize.
     _dense_too_large(node.solver, prod(dims)) &&
         @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
               "LOBPCG is advised", _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
-    m = node.compute == 0 ? prod(dims) : node.compute
-    E, V = solve(node.solver, H, m)
+    m = _compute_count(node, dims)
+    E, V = _solve(node.solver, H, m, prev, dims)
 
     # (5)-(7) Ports the selection rule inspects, on all computed vectors; select; slice.
     # Selection rules see only moduli (port elements, overlaps), so phases are fixed on the kept
@@ -302,6 +347,20 @@ function materialized(sys::System, node::Node)
         append!(stack, (c for c in mn.children if c isa MaterializedNode))
     end
     throw(ArgumentError("node is not part of this system's tree"))
+end
+
+"""
+    operator(sys, node=root) -> KronFreeOperator
+
+The Hamiltonian of `node` in its product basis at `sys.θ`, rebuilt from the materialized children
+exactly as `materialize` built it (the root's includes the constant; its scratch and storage follow
+the node's solver).
+"""
+function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
+    mn = materialized(sys, node)
+    routed = route(sys.root.node, sys.terms)
+    c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
+    return _node_operator(node, mn.children, routed[node], sys.θ, c)
 end
 
 "Kept energies of `node` (default: the root), absolute, GHz."

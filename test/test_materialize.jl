@@ -1,4 +1,5 @@
-using KronFreeCircuits: Node, Dense, Lanczos, lowest, nport, PhaseGrid, ChargeBasis, load_spec,
+using Random
+using KronFreeCircuits: Node, Dense, Lanczos, LOBPCG, lowest, nport, PhaseGrid, ChargeBasis, load_spec,
                         materialize, energies, port, eigenvectors, materialized, MaterializedNode
 
 @testset "fluxonium leaf vs scqubits" begin
@@ -303,4 +304,252 @@ end
         @test abs(imag(ψ[p])) < 1e-12 && real(ψ[p]) > 0
         @test ψ[p] ≈ t.peak_amplitudes[j, j]
     end
+end
+
+@testset "LOBPCG at a leaf and at a branch equals Dense" begin
+    θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
+    children = [:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]
+    dense = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(children; solver=Dense(), keep=lowest(8)), spec_zp, θ)
+    Random.seed!(21)
+    lob = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(children; solver=LOBPCG(tol=1e-10), compute=8, keep=lowest(8)), spec_zp, θ)
+    @test energies(lob) ≈ energies(dense) atol=1e-7
+    # branch: the two-zero-pi small fixture tree used in test_zero_pi_reference.jl, with the top solver swapped
+    θ2 = two_zero_pi_params(; g=0.05); spec2 = load_spec(fixture("two_zero_pi.json"))
+    leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(10))
+    top_dense = Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(12))
+    top_lob = Node([leaf(1), leaf(2)]; solver=LOBPCG(tol=1e-10), compute=12, keep=lowest(12))
+    sd = @test_logs (:warn, r"edge") match_mode=:any materialize(top_dense, spec2, θ2)
+    sl = @test_logs (:warn, r"edge") match_mode=:any materialize(top_lob, spec2, θ2)
+    @test energies(sl) ≈ energies(sd) atol=1e-7
+end
+
+@testset "previous solution warm-starts a LOBPCG node" begin
+    # Work is measured in H columns (n_matvec at the final callback), not iterations: the guard columns
+    # converge from random on warm and cold starts alike, but once the seeded columns lock the active
+    # block is small and each late iteration applies H to only a few columns.
+    matvecs = Int[]
+    cb = info -> (push!(matvecs, info.n_matvec); info)
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    tree() = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
+                  solver=LOBPCG(tol=1e-10, callback=cb), compute=6, keep=lowest(6))
+    Random.seed!(2)
+    s1 = materialize(tree(), spec, θ); cold = last(matvecs); empty!(matvecs)
+    s2 = materialize(tree(), spec, two_transmons_params(; g=0.101); previous=s1); warm = last(matvecs)
+    @test warm < cold
+    @test energies(s2) ≈ energies(materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]; solver=Dense(), keep=lowest(6)), spec, two_transmons_params(; g=0.101))) atol=1e-7
+end
+
+@testset "warm start: unchanged Hamiltonian, partial block, exact seeds" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    matvecs = Int[]; cb = info -> push!(matvecs, info.n_matvec)   # returns a Vector, not info: must be tolerated
+    leaves() = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]
+    tree(; keep) = Node(leaves(); solver=LOBPCG(tol=1e-10, callback=cb), compute=8, keep=keep)
+    Random.seed!(4)
+    s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = last(matvecs); empty!(matvecs)
+    s_same = materialize(tree(; keep=lowest(8)), spec, θ; previous=s1)                 # exact eigenvectors as the seed
+    @test energies(s_same) ≈ energies(s1) atol=1e-9
+    @test last(matvecs) < cold; empty!(matvecs)                                       # work in H columns
+    s_part = materialize(tree(; keep=lowest(3)), spec, θ)                              # compute 8, keep 3: partial warm start
+    s_part2 = materialize(tree(; keep=lowest(3)), spec, two_transmons_params(; g=0.101); previous=s_part)
+    @test energies(s_part2) ≈ energies(materialize(Node(leaves(); solver=Dense(), keep=lowest(3)), spec, two_transmons_params(; g=0.101))) atol=1e-7
+    V = eigenvectors(s1)                                                               # 36 × 8 host matrix
+    check_eigenpairs(KronFreeCircuits.operator(s1), energies(s1), V; tol=1e-9)
+end
+
+@testset "F1: free rotor through n_g = 1/2, warm-started through materialize" begin
+    spec = load_spec(fixture("transmon.json")); EC = 1.2; ncut = 15; N = 2ncut + 1
+    nv = collect(-ncut:ncut)
+    levels(ng) = sort(4EC .* (nv .- ng) .^ 2)                  # oracle: the sorted diagonal (the root constant included)
+    charge(k) = (v = zeros(ComplexF64, N); v[k+ncut+1] = 1; v)
+    P01 = charge(0) * charge(0)' + charge(1) * charge(1)'
+    leaf(m; solver=LOBPCG(tol=1e-10)) = Node([:varphi_1 => ChargeBasis(ncut)]; solver=solver, compute=m, keep=lowest(m))
+    sweep = (0.25, 0.5 - 1e-6, 0.5, 0.5 + 1e-6, 0.75)
+    Random.seed!(61)
+    # E_J = 0: each sweep point is warm-started from the previous one.  After the crossing the old
+    # ground state (charge 0) is still an exact eigenstate; the seed must not trap the solver there.
+    for m in (1, 2)                                           # the ground state only, and both crossing states
+        prev = nothing
+        for ng in sweep
+            sys = materialize(leaf(m), spec, (E_J=0.0, E_C=EC, n_g=ng); previous=prev)
+            E, V = energies(sys), eigenvectors(sys)
+            @test E ≈ levels(ng)[1:m] atol=1e-9
+            check_eigenpairs(KronFreeCircuits.operator(sys), E, V; tol=1e-9)
+            @test norm(P01 * V - V) < 1e-8                    # inside the crossing pair {0, 1}
+            ng == 0.5 || @test abs2(dot(charge(ng < 0.5 ? 0 : 1), V[:, 1])) ≈ 1 atol=1e-8   # the correct lowest state
+            m == 2 && @test V * V' ≈ P01 atol=1e-8           # the complete pair (degenerate at n_g = 1/2)
+            prev = sys
+        end
+    end
+    # small E_J: an avoided crossing, against Dense on the same basis
+    prev = nothing
+    for ng in sweep
+        θ = (E_J=0.1, E_C=EC, n_g=ng)
+        sys = materialize(leaf(2), spec, θ; previous=prev)
+        ref = materialize(leaf(2; solver=Dense()), spec, θ)
+        @test energies(sys) ≈ energies(ref) atol=1e-8
+        V, W = eigenvectors(sys), eigenvectors(ref)
+        @test V * V' ≈ W * W' atol=1e-6
+        check_eigenpairs(KronFreeCircuits.operator(sys), energies(sys), V; tol=1e-9)
+        prev = sys
+    end
+end
+
+@testset "F2: cos 2φ charge-parity sectors, sector-confined warm start through materialize" begin
+    using KronFreeCircuits: indices
+    src = """
+    {"format": "kronfree-spec", "version": 1, "units": "GHz",
+     "parameters": ["E_C", "E_2", "n_g"],
+     "modes": [{"name": "varphi_1", "type": "c"}],
+     "E_C": [["E_C"]], "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["n_g"],
+     "cosines": [{"energy": "E_2", "omega": [2], "offset": "0"}]}
+    """
+    spec = KronFreeCircuits.parse_spec(src); EC = 1.2; E2 = 3.0; ncut = 20; m = 4
+    nv = collect(-ncut:ncut); ev = iseven.(nv)
+    function oracle(ng)                                       # independent dense matrix, entry by entry
+        A = Matrix{ComplexF64}(Diagonal(4EC .* (nv .- ng) .^ 2))
+        for i in eachindex(nv), j in eachindex(nv)
+            abs(nv[i] - nv[j]) == 2 && (A[i, j] -= E2 / 2)
+        end
+        return Hermitian(A)
+    end
+    θ(ng) = (E_C=EC, E_2=E2, n_g=ng)
+    # The previous point keeps four even-parity states only (a Dense node at the same tree position):
+    # the warm-start block is confined to the even sector, and the guards must supply the odd one.
+    A = oracle(0.2); F = eigen(A)
+    evidx = findall(j -> sum(abs2, F.vectors[ev, j]) > 0.5, 1:10)[1:m]
+    prev = materialize(Node([:varphi_1 => ChargeBasis(ncut)]; solver=Dense(), compute=10, keep=indices(evidx)), spec, θ(0.2))
+    @test all(j -> sum(abs2, eigenvectors(prev)[.!ev, j]) < 1e-20, 1:m)        # the seed is confined
+    Random.seed!(62)
+    for ng in (0.5, 0.2)
+        A = oracle(ng); F = eigen(A)
+        Esec = sort([eigvals(Hermitian(A[ev, ev])); eigvals(Hermitian(A[.!ev, .!ev]))])   # sectors separately, merged
+        sys = materialize(Node([:varphi_1 => ChargeBasis(ncut)]; solver=LOBPCG(tol=1e-10), compute=m, keep=lowest(m)),
+                          spec, θ(ng); previous=prev)
+        E, V = energies(sys), eigenvectors(sys)
+        @test E ≈ Esec[1:m] atol=1e-8
+        @test V * V' ≈ F.vectors[:, 1:m] * F.vectors[:, 1:m]' atol=1e-6
+        @test sum(abs2, V[.!ev, :]) > 0.5                     # odd-parity states recovered
+        check_eigenpairs(KronFreeCircuits.operator(sys), E, V; tol=1e-9)
+    end
+end
+
+@testset "F3: identical uncoupled zero-pis (small fixture)" begin
+    using KronFreeCircuits: constant_term, indices
+    spec2 = load_spec(fixture("two_zero_pi.json"))
+    leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), compute=10, keep=lowest(10))
+    lobtop(m) = Node([leaf(1), leaf(2)]; solver=LOBPCG(tol=1e-10), compute=m, keep=lowest(m))
+    mat(tree, θ; kw...) = @test_logs (:warn, r"edge") match_mode=:any materialize(tree, spec2, θ; kw...)
+    e(i, j) = (v = zeros(ComplexF64, 100); v[i+10(j-1)] = 1; v)                 # product state (i, j), axis 1 fastest
+    θ0 = two_zero_pi_params(; g=0.0)
+    Random.seed!(63)
+    # g = 0: the parent energies are the sorted pairwise sums; (1,2) and (2,1) are degenerate
+    t3 = lobtop(3); s3 = mat(t3, θ0)
+    E1 = energies(s3, t3.children[1]); c = real(constant_term(spec2)(θ0))
+    @test E1 == energies(s3, t3.children[2])                  # identical leaves
+    sums = sort(vec(E1 .+ E1')) .+ c
+    E, V = energies(s3), eigenvectors(s3)
+    @test E ≈ sums[1:3] atol=1e-8
+    @test E[2] ≈ E[3] atol=1e-8                               # the exchange pair
+    @test E[3] < sums[4] - 1e-3                               # m = 3 ends on a complete cluster
+    @test V * V' ≈ sum(v * v' for v in (e(1, 1), e(1, 2), e(2, 1))) atol=1e-7    # complete clusters
+    check_eigenpairs(KronFreeCircuits.operator(s3), E, V; tol=1e-9)
+    # a cutoff inside the exchange pair (warm-started from s3: compute decreases from 3 to 2)
+    t2 = lobtop(2); s2 = mat(t2, θ0; previous=s3)
+    E, V = energies(s2), eigenvectors(s2)
+    @test E ≈ sums[1:2] atol=1e-8
+    @test abs2(dot(e(1, 1), V[:, 1])) ≈ 1 atol=1e-8           # the complete lower cluster
+    P12 = e(1, 2) * e(1, 2)' + e(2, 1) * e(2, 1)'
+    @test norm(P12 * V[:, 2] - V[:, 2]) < 1e-7                # boundary state inside the degenerate pair
+    check_eigenpairs(KronFreeCircuits.operator(s2), E, V; tol=1e-9)
+    # small detuning at g = 0, warm-started across the change: sums of the two leaves' energies
+    θd = merge(θ0, (E_J2=θ0.E_J2 * 1.01,))
+    td = lobtop(3); sdt = mat(td, θd; previous=s3)
+    Ed1, Ed2 = energies(sdt, td.children[1]), energies(sdt, td.children[2])
+    @test energies(sdt) ≈ sort(vec(Ed1 .+ Ed2'))[1:3] .+ real(constant_term(spec2)(θd)) atol=1e-8
+    check_eigenpairs(KronFreeCircuits.operator(sdt), energies(sdt), eigenvectors(sdt); tol=1e-9)
+    # small coupling, seeded from exchange-symmetric states only: the antisymmetric state must come from the guards
+    θg = two_zero_pi_params(; g=0.05)
+    sd = mat(Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(6)), θg)             # independent Dense parent
+    S = zeros(100, 100); for i in 1:10, j in 1:10; S[i+10(j-1), j+10(i-1)] = 1; end   # exchange (i, j) -> (j, i)
+    Vd = eigenvectors(sd)
+    parity = [real(dot(Vd[:, k], S * Vd[:, k])) for k in 1:6]
+    @test all(p -> abs(abs(p) - 1) < 1e-8, parity) && any(<(0), parity[1:3])
+    sym = findall(>(0), parity)[1:3]
+    psym = mat(Node([leaf(1), leaf(2)]; solver=Dense(), compute=6, keep=indices(sym)), θg)
+    tg = lobtop(3); sg = mat(tg, θg; previous=psym)
+    E, V = energies(sg), eigenvectors(sg)
+    @test E ≈ energies(sd)[1:3] atol=1e-8
+    @test V * V' ≈ Vd[:, 1:3] * Vd[:, 1:3]' atol=1e-6
+    check_eigenpairs(KronFreeCircuits.operator(sg), E, V; tol=1e-9)
+end
+
+@testset "F8: deliberately inadequate hierarchical truncation" begin
+    using KronFreeCircuits: constant_term
+    spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(; g=4.0)   # strong coupling, n_g1 ≠ 0
+    c = real(constant_term(spec)(θ))
+    flat = materialize(Node([:varphi_1 => ChargeBasis(8), :varphi_2 => ChargeBasis(8)]; keep=lowest(4)), spec, θ)   # primitive space
+    leaves(k) = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(k)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(k))]
+    Random.seed!(64)
+    errs = Float64[]
+    for k in (5, 8)
+        tl = Node(leaves(k); solver=LOBPCG(tol=1e-10), compute=4, keep=lowest(4))
+        sl = materialize(tl, spec, θ)
+        sd = materialize(Node(leaves(k); solver=Dense(), keep=lowest(4)), spec, θ)
+        @test energies(sl) ≈ energies(sd) atol=1e-8          # same projected Hamiltonian: no solver error
+        q1, q2 = materialized(sl, tl.children[1]), materialized(sl, tl.children[2])
+        Hprod = kron(I(k), Diagonal(q1.energies)) + kron(Diagonal(q2.energies), I(k)) +
+                θ.g * kron(q2.ports[(:varphi_2, nport())], q1.ports[(:varphi_1, nport())])   # explicit projection
+        @test energies(sl) ≈ eigvals(Hermitian(Hprod))[1:4] .+ c atol=1e-8
+        check_eigenpairs(KronFreeCircuits.operator(sl), energies(sl), eigenvectors(sl); tol=1e-9)
+        push!(errs, maximum(abs.(energies(sl) .- energies(flat))))
+    end
+    @test errs[1] > 1e-2                                      # retained-subspace error at the inadequate cutoff
+    @test errs[2] < errs[1] / 10                              # shrinking as the child cutoffs grow
+end
+
+@testset "S9: partial, resized and reordered warm starts" begin
+    using KronFreeCircuits: indices, follow, _initial_block
+    spec = load_spec(fixture("two_transmons.json"))
+    θ1, θ2 = two_transmons_params(; g=0.1), two_transmons_params(; g=0.101)
+    leaves() = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]
+    tree(compute, keep) = Node(leaves(); solver=LOBPCG(tol=1e-10), compute=compute, keep=keep)
+    dense(θ, k) = energies(materialize(Node(leaves(); solver=Dense(), keep=lowest(k)), spec, θ))
+    valid(sys) = check_eigenpairs(KronFreeCircuits.operator(sys), energies(sys), eigenvectors(sys); tol=1e-9)
+    Random.seed!(65)
+    order = [3, 1, 4, 2]
+    s_r = materialize(tree(4, indices(order)), spec, θ1)
+    @test energies(s_r) ≈ dense(θ1, 4)[order] atol=1e-8
+    mn = s_r.root
+    # the initial block: a copy of the kept vectors in kept order, padded with random columns or truncated
+    X = _initial_block(mn, mn.dims, 4)
+    @test X == mn.vectors && X !== mn.vectors
+    X = _initial_block(mn, mn.dims, 7)
+    @test size(X) == (36, 7) && X[:, 1:4] == mn.vectors && all(j -> norm(X[:, j]) > 1, 5:7) && rank(X) == 7
+    @test _initial_block(mn, mn.dims, 2) == mn.vectors[:, 1:2]
+    @test _initial_block(mn, [6, 5], 4) === nothing && _initial_block(nothing, mn.dims, 4) === nothing
+    # reordered selection: the solver still returns the lowest pairs, the selection reorders them
+    s_r2 = materialize(tree(4, indices(order)), spec, θ2; previous=s_r)
+    @test energies(s_r2) ≈ dense(θ2, 4)[order] atol=1e-8
+    valid(s_r2)
+    # follow from the reordered previous: the same order, continuous phases
+    s_f = @test_logs min_level=Base.CoreLogging.Warn materialize(tree(4, follow(; minoverlap=0.9)), spec, θ2; previous=s_r)
+    @test energies(s_f) ≈ dense(θ2, 4)[order] atol=1e-8
+    O = [dot(eigenvectors(s_r)[:, j], eigenvectors(s_f)[:, j]) for j in 1:4]
+    @test all(real.(O) .> 0.9) && all(abs.(imag.(O)) .< 1e-12)
+    valid(s_f)
+    # increased compute (4 kept -> 7: three random columns), then decreased (7 -> 3: truncated)
+    s_up = materialize(tree(7, lowest(7)), spec, θ2; previous=s_r)
+    @test energies(s_up) ≈ dense(θ2, 7) atol=1e-8
+    valid(s_up)
+    s_down = materialize(tree(3, lowest(3)), spec, θ1; previous=s_up)
+    @test energies(s_down) ≈ dense(θ1, 3) atol=1e-8
+    valid(s_down)
+    # a previous whose shape differs at this node: no initial block, a cold start, accepted
+    small = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(5)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
+                 solver=LOBPCG(tol=1e-10), compute=4, keep=lowest(4))
+    s_c = materialize(small, spec, θ2; previous=s_r)
+    @test materialized(s_c, small).dims == [5, 6]
+    @test energies(s_c) ≈ energies(materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(5)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
+                                                    solver=Dense(), keep=lowest(4)), spec, θ2)) atol=1e-8
+    valid(s_c)
 end

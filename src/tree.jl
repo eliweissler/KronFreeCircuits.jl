@@ -19,7 +19,7 @@ end
 Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
 
 """
-    LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)
+    LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)
 
 Block iterative solver: the JuliaMolSim LOBPCG eigensolver (LOBPCGEigensolver.jl), used
 through its public interface only.
@@ -44,6 +44,9 @@ through its public interface only.
   its return value is ignored, and an exception it throws propagates unchanged.
 
 The operator dimension must satisfy `N ≥ 3m + 5`; smaller problems call for `Dense()`.
+With guards, a warm start reduces the work in `H` columns (`n_matvec`) rather than necessarily the
+iteration count: the guard columns converge from random on warm and cold starts alike, but once the
+seeded columns lock, each remaining iteration applies `H` to only a few active columns.
 Warm-start columns are perturbed by a vector of norm `sqrt(eps)` times the column's norm (a
 fixed pseudo-random direction) so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
 the eigensolver still fails is replaced once by a random block, with a warning.
@@ -66,7 +69,7 @@ struct LOBPCG <: Solver
         return new(tol, maxiter, preconditioner, eta, guard, on, callback)
     end
 end
-LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing) =
+LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing) =
     LOBPCG(tol, maxiter, preconditioner, eta, guard, on, callback)
 
 """
@@ -94,7 +97,8 @@ ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 A hierarchical unit.
 Each child is a `mode => basis` pair or another `Node`; a node's product basis has one axis per child.
 
-- `solver`: `Dense()`, `Lanczos()` or `LOBPCG()`.
+- `solver`: `Dense()`, `Lanczos()` or `LOBPCG()`. An `LOBPCG` node starts from the previous
+  solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
 - `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
   `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
   the lowest `compute` pairs.
