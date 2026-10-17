@@ -28,7 +28,7 @@ Work counts are H columns (`n_matvec`); they are observations, not acceptance cr
 | S8 | implemented/passing | `test/test_solvers.jl`: "S8: dimensions, arguments and explicit nonconvergence" |
 | S9 | implemented/passing | `test/test_materialize.jl`: "S9: partial, resized and reordered warm starts" |
 | F1 | implemented/passing | `test/test_solvers.jl`: "F1: free rotor through n_g = 1/2 (operator level)"; `test/test_materialize.jl`: "F1: free rotor through n_g = 1/2, warm-started through materialize" |
-| F2 | implemented/passing, except one assertion implemented/failing (`@test_broken`) | `test/test_solvers.jl`: "F2: cos 2φ charge-parity sectors (operator level)"; `test/test_materialize.jl`: "F2: cos 2φ charge-parity sectors, sector-confined warm start through materialize"; `test/test_catalogue.jl`: "F2: connected with a parity-preserving port (public path)" |
+| F2 | implemented/passing; the `n_g = 1/2` selection is implemented/failing by contract gap (selection rules do not close over near-degenerate clusters; decision pending, Eli) | `test/test_solvers.jl`: "F2: cos 2φ charge-parity sectors (operator level)"; `test/test_materialize.jl`: "F2: cos 2φ charge-parity sectors, sector-confined warm start through materialize"; `test/test_catalogue.jl`: "F2: connected with a parity-preserving port (public path)" |
 | F3 | implemented/passing | `test/test_materialize.jl`: "F3: identical uncoupled zero-pis (small fixture)"; device: same name; slow: "F3 (slow): identical uncoupled zero-pis, larger leaves, several seeds" |
 | F4 | implemented/passing | `test/test_catalogue.jl`: "F4: exchange symmetry of identical, weakly coupled transmons" |
 | F5 | implemented/passing | `test/test_materialize.jl`: "F5: sweep through a resonance: fine steps, one jump, a step landing on it" |
@@ -59,15 +59,14 @@ Configuration: `4 E_C (n − n_g)² − E_2 cos 2φ`, `E_C = 1.2`, `E_2 = 3`, `C
 Reference: the explicit primitive matrix and its two parity blocks diagonalized separately.
 
 - `n_g = 0.2`: implemented/passing. The kept states (computed indices 1, 5, 9) each lie in the ground state's sector to `1e-20`, and their energies belong to that sector's spectrum.
-- `n_g = 1/2`: **implemented/failing** (the assertion is `@test_broken`, so the suite still passes).
-  The even and odd levels pair up to rounding, because the wavefunctions never reach the edge of the window.
-  `Dense` returns arbitrary rotations inside each pair, and the public path has no way to request parity-resolved vectors.
-  `connected` then follows those rotations across both sectors and keeps one member of the pair at 57.62 without its partner.
-  The kept indices are `[1, 2, 3, 4, 5, 6, 8, 9, 10, 11]`, the even-parity weights of the kept vectors run from 0.17 to 0.99, and `‖[Π, VV']‖ = 0.014`, so the kept span is not parity invariant.
-  Minimal reproduction: the configuration above with `n_g = 0.5`.
-  The catalogue warns that selection-rule tests must control the basis of degenerate states.
-  This shows that a user of `connected` cannot control it, and the kept set can split a degenerate cluster.
-  Whether the selection should close over degenerate clusters is a contract question for Eli; no change was made.
+- `n_g = 1/2`: **implemented/failing by contract gap.** Selection rules do not close over near-degenerate clusters; the decision is pending (Eli).
+  - Cause: the even and odd levels pair up to rounding, because the wavefunctions never reach the edge of the window. `Dense` may return any rotation inside each pair, and the public path has no way to request parity-resolved vectors.
+  - Effect: `connected` follows those rotations across both sectors and keeps one member of a pair without its partner. On this machine the kept indices are `[1, 2, 3, 4, 5, 6, 8, 9, 10, 11]`: the partners 7 (pair at 57.62) and 12 (pair at 144.01) are left out, and the parity leakage of the kept span is `‖[Π, VV']‖ = 0.0138`.
+  - Minimal reproduction: the inline `cos 2φ` spec in the testset (`E_C = 1.2`, `E_2 = 3`, `n_g = 0.5`), `ChargeBasis(20)`, Dense with `compute = 12`, `keep = connected([1], (:varphi_1, expiphi(2)), 0.05)`.
+  - What the test asserts: the outcome depends on how the BLAS rotates each pair, so the test asserts the diagnosis instead, which holds on every machine. Either the kept span is parity invariant (leakage below `1e-8`), or the kept set leaves out at least one computed state within `1e-8` (relative) of a kept energy, and adding those states removes the leakage (observed `2.9e-15`).
+    An `@info` line names the branch taken and both leakage values.
+  - Proposed fix: cluster closure by an energy tolerance in `select`. Every rule would keep or drop a near-degenerate cluster whole, consistent with spec §11.4 (near-degenerate kept states).
+  - No change was made to the package.
 
 ### F3 (slow)
 
