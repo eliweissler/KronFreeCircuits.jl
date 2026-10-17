@@ -187,6 +187,7 @@ _lobpcg_failed(err) =
 
 The lowest `m` eigenpairs of `H` (`E` ascending, host arrays) and `lobpcg`'s result for the
 full block (`λ, X, residual_norms, residual_history, n_matvec, …`).
+An operator not stored as `s.on` is copied there (data and scratch) for the solve.
 `X0` is an `N × m` initial block (finite, no zero column) or `nothing` (random). `s.guard`
 random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`). The eigensolver is asked to
 converge every column of the block, guards included (`n_conv_check = m + g`), and the lowest `m`
@@ -216,6 +217,7 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     rng = Random.default_rng()
     g = min(s.guard, (N - 5) ÷ 3 - m)
     w = m + g
+    H = _on_storage(H, s.on; capacity=max(w, _block_capacity(H)))   # the operator lives with the block
     _block_capacity(H) < w && (H = with_block_capacity(H, w))
     D = adapt(s.on, _full_diagonal(H))
     # An exception from the user's callback propagates unchanged, without the recovery retry.

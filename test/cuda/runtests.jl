@@ -4,5 +4,6 @@ using KronFreeCircuits
 
 include("../helpers.jl")
 
-@testset "cuda placeholder" begin
+@testset verbose=true "CUDA device" begin
+    include("test_device.jl")
 end

@@ -1,0 +1,28 @@
+   Resolving package versions...
+     Project No packages added to or removed from `~/kronfree-plan2-ci/test/cuda/Project.toml`
+    Manifest No packages added to or removed from `~/kronfree-plan2-ci/test/cuda/Manifest.toml`
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] have edge support up to 0.016194240835756917 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] have edge support up to 0.016194240835756917 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] have edge support up to 0.016194240835756917 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] have edge support up to 0.016194240835756917 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Error: Ortho(X) is failing badly, falling back to SVD
+│   estimated_error = 1.0
+│   tol = 4.440892098500626e-16
+└ @ LOBPCGEigensolver ~/.julia/packages/LOBPCGEigensolver/1VZBy/src/lobpcg_impl.jl:221
+Test Summary:                                                                                    | Pass  Total     Time
+CUDA device                                                                                      |  301    301  1m36.2s
+  operator on the device equals host; no device allocation after warm-up                         |    4      4    15.9s
+  fused diagonal expectation                                                                     |    3      3     1.8s
+  LOBPCG on the device equals Dense on the host                                                  |   25     25    56.4s
+  O1: axis identity, equal sizes, and complex factor order (ITensor dense path)                  |   27     27     1.6s
+  O2: shrinking/growing blocks, views, and stale scratch (ITensor dense path)                    |   39     39     0.7s
+  O4: fused diagonal and cancellation                                                            |   13     13     1.4s
+  S1: exact and wrong-subspace seeds; bounded recovery                                           |   29     29     1.9s
+  S3: H = 0, H = cI, tight clusters and a cutoff inside a cluster                                |   44     44     4.3s
+  S5: no locking, several locks at once, one active column, complete locking                     |   52     52     2.4s
+  F3: identical uncoupled zero-pis (small fixture)                                               |   38     38     6.9s
+  F7: complex three-mode cosine as an adjoint pair (device operator and LOBPCG on the flat tree) |   27     27     2.5s

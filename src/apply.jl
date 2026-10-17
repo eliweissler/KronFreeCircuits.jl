@@ -177,7 +177,8 @@ end
 Terms whose factors are all `DiagonalOp` are fused with `constant` into one state-shaped vector
 `H.diag`, applied by a single broadcast; the remaining terms are kept in `H.terms` as records
 holding, per factor, `(axis, op, data)` with `data` the array the application reads.
-Every array `H` owns (`diag`, factor data, scratch) is `adapt(on, …)` at construction.
+Every array `H` owns (`diag`, factor data, scratch) is stored on `on` at construction (`adapt(on, …)`;
+the scratch is allocated like the adapted `diag`).
 `DenseOp` factors are applied as ITensor contractions over `H.inds` (one index per axis) and
 `H.blockinds` (one block-axis index per width, cached on first use); the other factors keep
 their kernels and broadcasts.
@@ -223,10 +224,23 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
         end
     end
     shape = (dims..., Int(block_capacity))
-    return KronFreeOperator(dims, adapt(on, vec(D)), kept,
-                            adapt(on, Array{T}(undef, shape)), adapt(on, Array{T}(undef, shape)), on,
+    diag = adapt(on, vec(D))
+    # Scratch allocated like the stored diagonal, so directly on `on` (no host staging).
+    return KronFreeOperator(dims, diag, kept, similar(diag, T, shape), similar(diag, T, shape), on,
                             ITensors.Index[ITensors.Index(d, "axis$k") for (k, d) in enumerate(dims)],
                             Dict{Int,ITensors.Index}())
+end
+
+# `H` with its fused diagonal, factor data and fresh scratch for `capacity` columns stored as `on`
+# (`H` itself, unchanged, when it is already stored as `on`). Terms' operators and ITensor indices are shared.
+function _on_storage(H::KronFreeOperator, on; capacity::Integer=_block_capacity(H))
+    H.on === on && return H
+    diag = adapt(on, H.diag)
+    terms = _OperatorTerm[_OperatorTerm(t.coeff, Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op)) for (a, op, _) in t.factors])
+                          for t in H.terms]
+    shape = (H.dims..., Int(capacity))
+    return KronFreeOperator(H.dims, diag, terms, similar(diag, eltype(H), shape), similar(diag, eltype(H), shape),
+                            on, H.inds, H.blockinds)
 end
 
 Base.size(H::KronFreeOperator) = (n = prod(H.dims); (n, n))
@@ -259,7 +273,8 @@ _block_index(H::KronFreeOperator, w::Int) = get!(() -> ITensors.Index(w, "block"
 #     dst <- permutedims(src), work(k', rest) = A(k', k) dst(k, rest), dst <- permutedims(work).
 # `rest` is every other axis in order, then the block axis; size-1 axes may sit anywhere.
 # `work` is state-shaped scratch distinct from dst that may be overwritten; it may be src
-# itself when src is chain scratch (src is fully read before work is written).
+# itself when src is chain scratch (src is fully read before work is written). In the first two
+# cases an operand the contraction backend would copy is staged in `work` (`_contraction_operand`).
 function _apply_dense!(dst::AbstractArray, data::AbstractMatrix, src::AbstractArray, k::Int,
                        H::KronFreeOperator, work::AbstractArray)
     size(dst) == size(src) == size(work) || throw(DimensionMismatch("_apply_dense!: state shapes differ"))
@@ -276,9 +291,11 @@ function _apply_dense!(dst::AbstractArray, data::AbstractMatrix, src::AbstractAr
     A = ITensors.itensor(data, (ik′, ik))
     rest = (H.inds[1:k-1]..., H.inds[k+1:end]..., _block_index(H, size(src, ndims(src))))
     if left == 1
-        mul!(ITensors.itensor(dst, (ik′, rest...)), A, ITensors.itensor(src, (ik, rest...)), one(T), zero(T))
+        s = _contraction_operand(src, work)
+        mul!(ITensors.itensor(dst, (ik′, rest...)), A, ITensors.itensor(s, (ik, rest...)), one(T), zero(T))
     elseif right == 1
-        mul!(ITensors.itensor(dst, (rest..., ik′)), ITensors.itensor(src, (rest..., ik)), A, one(T), zero(T))
+        s = _contraction_operand(src, work)
+        mul!(ITensors.itensor(dst, (rest..., ik′)), ITensors.itensor(s, (rest..., ik)), A, one(T), zero(T))
     else
         front = reshape(dst, d, left, right)
         permutedims!(front, reshape(src, left, d, right), (2, 1, 3))
@@ -287,6 +304,11 @@ function _apply_dense!(dst::AbstractArray, data::AbstractMatrix, src::AbstractAr
     end
     return dst
 end
+
+# The array a contraction in `_apply_dense!` reads in place of `src`: `src` itself, or a copy of it
+# staged in the free scratch `work` (same shape) for storage whose contraction backend would
+# otherwise copy `src` into a fresh temporary. Extensions add methods for such storage.
+_contraction_operand(src::AbstractArray, work::AbstractArray) = src
 
 # Y .+= coeff * (⊗ factors) X, chaining factor applications through the two buffers.
 # `other` is free scratch for a dense factor: b2 for the first factor, then the consumed src.
@@ -394,8 +416,11 @@ const _MATRIX_BLOCK = 256
 
 The explicit `n × n` matrix, built by applying `H` to blocks of at most 256 identity columns,
 so the peak memory beyond the result is a few `n × 256` blocks.
+Host operators only: an operator stored on a device throws `ArgumentError`.
 """
 function Base.Matrix(H::KronFreeOperator)
+    H.diag isa Array || throw(ArgumentError("Matrix(H) is host-only, but H is stored as $(typeof(H.diag)); " *
+                                            "build the operator with on=Array to form its matrix"))
     n = prod(H.dims)
     M = Matrix{ComplexF64}(undef, n, n)
     B = min(n, _MATRIX_BLOCK)
