@@ -560,3 +560,154 @@ end
                                                     solver=Dense(), keep=lowest(4)), spec, θ2)) atol=1e-8
     valid(s_c)
 end
+
+@testset "follow across a permuted child kept order" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    leaf1(order) = Node([:varphi_1 => ChargeBasis(8)]; keep=indices(order))
+    leaf2 = Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(4))
+    top(order) = Node([leaf1(order), leaf2]; solver=Dense(), compute=8, keep=follow(), ports=[(:varphi_1, nport())])
+    s1 = materialize(Node([leaf1([1, 2, 3, 4]), leaf2]; solver=Dense(), keep=lowest(8), ports=[(:varphi_1, nport())]), spec, θ)
+    s2 = materialize(top([2, 1, 4, 3]), spec, θ; previous=s1)
+    @test energies(s2) ≈ energies(s1)                      # same physical states, same order
+    @test port(s2, :varphi_1, nport()) ≈ port(s1, :varphi_1, nport()) atol=1e-10   # :follow phases agree physically
+end
+@testset "T1: follow through a permuted grandchild and two changed children (three levels)" begin
+    using KronFreeCircuits: indices, follow, _child_overlap
+    spec3 = load_spec(fixture("three_transmons.json")); θ3 = three_transmons_params(g=0.3)
+    l1(order) = Node([:varphi_1 => ChargeBasis(8)]; keep=indices(order))
+    l2 = Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(4))
+    inner(o1, oi) = Node([l1(o1), l2]; keep=indices(oi))
+    third(o3) = Node([:varphi_3 => ChargeBasis(6)]; keep=indices(o3))
+    s1 = materialize(Node([inner(1:4, 1:10), third(1:3)]; keep=lowest(8), ports=[(:varphi_1, nport())]), spec3, θ3)
+    # the inner node's kept order and its child's change, and the third mode's: a depth-2 and a depth-1 child at once
+    outer = Node([inner([2, 1, 4, 3], [3, 1, 2, 5, 4, 6, 7, 10, 8, 9]), third([2, 3, 1])];
+                 solver=Dense(), compute=8, keep=follow(), ports=[(:varphi_1, nport())])
+    s2 = materialize(outer, spec3, θ3; previous=s1)
+    @test energies(s2) ≈ energies(s1)
+    @test port(s2, :varphi_1, nport()) ≈ port(s1, :varphi_1, nport()) atol=1e-10
+    # explicit primitive-space states, axis 1 fastest: the same physical states with the same phases
+    function primitive(sys)
+        o = sys.root; inn, th = o.children; q1, q2 = inn.children
+        return kron(th.vectors, kron(q2.vectors, q1.vectors) * inn.vectors) * o.vectors
+    end
+    @test primitive(s1)' * primitive(s2) ≈ I atol=1e-10
+    @test _child_overlap(s1.root, s2.root) ≈ primitive(s1)' * primitive(s2) atol=1e-12
+end
+@testset "T2: follow with a changed primitive basis of equal dimension is rejected" begin
+    spec = load_spec(fixture("fluxonium.json")); θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)
+    g1, g2 = PhaseGrid(-10π, 10π, 201), PhaseGrid(-9π, 9π, 201)
+    s0 = materialize(Node([:varphi_1 => g1]; keep=lowest(4)), spec, θ)
+    err = try materialize(Node([:varphi_1 => g2]; keep=lowest(4), phase=:follow), spec, θ; previous=s0); nothing catch e e end
+    @test err isa ArgumentError && occursin("not implemented", err.msg)
+    @test_throws ArgumentError materialize(Node([:varphi_1 => g2]; keep=KronFreeCircuits.follow()), spec, θ; previous=s0)
+    # a node that does not use the previous solution ignores the changed basis
+    @test materialize(Node([:varphi_1 => g2]; keep=lowest(4)), spec, θ; previous=s0) isa KronFreeCircuits.System
+    # at a branch: the basis of a grandchild changed under a follow node
+    spec2 = load_spec(fixture("two_transmons.json")); θ2 = two_transmons_params(; g=0.1)
+    top(b) = Node([Node([:varphi_1 => b]; keep=lowest(3)), Node([:varphi_2 => ChargeBasis(6)]; keep=lowest(3))]; keep=KronFreeCircuits.follow())
+    t0 = materialize(Node([Node([:varphi_1 => ChargeBasis(6)]; keep=lowest(3)), Node([:varphi_2 => ChargeBasis(6)]; keep=lowest(3))]; keep=lowest(4)), spec2, θ2)
+    @test_throws ArgumentError materialize(top(ChargeBasis(7)), spec2, θ2; previous=t0)   # child dims differ: restricted contract
+end
+@testset "F5: sweep through a resonance: fine steps, one jump, a step landing on it" begin
+    using KronFreeCircuits: follow, _child_overlap, circuit_terms, constant_term
+    spec = load_spec(fixture("two_transmons.json")); g = 0.1
+    terms, c = circuit_terms(spec), constant_term(spec)          # expanded once: the term-list form is cheap per point
+    mat(tree, θ; kw...) = materialize(tree, terms, θ; constant=c, kw...)
+    θ(EJ1) = (two_transmons_params(; g)..., E_J1=EJ1)
+    l1 = Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(4)); l2 = Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(4))
+    ftop(mo) = Node([l1, l2]; solver=Dense(), compute=6, keep=follow(; minoverlap=mo))
+    # the bare resonance ω1(E_J1) = ω2, by bisection on the leaves' own excitation energies
+    function detuning(EJ)
+        s = mat(Node([l1, l2]; keep=lowest(1)), θ(EJ))
+        E1, E2 = materialized(s, l1).energies, materialized(s, l2).energies
+        return (E1[2] - E1[1]) - (E2[2] - E2[1])
+    end
+    lo, hi = 15.0, 30.0
+    for _ in 1:50
+        mid = (lo + hi) / 2
+        detuning(mid) < 0 ? (lo = mid) : (hi = mid)
+    end
+    EJr = (lo + hi) / 2
+    full(sys) = (t = sys.root; kron(t.children[2].vectors, t.children[1].vectors))   # top product basis -> primitive
+    function allstates(sys)      # every top eigenstate, from an explicitly assembled product-basis matrix
+        q1, q2 = sys.root.children
+        H = kron(I(4), Diagonal(q1.energies)) + kron(Diagonal(q2.energies), I(4)) +
+            g * kron(q2.ports[(:varphi_2, nport())], q1.ports[(:varphi_1, nport())])
+        return full(sys) * eigen(Hermitian(H)).vectors
+    end
+    # Physical overlaps of the previous kept states with every current eigenstate.  Each kept state is
+    # identified among the eigenstates; where the per-reference argmaxes are distinct, global greedy
+    # assigns exactly them.  The :follow phases make the physical overlaps real and positive.
+    function check(prev, sys)
+        Ψo, Ψ, A = full(prev) * prev.root.vectors, full(sys) * sys.root.vectors, allstates(sys)
+        O = abs.(Ψo' * A)
+        sel = [argmax(abs.(A' * Ψ[:, j])) for j in 1:3]
+        @test all(j -> abs(dot(A[:, sel[j]], Ψ[:, j])) ≈ 1, 1:3)
+        @test sys.root.kept == sel
+        rowmax = [argmax(O[r, :]) for r in 1:3]
+        @test allunique(rowmax) && sel == rowmax
+        D = diag(Ψo' * Ψ)
+        @test all(abs.(imag.(D)) .< 1e-10) && all(real.(D) .> 0)
+        @test _child_overlap(prev.root, sys.root) ≈ Ψo' * Ψ atol=1e-12
+        return minimum(real.(D))
+    end
+    # below resonance, kept state 2 is |1_1 0_2⟩ (product index 2) and 3 is |0_1 1_2⟩ (index 5)
+    seed = mat(Node([l1, l2]; keep=lowest(3)), θ(EJr - 3))
+    @test abs2(seed.root.vectors[2, 2]) > 0.95 && abs2(seed.root.vectors[5, 3]) > 0.95
+    # fine steps: adiabatic following, no warning, the lower state changes character
+    prev = seed
+    for EJ in range(EJr - 3, EJr + 3; length=61)[2:end]
+        sys = @test_logs min_level=Base.CoreLogging.Warn mat(ftop(0.9), θ(EJ); previous=prev)
+        @test check(prev, sys) > 0.9
+        prev = sys
+    end
+    @test issorted(energies(prev)) && abs2(prev.root.vectors[5, 2]) > 0.95 && abs2(prev.root.vectors[2, 3]) > 0.95
+    # one jump across the resonance: overlaps keep the diabatic character, so the kept order is not by energy
+    sj = @test_logs min_level=Base.CoreLogging.Warn mat(ftop(0.9), θ(EJr + 3); previous=seed)
+    @test check(seed, sj) > 0.9
+    @test energies(sj)[2] > energies(sj)[3] && abs2(sj.root.vectors[2, 2]) > 0.95
+    # a step landing on the resonance: both single excitations are mixed (overlaps near 1/sqrt(2)), which
+    # minoverlap = 0.9 reports and the default 0.5 does not
+    sl = @test_logs (:warn, r"follow: overlap below minoverlap = 0.9 for reference states \[2, 3\]") mat(ftop(0.9), θ(EJr); previous=seed)
+    @test 0.6 < check(seed, sl) < 0.9
+    @test_logs min_level=Base.CoreLogging.Warn mat(ftop(0.5), θ(EJr); previous=seed)
+end
+@testset "F10: a raw basis child beside a materialized branch, reversed order, an extra level" begin
+    using KronFreeCircuits: follow, _child_overlap, circuit_terms, constant_term
+    spec = load_spec(fixture("full_zero_pi.json")); θ0 = full_zero_pi_params(); θ1 = (θ0..., n_g=0.13)
+    terms, c = circuit_terms(spec), constant_term(spec)
+    mat(tree, θ; kw...) = materialize(tree, terms, θ; constant=c, kw...)
+    N = 61; fock = FockBasis(8; phi_zpf=(2θ0.E_Cz / θ0.E_L)^(1 / 4)); grid = PhaseGrid(-12π, 12π, N; order=6)
+    # A: [theta/phi leaf, raw zeta]; B: [raw zeta, [theta leaf (all 13 charge states), raw phi]]
+    zpA = Node([:theta => ChargeBasis(6), :phi => grid]; keep=lowest(6))
+    th = Node([:theta => ChargeBasis(6)]; keep=lowest(13)); zpB = Node([th, :phi => grid]; keep=lowest(6))
+    topA(k) = Node([zpA, :zeta => fock]; solver=Dense(), compute=6, keep=k)
+    topB(k) = Node([:zeta => fock, zpB]; solver=Dense(), compute=6, keep=k)
+    # The theta leaf's eigenstates are charge states; those with n < 0 have no weight on the positive
+    # sector, and its documented fallback warns.  Nothing else may warn.
+    function only_theta_warnings(f)
+        logs, v = Test.collect_test_logs(f)
+        @test all(l -> occursin("no weight on the phase mask", string(l.message)), logs)
+        return v
+    end
+    sA0 = @test_logs min_level=Base.CoreLogging.Warn mat(topA(lowest(6)), θ0)
+    sA1 = @test_logs min_level=Base.CoreLogging.Warn mat(topA(follow(; minoverlap=0.9)), θ1; previous=sA0)
+    sB0 = only_theta_warnings(() -> mat(topB(lowest(6)), θ0))
+    sB1 = only_theta_warnings(() -> mat(topB(follow(; minoverlap=0.9)), θ1; previous=sB0))
+    # explicit primitive-space states in (theta, phi, zeta) order, axis 1 fastest
+    ΨA(s) = (t = s.root; kron(Matrix{ComplexF64}(I, 8, 8), t.children[1].vectors) * t.vectors)
+    function ΨB(s)
+        t = s.root; zp = t.children[2]; q = zp.children[1]
+        W = kron(Matrix{ComplexF64}(I, N, N), q.vectors) * zp.vectors                       # zp states on (theta, phi)
+        P = reshape(kron(W, Matrix{ComplexF64}(I, 8, 8)) * t.vectors, 8, 13, N, 6)         # (zeta, theta, phi)
+        return reshape(permutedims(P, (2, 3, 1, 4)), :, 6)
+    end
+    @test energies(sA1) ≈ energies(sB1) atol=1e-9                                        # routing and ports agree
+    @test abs.(ΨA(sA1)' * ΨB(sB1)) ≈ I atol=1e-9                                          # same states, same labels
+    for (s0, s1, Ψ) in ((sA0, sA1, ΨA), (sB0, sB1, ΨB))
+        D = diag(Ψ(s0)' * Ψ(s1))
+        @test all(abs.(imag.(D)) .< 1e-10) && all(real.(D) .> 0.99)                       # :follow phases, physically
+        @test _child_overlap(s0.root, s1.root) ≈ Ψ(s0)' * Ψ(s1) atol=1e-12                # identity on raw basis axes
+        @test issorted(energies(s1))
+    end
+end

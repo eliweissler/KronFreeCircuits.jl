@@ -1,16 +1,25 @@
 """
-    SelectionContext(energies, vectors, ports, previous)
+    SelectionContext(energies, vectors, ports, previous[, reference])
 
 What a selection rule may inspect after a node is diagonalized: the computed `energies`,
 the eigenvector columns `vectors`, the port matrices in the eigenbasis keyed by `(mode, port)`,
-and `previous`, the node's previous `MaterializedNode` (or `nothing`).
+`previous`, the node's previous `MaterializedNode` (or `nothing`), and `reference`, the previous
+kept vectors expressed in the current product basis (or `nothing`).
+`materialize` passes as `reference` the previous kept vectors transported through the children's
+physical overlaps, so that `reference' * vectors` are physical overlaps even when the children were
+re-diagonalized.
+The four-argument form takes `previous.vectors` (raw coefficients) as the reference, which is the
+physical overlap only when the children's bases are unchanged.
 """
 struct SelectionContext
     energies::Vector{Float64}
     vectors::Matrix{ComplexF64}
     ports::Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}
     previous::Any
+    reference::Union{Nothing,AbstractMatrix}
 end
+SelectionContext(energies, vectors, ports, previous) =
+    SelectionContext(energies, vectors, ports, previous, previous === nothing ? nothing : previous.vectors)
 
 "Keep the eigenstates at the given indices, in the given order."
 struct Indices <: SelectionRule
@@ -44,8 +53,10 @@ _mode_port((kind, mode)::Tuple{Symbol,Symbol}) = (mode, port_of_kind(kind))
     follow(reference=nothing; minoverlap=0.5)
 
 Adiabatic following: keep one current eigenstate per reference column, in reference order.
-The reference is the node's previous kept eigenvectors when a previous materialization exists;
-the explicit `reference` matrix (columns in the node's product basis) is used only when there is none.
+The reference is the node's previous kept eigenvectors when a previous materialization exists,
+transported into the current product basis through the children's physical overlaps (see
+[`SelectionContext`](@ref)); the explicit `reference` matrix (columns in the node's product basis)
+is used only when there is none.
 Assignment is global greedy by overlap: all (reference, current) pairs are taken in order of
 decreasing `|⟨ref|cur⟩|`, a pair being assigned when both states are still free.
 A warning lists the reference states whose assigned overlap is below `minoverlap`.
@@ -90,8 +101,8 @@ function select(rule::Connected, ctx::SelectionContext)
 end
 
 function select(rule::Follow, ctx::SelectionContext)
-    R = if ctx.previous !== nothing
-        ctx.previous.vectors
+    R = if ctx.reference !== nothing
+        ctx.reference
     elseif rule.reference !== nothing
         rule.reference
     else

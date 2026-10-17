@@ -68,6 +68,12 @@ changed starts cold.
 Only the kept vectors survive in a `MaterializedNode`, so when `compute > keep` the remaining
 columns start random and the block is only partially warm (retaining the whole computed block is
 future work).
+The `follow` rule and the `:follow` phase compare physical overlaps: the previous kept vectors are
+first transported into the current product basis through the overlaps of the previous and current
+child kept states, computed recursively (the identity on basis axes).
+This needs, at every such node and below it, the same product dims and equal bases on basis axes;
+otherwise an `ArgumentError` is thrown (overlaps across different primitive bases are not
+implemented, and equal dimensions alone do not establish the same basis).
 A parameter missing from `θ` raises an `ArgumentError` naming it.
 
 Each `mode => basis` leaf child is checked against the mode's type: a compact mode (`:c`) needs
@@ -158,6 +164,61 @@ function _prev_child(prev, i::Int)
     return ch isa MaterializedNode ? ch : nothing
 end
 
+# Check that `prev` and the current `children` (with product dims `dims`) can be compared through
+# physical overlaps: the same dims, a node on the same axes, and equal bases (`==` on the immutable
+# basis structs: range, points, order, cutoff, `phi_zpf`) on the basis axes.
+function _check_transportable(prev::MaterializedNode, children, dims)
+    prev.dims == dims ||
+        throw(ArgumentError("physical overlap with the previous solution: its product dims $(prev.dims) differ " *
+                            "from the current $dims; transport across changed retained dimensions is not supported"))
+    for (a, (p, c)) in enumerate(zip(prev.children, children))
+        if p isa Basis && c isa Basis
+            p == c || throw(ArgumentError("physical overlap with the previous solution: axis $a has basis $(repr(p)) " *
+                                          "previously and $(repr(c)) now; physical overlaps across different primitive " *
+                                          "bases are not implemented"))
+        elseif !(p isa MaterializedNode && c isa MaterializedNode)
+            throw(ArgumentError("physical overlap with the previous solution: axis $a holds a $(nameof(typeof(p))) " *
+                                "previously and a $(nameof(typeof(c))) now"))
+        end
+    end
+    return nothing
+end
+
+"""
+    _transport_previous(prev::MaterializedNode, children, dims) -> Matrix
+
+The previous kept vectors expressed in the current product basis, `R̃ = (⊗_a S_a') prev.vectors`
+with `S_a = _child_overlap(prev.children[a], children[a])` on node axes and the identity on basis
+axes, so that `R̃' * V` are physical overlaps `⟨previous kept i | current j⟩` (exact: the children's
+discarded states do not enter an overlap with a current state).
+Requires the checks of `_check_transportable`; `prev.vectors` is never written.
+"""
+function _transport_previous(prev::MaterializedNode, children, dims)
+    _check_transportable(prev, children, dims)
+    X = copy(prev.vectors)
+    nodeaxes = [a for a in eachindex(children) if children[a] isa MaterializedNode]
+    isempty(nodeaxes) && return X
+    # apply_axis! forbids aliasing: alternate between two distinct work arrays, one application per axis.
+    W = similar(X)
+    shape = (dims..., size(X, 2))
+    for a in nodeaxes
+        S = _child_overlap(prev.children[a], children[a])
+        apply_axis!(reshape(W, shape), DenseOp(Matrix(S')), reshape(X, shape), a)
+        X, W = W, X
+    end
+    return X
+end
+
+"""
+    _child_overlap(prev::MaterializedNode, cur::MaterializedNode) -> Matrix
+
+The physical overlaps `⟨prev kept i | cur kept j⟩`: at a leaf `prev.vectors' * cur.vectors`, at a
+branch `_transport_previous(prev, cur.children, cur.dims)' * cur.vectors`.
+Throws an `ArgumentError` when the dims or a basis child differ anywhere below.
+"""
+_child_overlap(prev::MaterializedNode, cur::MaterializedNode) =
+    _transport_previous(prev, cur.children, cur.dims)' * cur.vectors
+
 # Kronecker product of per-axis vectors, axis 1 fastest.
 _kronaxes(vs) = foldl((acc, v) -> kron(v, acc), vs; init=[true])
 
@@ -241,6 +302,10 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     uses_prev = node.phase === :follow || node.keep isa Follow
     prev === nothing || !uses_prev || prev.dims == dims ||
         throw(ArgumentError("previous solution at this tree position has dims $(prev.dims), expected $dims"))
+    # The previous kept vectors in the current product basis, so that the follow rule and the :follow
+    # phase compare physical overlaps when the children were re-diagonalized (this also checks that the
+    # basis children, here and below, are unchanged).  The LOBPCG initial block stays raw.
+    reference = prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
 
     # (2)-(3) The node's operator.
     H = _node_operator(node, children, routed[node], θ, constant)
@@ -261,10 +326,10 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         a = axis_of(node, mode)
         ports[(mode, p)] = _port_matrix(V, dims, a, _childop(children[a], mode, p))
     end
-    idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev)), size(V, 2), node.keep)
+    idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev, reference)), size(V, 2), node.keep)
     E, V = E[idx], V[:, idx]
 
-    # :follow makes each overlap with the previous kept vector real and positive; with no previous
+    # :follow makes each physical overlap with the previous kept vector real and positive; with no previous
     # solution, :positive_sector is used instead.  :positive_sector makes, at a leaf, the largest
     # entry on the positive sector real and positive; at a branch, the exact full-space amplitude at
     # the joint peak of the dominant product component (`branch_peak_phase`), the argmax restricted
@@ -280,7 +345,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     if node.phase === :follow && prev !== nothing
         size(prev.vectors) == size(V) ||
             throw(ArgumentError("phase :follow: the previous solution keeps $(size(prev.vectors, 2)) states, this one $(size(V, 2))"))
-        fix_phases!(V, :follow, mask, prev.vectors)
+        fix_phases!(V, :follow, mask, reference)
     elseif isleaf
         fix_phases!(V, :positive_sector, mask, nothing)
     else
