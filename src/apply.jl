@@ -125,11 +125,14 @@ struct AxisTerm
 end
 
 """
-    KronFreeOperator(dims, terms; constant=0.0)
+    KronFreeOperator(dims, terms; constant=0.0, block_capacity=1)
 
 `H = Σ_t c_t ⊗_k A_{t,k} + constant * I` on the tensor-product space with axis sizes `dims`
-(axis 1 fastest), applied without forming Kronecker products.  Two work buffers of shape
-`(dims..., M)` are reallocated whenever a call's block width `M` changes.
+(axis 1 fastest), applied without forming Kronecker products.  Two work buffers reserve `block_capacity` columns at construction. Calls reuse their active
+prefix, growing storage only when the requested block exceeds capacity. Reserve the solver's
+maximum block width before iteration to avoid state-sized scratch reallocations.
+`mul!(y, H, x)` writes into caller-owned output; `H * x` allocates its output.
+The scratch belongs to `H`, so simultaneous applications require separate operators/workspaces.
 
 `ishermitian(H)` returns `true` unconditionally: callers are responsible for building `terms`
 that sum to a Hermitian operator.
@@ -142,7 +145,7 @@ mutable struct KronFreeOperator
     buf2::Array{ComplexF64}
 end
 
-function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm}; constant::Number=0.0)
+function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm}; constant::Number=0.0, block_capacity::Integer=1)
     dims = Vector{Int}(dims)
     all(>=(1), dims) || throw(ArgumentError("KronFreeOperator: dims must be positive, got $dims"))
     for term in terms, (a, op) in term.factors
@@ -150,7 +153,8 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
         dimension(op) == dims[a] ||
             throw(DimensionMismatch("KronFreeOperator: factor on axis $a has dimension $(dimension(op)), expected $(dims[a])"))
     end
-    shape = (dims..., 1)
+    block_capacity >= 1 || throw(ArgumentError("KronFreeOperator: block_capacity must be positive"))
+    shape = (dims..., Int(block_capacity))
     return KronFreeOperator(dims, Vector{AxisTerm}(terms), ComplexF64(constant),
                             Array{ComplexF64}(undef, shape), Array{ComplexF64}(undef, shape))
 end
@@ -161,12 +165,16 @@ Base.eltype(::KronFreeOperator) = ComplexF64
 LinearAlgebra.ishermitian(::KronFreeOperator) = true
 
 function _ensure_buffers!(H::KronFreeOperator, shape::Tuple)
-    if size(H.buf1) != shape
+    if length(H.buf1) < prod(shape)
         H.buf1 = Array{ComplexF64}(undef, shape)
         H.buf2 = Array{ComplexF64}(undef, shape)
     end
     return nothing
 end
+
+# A contiguous prefix preserves physical-axis layout as the active block shrinks.
+_active_buffer(buf::Array, shape::Tuple) =
+    size(buf) == shape ? buf : reshape(view(vec(buf), 1:prod(shape)), shape)
 
 # Y .+= coeff * (⊗ factors) X, chaining factor applications through the two buffers.
 function _accumulate_term!(Y::AbstractArray, term::AxisTerm, X::AbstractArray, b1::AbstractArray, b2::AbstractArray)
@@ -190,9 +198,12 @@ function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::Abstrac
     _ensure_buffers!(H, shape)
     X = reshape(x, shape)
     Y = reshape(y, shape)
-    fill!(Y, zero(eltype(Y)))
+    b1, b2 = _active_buffer(H.buf1, shape), _active_buffer(H.buf2, shape)
+    # Keep initialization on the concretely typed caller array. Filling the
+    # dynamically ranked reshape can box every element for active-column views.
+    fill!(y, zero(eltype(y)))
     for term in H.terms
-        _accumulate_term!(Y, term, X, H.buf1, H.buf2)
+        _accumulate_term!(Y, term, X, b1, b2)
     end
     y .+= H.constant .* x
     return y

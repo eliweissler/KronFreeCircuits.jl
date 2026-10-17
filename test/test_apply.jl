@@ -56,3 +56,63 @@ end
     @test_throws DimensionMismatch H * randn(ComplexF64, 23)
     @test_throws DimensionMismatch mul!(zeros(ComplexF64, 24, 2), H, randn(ComplexF64, 24, 3))
 end
+
+@testset "Reserved multiplication workspace" begin
+    rng = MersenneTwister(23)
+    dims = [3, 4, 2]
+    terms = [
+        AxisTerm(0.7, [(1, DenseOp(randn(rng, ComplexF64, 3, 3))),
+                       (2, BandedOp(4, [-1, 1], [ones(4), ones(4)])),
+                       (3, ShiftOp(2, 1, 0.4))]),
+        AxisTerm(-0.2, [(2, DiagonalOp(ComplexF64[1, 2, 3, 4]))]),
+    ]
+    H = KronFreeOperator(dims, terms; constant=0.1, block_capacity=5)
+    ref = kron_reference(dims, [(t.coeff, [(a, dense(op)) for (a, op) in t.factors]) for t in terms]) + 0.1I
+    b1, b2 = H.buf1, H.buf2
+    @test size(b1) == (3, 4, 2, 5)
+    # Locking shrinks the active block; later applications can reuse any reserved width.
+    for width in (5, 2, 1, 4, 0)
+        X = randn(rng, ComplexF64, 24, width)
+        saved = copy(X)
+        Y = fill(ComplexF64(NaN), size(X))
+        @test mul!(Y, H, X) === Y
+        @test Y ≈ ref * X
+        @test X == saved
+        @test H.buf1 === b1 && H.buf2 === b2
+    end
+    x = randn(rng, ComplexF64, 24)
+    y = similar(x)
+    @test mul!(y, H, x) ≈ ref * x
+    @test H.buf1 === b1 && H.buf2 === b2
+    @test_throws ArgumentError mul!(x, H, x)
+    # A larger request may grow capacity once; shrinking must retain that allocation.
+    X = randn(rng, ComplexF64, 24, 7)
+    @test mul!(similar(X), H, X) ≈ ref * X
+    grown1, grown2 = H.buf1, H.buf2
+    @test size(grown1) == (3, 4, 2, 7)
+    @test grown1 !== b1 && grown2 !== b2
+    saved_y = copy(y)
+    mul!(similar(x), H, x)
+    @test H.buf1 === grown1 && H.buf2 === grown2
+    @test y == saved_y
+    @test_throws ArgumentError KronFreeOperator(dims, terms; block_capacity=0)
+end
+
+@testset "Active-column views avoid state-sized allocation" begin
+    rng = MersenneTwister(24)
+    H = KronFreeOperator([32, 32],
+        [AxisTerm(0.7, [(1, DiagonalOp(ComplexF64.(1:32)))])];
+        block_capacity=6)
+    Xparent = randn(rng, ComplexF64, 1024, 5)
+    Yparent = fill(ComplexF64(99), 1024, 5)
+    X = view(Xparent, :, 2:4)
+    Y = view(Yparent, :, 2:4)
+    expected = H * copy(X)
+    mul!(Y, H, X)
+    mul!(Y, H, X)
+    # Metadata allocations are allowed; a block-sized temporary or per-element
+    # boxing in the output initialization is not.
+    @test (@allocated mul!(Y, H, X)) < sizeof(X)
+    @test Y ≈ expected
+    @test all(==(99), Yparent[:, [1, 5]])
+end
