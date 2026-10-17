@@ -32,6 +32,24 @@ By default each kept state's phase makes its full-space amplitude real and posit
 The spec's scalar constant is added at the root only, so the `energies` of child nodes exclude it.
 Bare-state bookkeeping (labels, overlaps) is available through `bare_labels` and `bare_overlaps`.
 
+A pre-diagonalized subsystem (a resonator, a qubit from another tool, a subsystem exported from scqubits) enters the tree as a `GivenSystem`, a child beside nodes and `mode => basis` pairs.
+It takes its ascending energies and a dictionary from port kind to its matrix in that eigenbasis; it keeps all its states, with identity eigenvectors.
+Coupling terms name its mode and a port kind it provides, and the spec-form `materialize` takes them as `extra_terms`:
+
+```julia
+using LinearAlgebra
+spec = load_spec("transmon.json")                             # mode varphi_1
+θ = (E_J=30.0, E_C=1.2, n_g=0.25)
+a = diagm(1 => sqrt.(1.0:4.0))                                # resonator annihilation operator, 5 levels
+res = GivenSystem(:res; energies=6.0 .* (0:4), operators=Dict(:x => a + a'))
+qubit = Node([:varphi_1 => ChargeBasis(30)]; keep=lowest(6))
+top = Node([qubit, res]; solver=Dense(), keep=lowest(12))
+coupling = [Term(Coefficient(0.05), [Factor(:varphi_1, nport()), Factor(:res, Port(:x, 0))])]   # 0.05 n (a + a†)
+sys = materialize(top, spec, θ; extra_terms=coupling)
+```
+
+A term whose factors all lie on the given mode (a drive or a Stark shift) is applied at its parent through the given operators.
+
 Each node has one of three solvers.
 `Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
 `Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.

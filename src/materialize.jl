@@ -10,6 +10,9 @@ child's number of kept states); `vectors` is `prod(dims) × length(kept)` in tha
 `energies` the kept eigenvalues (absolute, GHz) and `kept` their indices among the computed
 eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 `children` holds, in axis order, the child's `Basis` or `MaterializedNode`.
+A [`GivenSystem`](@ref) child is materialized as a `MaterializedNode` whose `node` is the given
+system, with identity `vectors` and `peak_amplitudes`, all states kept, its operators as the ports
+`(mode, Port(kind, 0))`, and `children = Any[g]`.
 
 `peak_component[j]` is the linear index, in the node's product basis, of kept state `j`'s peak
 point: at a leaf (all children bases) the positive-sector argmax used by `:positive_sector`, at a
@@ -20,7 +23,7 @@ basis child's index is its own point).
 kept state `p`; a leaf's is `vectors[peak_component, :]`.
 """
 struct MaterializedNode
-    node::Node
+    node::Union{Node,GivenSystem}
     dims::Vector{Int}
     energies::Vector{Float64}
     vectors::Matrix{ComplexF64}
@@ -50,13 +53,14 @@ const _EDGE_TOL = 1e-6
 const _HYBRID_RATIO = 0.5
 
 """
-    materialize(root, spec, θ; previous=nothing) -> System
+    materialize(root, spec, θ; previous=nothing, extra_terms=Term[]) -> System
     materialize(root, terms, θ; constant=Coefficient(0), previous=nothing, modetypes=Dict()) -> System
 
 Diagonalize every node of the tree under `root` at parameters `θ`, children first.
-The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref) and
-delegates to the second, which takes a user-built (filtered, transformed) term list and a
-scalar `constant`.
+The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref),
+appends `extra_terms` (terms not in the circuit spec, such as couplings to a
+[`GivenSystem`](@ref)), and delegates to the second, which takes a user-built (filtered,
+transformed) term list and a scalar `constant`.
 
 The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
@@ -97,10 +101,11 @@ function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::
     return System(mroot, nothing, terms, θ, constant)
 end
 
-function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing)
+function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
+                     extra_terms::Vector{Term}=Term[])
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
-    sys = materialize(root, circuit_terms(spec), θ; constant=constant_term(spec), previous=previous,
-                      modetypes=modetypes)
+    sys = materialize(root, vcat(circuit_terms(spec), extra_terms), θ; constant=constant_term(spec),
+                      previous=previous, modetypes=modetypes)
     return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
 end
 
@@ -132,7 +137,7 @@ function _check_composite(routed)
             count(==(a), axes_) > 1 || continue
             ch = node.children[a]
             ch isa Node ||
-                throw(ArgumentError("a term on modes $(modes(t)) has several factors on mode :$(ch.first)"))
+                throw(ArgumentError("a term on modes $(modes(t)) has several factors on mode :$(only(_child_modes(ch)))"))
             throw(ArgumentError("a term on modes $(modes(t)) has several factors inside the child node " *
                                 "with modes $(modes(ch)); composite (multi-mode) ports are not yet supported"))
         end
@@ -152,9 +157,29 @@ _childamps(mn::MaterializedNode) = mn.peak_amplitudes
 
 _childop(b::Basis, ::Symbol, p::Port) = localop(b, p)
 function _childop(mn::MaterializedNode, mode::Symbol, p::Port)
+    mn.node isa GivenSystem && return _givenop(mn, mode, p)
     haskey(mn.ports, (mode, p)) ||
         throw(ArgumentError("child node lacks port $(_portname(p)) on mode :$mode"))
     return DenseOp(mn.ports[(mode, p)])
+end
+
+# A given child's operator of kind `p.kind` (its operators are exponent-free: `p.k == 0`).
+function _givenop(mn::MaterializedNode, mode::Symbol, p::Port)
+    p.k == 0 || throw(ArgumentError("given system :$mode: port $(_portname(p)) has a nonzero exponent k = $(p.k); " *
+                                    "given operators are looked up by kind alone and need k == 0"))
+    haskey(mn.ports, (mode, p)) ||
+        throw(ArgumentError("given system :$mode provides no operator of kind :$(p.kind); available: " *
+                            join((":$(q.kind)" for (_, q) in sort!(collect(keys(mn.ports)); by=string)), ", ")))
+    return DenseOp(mn.ports[(mode, p)])
+end
+
+# A given child as a node: identity eigenvectors and peak amplitudes, all states kept, its energies
+# on the parent's axis (through `_node_operator`) and its operators as exponent-free ports.
+function _materialize_given(g::GivenSystem)
+    k = dimension(g)
+    ports = Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}((g.mode, Port(kind, 0)) => M for (kind, M) in g.operators)
+    return MaterializedNode(g, [k], g.energies, Matrix{ComplexF64}(I, k, k), collect(1:k), ports, Any[g],
+                            collect(1:k), Matrix{ComplexF64}(I, k, k))
 end
 
 # The previous solution of child `i`, or `nothing`.
@@ -164,16 +189,22 @@ function _prev_child(prev, i::Int)
     return ch isa MaterializedNode ? ch : nothing
 end
 
+# Whether a previous and a current basis-axis child span the same basis: `==` on the immutable basis
+# structs (range, points, order, cutoff, `phi_zpf`); for the axis of a given system's own
+# materialization (its `children = Any[g]`), the same mode and dimension, since its labels are the user's.
+_same_basis(a::Basis, b::Basis) = a == b
+_same_basis(a::GivenSystem, b::GivenSystem) = a.mode == b.mode && length(a.energies) == length(b.energies)
+
 # Check that `prev` and the current `children` (with product dims `dims`) can be compared through
-# physical overlaps: the same dims, a node on the same axes, and equal bases (`==` on the immutable
-# basis structs: range, points, order, cutoff, `phi_zpf`) on the basis axes.
+# physical overlaps: the same dims, a node on the same axes, and the same basis (`_same_basis`) on the
+# basis axes.
 function _check_transportable(prev::MaterializedNode, children, dims)
     prev.dims == dims ||
         throw(ArgumentError("physical overlap with the previous solution: its product dims $(prev.dims) differ " *
                             "from the current $dims; transport across changed retained dimensions is not supported"))
     for (a, (p, c)) in enumerate(zip(prev.children, children))
-        if p isa Basis && c isa Basis
-            p == c || throw(ArgumentError("physical overlap with the previous solution: axis $a has basis $(repr(p)) " *
+        if (p isa Basis && c isa Basis) || (p isa GivenSystem && c isa GivenSystem)
+            _same_basis(p, c) || throw(ArgumentError("physical overlap with the previous solution: axis $a has basis $(repr(p)) " *
                                           "previously and $(repr(c)) now; physical overlaps across different primitive " *
                                           "bases are not implemented"))
         elseif !(p isa MaterializedNode && c isa MaterializedNode)
@@ -292,8 +323,8 @@ _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dim
 function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ?
-              _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i)) : ch.second)
+        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i)) :
+                        ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
     # Only the :follow phase convention and the follow rule (whose previous vectors take precedence
@@ -404,9 +435,9 @@ end
 """
     materialized(sys, node) -> MaterializedNode
 
-The materialization of `node` (a node of the tree `sys` was built from).
+The materialization of `node` (a node or a [`GivenSystem`](@ref) of the tree `sys` was built from).
 """
-function materialized(sys::System, node::Node)
+function materialized(sys::System, node::Union{Node,GivenSystem})
     stack = MaterializedNode[sys.root]
     while !isempty(stack)
         mn = pop!(stack)

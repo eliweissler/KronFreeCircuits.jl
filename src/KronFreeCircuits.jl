@@ -19,7 +19,7 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        Lanczos, LOBPCG, lowest, indices, connected, follow, materialize,
        System, energies, port, eigenvectors, materialized, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, SelectionRule,
-       SelectionContext
+       SelectionContext, GivenSystem
 
 include("parameters.jl")
 include("spec.jl")
@@ -28,6 +28,7 @@ include("localops.jl")
 include("bases.jl")
 include("apply.jl")
 include("tree.jl")
+include("given.jl")
 include("solvers.jl")
 include("lobpcg.jl")
 include("selection.jl")

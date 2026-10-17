@@ -95,7 +95,8 @@ ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
     Node(children; solver=Dense(), compute=0, keep=lowest(0), phase, ports=[])
 
 A hierarchical unit.
-Each child is a `mode => basis` pair or another `Node`; a node's product basis has one axis per child.
+Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
+subsystem); a node's product basis has one axis per child.
 
 - `solver`: `Dense()`, `Lanczos()` or `LOBPCG()`. An `LOBPCG` node starts from the previous
   solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
@@ -127,8 +128,8 @@ mutable struct Node
                   ports=Tuple{Symbol,Port}[])
         isempty(children) && throw(ArgumentError("a Node needs at least one child"))
         for ch in children
-            ok = ch isa Node || (ch isa Pair && ch.first isa Symbol && ch.second isa Basis)
-            ok || throw(ArgumentError("each child must be a `mode => basis` pair or a Node, got $(repr(ch))"))
+            ok = ch isa Node || ch isa GivenSystem || (ch isa Pair && ch.first isa Symbol && ch.second isa Basis)
+            ok || throw(ArgumentError("each child must be a `mode => basis` pair, a Node or a GivenSystem, got $(repr(ch))"))
         end
         phase === nothing && (phase = keep isa Follow ? :follow : :positive_sector)
         phase in (:positive_sector, :follow) ||
@@ -214,7 +215,7 @@ function route(root::Node, terms::Vector{Term})
         push!(routed[node], t)
     end
     for m in modes(root)
-        m in seen || throw(ArgumentError("mode :$m is in the tree but in no term of the spec"))
+        m in seen || throw(ArgumentError("mode :$m is in the tree but in no term"))
     end
     return routed
 end
