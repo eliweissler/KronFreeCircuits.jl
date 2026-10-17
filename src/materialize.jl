@@ -201,7 +201,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # (4) Diagonalize.
     _dense_too_large(node.solver, prod(dims)) &&
         @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
-              "Lanczos is advised", _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
+              "LOBPCG is advised", _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
     m = node.compute == 0 ? prod(dims) : node.compute
     E, V = solve(node.solver, H, m)
 

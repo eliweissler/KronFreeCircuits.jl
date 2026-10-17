@@ -7,6 +7,7 @@ using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backe
 using ITensors: ITensors
 using LOBPCGEigensolver: LOBPCGEigensolver
 using Adapt: adapt
+using Random: Random, randn!
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
@@ -15,7 +16,7 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        Term, circuit_terms, LocalOp, DenseOp, DiagonalOp, BandedOp,
        ShiftOp, dense, diagonal, Basis, ChargeBasis, PhaseGrid,
        FockBasis, localop, apply_axis!, KronFreeOperator, Node, Dense,
-       Lanczos, lowest, indices, connected, follow, materialize,
+       Lanczos, LOBPCG, lowest, indices, connected, follow, materialize,
        System, energies, port, eigenvectors, materialized, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, SelectionRule,
        SelectionContext
@@ -28,6 +29,7 @@ include("bases.jl")
 include("apply.jl")
 include("tree.jl")
 include("solvers.jl")
+include("lobpcg.jl")
 include("selection.jl")
 include("phase.jl")
 include("materialize.jl")

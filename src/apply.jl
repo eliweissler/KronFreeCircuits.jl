@@ -344,14 +344,47 @@ end
     diagonal(H::KronFreeOperator) -> Vector
 
 `H.diag + Σ_t c_t ⊗_k diag(A_{t,k})` over the terms not fused into `H.diag` (ones on axes a
-term does not touch), axis 1 fastest, returned on the host.
+term does not touch), axis 1 fastest, returned on the host. Its real part is `_full_diagonal(H)`.
 """
-function diagonal(H::KronFreeOperator)
-    D = copyto!(Array{eltype(H)}(undef, H.dims...), H.diag)
+diagonal(H::KronFreeOperator) = Array(_device_diagonal(H))
+
+# The diagonal of H on `H.on`: the fused `H.diag` plus, for each term kept in the contraction
+# sum, `coeff * ⊗_k diagonal(op_k)`, built by broadcasts on the device.
+function _device_diagonal(H::KronFreeOperator)
+    N = length(H.dims)
+    D = copy(reshape(H.diag, H.dims...))
     for term in H.terms
-        _add_term_diagonal!(D, term.coeff, term.factors)
+        acc = fill!(similar(H.diag, eltype(H), ntuple(_ -> 1, N)), term.coeff)
+        for (a, op, _) in term.factors
+            acc = acc .* reshape(adapt(H.on, diagonal(op)), ntuple(i -> i == a ? H.dims[a] : 1, N))
+        end
+        D .+= acc
     end
     return vec(D)
+end
+
+"""
+    _full_diagonal(H::KronFreeOperator)
+
+The real diagonal of the Hermitian operator `H` (fused part plus the diagonals of the terms
+kept in the contraction sum), as an array on `H.on`.
+"""
+_full_diagonal(H::KronFreeOperator) = real.(_device_diagonal(H))
+
+# The number of block columns the scratch buffers currently hold.
+_block_capacity(H::KronFreeOperator) = length(H.buf1) ÷ prod(H.dims)
+
+"""
+    with_block_capacity(H::KronFreeOperator, m::Integer) -> KronFreeOperator
+
+The same operator, sharing `H`'s factor data, `diag`, terms and indices, with its own fresh
+scratch buffers reserved for blocks of `m` columns (scratch is never shared with `H`).
+"""
+function with_block_capacity(H::KronFreeOperator, m::Integer)
+    m >= 1 || throw(ArgumentError("with_block_capacity: m must be positive, got $m"))
+    shape = (H.dims..., Int(m))
+    return KronFreeOperator(H.dims, H.diag, H.terms, similar(H.buf1, shape), similar(H.buf2, shape),
+                            H.on, H.inds, H.blockinds)
 end
 
 const _MATRIX_BLOCK = 256

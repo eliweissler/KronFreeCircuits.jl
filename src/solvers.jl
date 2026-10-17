@@ -5,7 +5,7 @@ using KrylovKit: KrylovKit
 
 Eigenpairs of the Hermitian operator `H`, ascending.
 `Dense` returns the lowest `m` pairs, or all when `m == 0` or `m >= size(H, 1)`;
-`Lanczos` returns the lowest `m`.
+`Lanczos` and `LOBPCG` return the lowest `m`.
 """
 function solve end
 
@@ -17,7 +17,7 @@ function solve(::Dense, H::KronFreeOperator, m::Int)
     return Vector{Float64}(F.values), Matrix{ComplexF64}(F.vectors)
 end
 
-# Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); Lanczos is advised.
+# Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); LOBPCG is advised.
 const _DENSE_WARN_DIM = 10_000
 _dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM
 

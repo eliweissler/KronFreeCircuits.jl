@@ -8,6 +8,7 @@ struct Dense <: Solver end
 
 Iterative solver; `krylovdim == 0` lets the solver choose.
 `maxiter` bounds the restarts (grid Hamiltonians are stiff: a 9k-dimensional zero-pi leaf needs several hundred) and `verbosity` is passed to KrylovKit (0 is silent).
+A single-vector Krylov space does not resolve repeated eigenvalues (KrylovKit documents this); use `LOBPCG` or `Dense` where exact degeneracies are expected.
 """
 struct Lanczos <: Solver
     tol::Float64
@@ -16,6 +17,54 @@ struct Lanczos <: Solver
     verbosity::Int
 end
 Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
+
+"""
+    LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)
+
+Block iterative solver: the JuliaMolSim LOBPCG eigensolver (LOBPCGEigensolver.jl), used
+through its public interface only.
+
+- `tol`: convergence threshold on each residual norm `‖H v − λ v‖` of a unit vector, in the
+  Hamiltonian's energy units; `maxiter` bounds the iterations. Pairs that have not converged
+  within `maxiter` raise an error naming the unconverged count and the largest residual; they
+  are never returned silently and never retried.
+- `preconditioner`: `:ritz` (adaptive per-Ritz Jacobi: column `j` of the residual is divided by
+  `hypot(D − θ_j, eta)`, with `D` the diagonal of `H` and `θ_j` the column's latest Ritz value),
+  `:jacobi` (fixed shifted Jacobi, `1 / (D − σ)` with `σ = minimum(D) − 1`) or `:none`.
+- `eta`: the regularization of `:ritz`, in the Hamiltonian's energy units. The default is taken
+  from the audit fixture (GHz) and must be set for other energy scales.
+- `guard`: extra random columns appended to every block (cold or warm start). Convergence is
+  checked on the lowest `m` columns only, and the lowest `m` converged pairs are returned. Guards
+  make exact excited-state seeds and sector-confined seeds recoverable in practice; they are not
+  a completeness guarantee. The guard shrinks so that the block fits `N ≥ 3(m + guard) + 5`.
+- `on`: the array storage the block lives on (`Array`, or a device array type).
+- `callback`: `nothing` or a function called with the solver's per-iteration `info` named tuple;
+  its return value is ignored, and an exception it throws propagates unchanged.
+
+The operator dimension must satisfy `N ≥ 3m + 5`; smaller problems call for `Dense()`.
+A warm-start block on which the eigensolver fails (an exactly zero residual can break its
+orthogonalization) is replaced once by a random block, with a warning.
+"""
+struct LOBPCG <: Solver
+    tol::Float64
+    maxiter::Int
+    preconditioner::Symbol
+    eta::Float64
+    guard::Int
+    on::Any
+    callback::Any
+    function LOBPCG(tol::Real, maxiter::Integer, preconditioner::Symbol, eta::Real, guard::Integer, on, callback)
+        tol > 0 && isfinite(tol) || throw(ArgumentError("LOBPCG: tol must be positive and finite, got $tol"))
+        maxiter >= 1 || throw(ArgumentError("LOBPCG: maxiter must be at least 1, got $maxiter"))
+        preconditioner in (:ritz, :jacobi, :none) ||
+            throw(ArgumentError("LOBPCG: preconditioner must be :ritz, :jacobi or :none, got :$preconditioner"))
+        eta > 0 && isfinite(eta) || throw(ArgumentError("LOBPCG: eta must be positive and finite, got $eta"))
+        guard >= 0 || throw(ArgumentError("LOBPCG: guard must be nonnegative, got $guard"))
+        return new(tol, maxiter, preconditioner, eta, guard, on, callback)
+    end
+end
+LOBPCG(; tol=1e-8, maxiter=500, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing) =
+    LOBPCG(tol, maxiter, preconditioner, eta, guard, on, callback)
 
 """
     SelectionRule
@@ -42,7 +91,7 @@ ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 A hierarchical unit.
 Each child is a `mode => basis` pair or another `Node`; a node's product basis has one axis per child.
 
-- `solver`: `Dense()` or `Lanczos()`.
+- `solver`: `Dense()`, `Lanczos()` or `LOBPCG()`.
 - `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
   `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
   the lowest `compute` pairs.

@@ -81,3 +81,18 @@ function two_zero_pi_params(; g)
     suffixed(s) = NamedTuple{Tuple(Symbol(k, s) for k in keys(p))}(values(p))
     return (suffixed("1")..., suffixed("2")..., g=g)
 end
+
+"""
+    check_eigenpairs(H, E, V; tol)
+
+Independent validation of computed eigenpairs: every true residual `‖H v_j − E_j v_j‖ < tol`,
+recomputed with `H * v`, and orthonormal columns, `‖V'V − I‖ < 1e-10`.
+"""
+function check_eigenpairs(H, E, V; tol)
+    @test length(E) == size(V, 2)
+    for j in eachindex(E)
+        @test norm(H * V[:, j] - E[j] * V[:, j]) < tol
+    end
+    @test norm(V' * V - I) < 1e-10
+    return nothing
+end
