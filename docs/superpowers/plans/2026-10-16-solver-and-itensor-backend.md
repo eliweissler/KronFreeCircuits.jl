@@ -329,7 +329,7 @@ end
 
 - [ ] **Step 2: Run** and confirm failures (`LOBPCG` undefined).
 
-- [ ] **Step 3: Implement** `src/lobpcg.jl` and the `LOBPCG` type. In `lobpcg_solve`: `D = _full_diagonal(H)` on `s.on`; choose the preconditioner by `s.preconditioner`; build the guarded block; call `LOBPCGEigensolver.lobpcg(Hb, Xdev, I, P, s.tol, s.maxiter; n_conv_check=m, callback=solver_callback(P, s.callback))` inside the recovery policy; validate; return `Vector{Float64}(res.λ[1:m])`, `Matrix(Array(res.X[:, 1:m]))`.
+- [ ] **Step 3: Implement** `src/lobpcg.jl` and the `LOBPCG` type. In `lobpcg_solve`: `D = _full_diagonal(H)` on `s.on`; choose the preconditioner by `s.preconditioner`; build the guarded block; call `LOBPCGEigensolver.lobpcg(Hb, Xdev, I, P, s.tol, s.maxiter; n_conv_check=m + g, callback=solver_callback(P, s.callback))` inside the recovery policy; validate; return `Vector{Float64}(res.λ[1:m])`, `Matrix(Array(res.X[:, 1:m]))`.
 
 - [ ] **Step 4: Run the full default suite.** Expected: pass.
 
