@@ -211,6 +211,8 @@ end
 # The initial block of an LOBPCG node: `nothing` without a previous solution of the same `dims`,
 # else a copy of its kept vectors (raw coefficients, in kept order) truncated to `m` columns or
 # padded on the right with `randn` columns (never zeros, which the solver rejects) of element type `T`.
+# Truncation follows the kept order, not energy order (a previous kept with a reordered `indices`
+# rule contributes its first columns); the solver's guard columns recover any lower states.
 _initial_block(prev, dims, m::Int) =
     _initial_block(prev, dims, m, prev === nothing ? Nothing : eltype(prev.vectors))
 function _initial_block(prev, dims, m::Int, ::Type{T}) where {T}

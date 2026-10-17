@@ -313,6 +313,7 @@ end
     Random.seed!(21)
     lob = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(children; solver=LOBPCG(tol=1e-10), compute=8, keep=lowest(8)), spec_zp, θ)
     @test energies(lob) ≈ energies(dense) atol=1e-7
+    check_eigenpairs(KronFreeCircuits.operator(lob), energies(lob), eigenvectors(lob); tol=1e-9)
     # branch: the two-zero-pi small fixture tree used in test_zero_pi_reference.jl, with the top solver swapped
     θ2 = two_zero_pi_params(; g=0.05); spec2 = load_spec(fixture("two_zero_pi.json"))
     leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(10))
@@ -321,6 +322,7 @@ end
     sd = @test_logs (:warn, r"edge") match_mode=:any materialize(top_dense, spec2, θ2)
     sl = @test_logs (:warn, r"edge") match_mode=:any materialize(top_lob, spec2, θ2)
     @test energies(sl) ≈ energies(sd) atol=1e-7
+    check_eigenpairs(KronFreeCircuits.operator(sl), energies(sl), eigenvectors(sl); tol=1e-9)
 end
 
 @testset "previous solution warm-starts a LOBPCG node" begin
@@ -337,6 +339,7 @@ end
     s2 = materialize(tree(), spec, two_transmons_params(; g=0.101); previous=s1); warm = last(matvecs)
     @test warm < cold
     @test energies(s2) ≈ energies(materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]; solver=Dense(), keep=lowest(6)), spec, two_transmons_params(; g=0.101))) atol=1e-7
+    check_eigenpairs(KronFreeCircuits.operator(s2), energies(s2), eigenvectors(s2); tol=1e-9)
 end
 
 @testset "warm start: unchanged Hamiltonian, partial block, exact seeds" begin
@@ -348,10 +351,12 @@ end
     s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = last(matvecs); empty!(matvecs)
     s_same = materialize(tree(; keep=lowest(8)), spec, θ; previous=s1)                 # exact eigenvectors as the seed
     @test energies(s_same) ≈ energies(s1) atol=1e-9
+    check_eigenpairs(KronFreeCircuits.operator(s_same), energies(s_same), eigenvectors(s_same); tol=1e-9)
     @test last(matvecs) < cold; empty!(matvecs)                                       # work in H columns
     s_part = materialize(tree(; keep=lowest(3)), spec, θ)                              # compute 8, keep 3: partial warm start
     s_part2 = materialize(tree(; keep=lowest(3)), spec, two_transmons_params(; g=0.101); previous=s_part)
     @test energies(s_part2) ≈ energies(materialize(Node(leaves(); solver=Dense(), keep=lowest(3)), spec, two_transmons_params(; g=0.101))) atol=1e-7
+    check_eigenpairs(KronFreeCircuits.operator(s_part2), energies(s_part2), eigenvectors(s_part2); tol=1e-9)   # the root's kept vectors
     V = eigenvectors(s1)                                                               # 36 × 8 host matrix
     check_eigenpairs(KronFreeCircuits.operator(s1), energies(s1), V; tol=1e-9)
 end
@@ -445,7 +450,8 @@ end
     # g = 0: the parent energies are the sorted pairwise sums; (1,2) and (2,1) are degenerate
     t3 = lobtop(3); s3 = mat(t3, θ0)
     E1 = energies(s3, t3.children[1]); c = real(constant_term(spec2)(θ0))
-    @test E1 == energies(s3, t3.children[2])                  # identical leaves
+    @test E1 ≈ energies(s3, t3.children[2]) atol=1e-12        # identical leaves: same energies ...
+    @test eigenvectors(s3, t3.children[1]) ≈ eigenvectors(s3, t3.children[2]) atol=1e-10   # ... and the same phase-fixed states
     sums = sort(vec(E1 .+ E1')) .+ c
     E, V = energies(s3), eigenvectors(s3)
     @test E ≈ sums[1:3] atol=1e-8
@@ -519,6 +525,7 @@ end
     order = [3, 1, 4, 2]
     s_r = materialize(tree(4, indices(order)), spec, θ1)
     @test energies(s_r) ≈ dense(θ1, 4)[order] atol=1e-8
+    valid(s_r)
     mn = s_r.root
     # the initial block: a copy of the kept vectors in kept order, padded with random columns or truncated
     X = _initial_block(mn, mn.dims, 4)
