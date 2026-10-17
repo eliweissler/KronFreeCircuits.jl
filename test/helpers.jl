@@ -96,3 +96,42 @@ function check_eigenpairs(H, E, V; tol)
     @test norm(V' * V - I) < 1e-10
     return nothing
 end
+
+"""
+    primitive_hamiltonian(terms, θ, bases; constant=0) -> SparseMatrixCSC{ComplexF64}
+
+Independent primitive-space reference for a term list: `Σ_t c_t(θ) A_{t,N} ⊗ ⋯ ⊗ A_{t,1}` on the
+flat product of `bases` (a vector of `mode => basis` pairs, axis 1 fastest), each factor the dense
+matrix of the basis's declared operator `localop(basis, port)`, plus `constant` times the identity.
+Built with explicit sparse Kronecker products, never with the apply routines.
+"""
+function primitive_hamiltonian(terms, θ::NamedTuple, bases::AbstractVector; constant=0)
+    names = [first(p) for p in bases]
+    dims = [KronFreeCircuits.dimension(last(p)) for p in bases]
+    D = prod(dims)
+    H = spzeros(ComplexF64, D, D)
+    for t in terms
+        ops = Dict{Int,SparseMatrixCSC{ComplexF64,Int}}()
+        for f in t.factors
+            a = findfirst(==(f.mode), names)
+            a === nothing && throw(ArgumentError("mode :$(f.mode) is not among the bases"))
+            haskey(ops, a) && throw(ArgumentError("primitive_hamiltonian: two factors on mode :$(f.mode)"))
+            ops[a] = sparse(KronFreeCircuits.dense(KronFreeCircuits.localop(last(bases[a]), f.port)))
+        end
+        T = sparse(ComplexF64[1;;])
+        for a in eachindex(dims)                       # kron(A_N, ..., A_1): axis 1 fastest
+            T = kron(get(() -> sparse(ComplexF64(1) * I, dims[a], dims[a]), ops, a), T)
+        end
+        H += t.coeff(θ) * T
+    end
+    return H + ComplexF64(constant) * sparse(ComplexF64(1) * I, D, D)
+end
+
+# The primitive-space eigenvector columns of a materialized node whose children are leaves or raw
+# bases, axis 1 fastest.
+_embed(c::KronFreeCircuits.MaterializedNode) = c.vectors
+_embed(b::KronFreeCircuits.Basis) = Matrix{ComplexF64}(I, KronFreeCircuits.dimension(b), KronFreeCircuits.dimension(b))
+_primitive(mn) = foldl((acc, c) -> kron(_embed(c), acc), mn.children; init=ones(ComplexF64, 1, 1)) * mn.vectors
+
+# Per column, the true residual norm ‖H v − λ v‖ with an independently assembled H.
+_residuals(H, E, V) = [norm(H * V[:, j] - E[j] * V[:, j]) for j in eachindex(E)]

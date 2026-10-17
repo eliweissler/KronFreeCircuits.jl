@@ -710,4 +710,37 @@ end
         @test _child_overlap(s0.root, s1.root) ≈ Ψ(s0)' * Ψ(s1) atol=1e-12                # identity on raw basis axes
         @test issorted(energies(s1))
     end
+    # Required ports against the explicit representation: the coupling ports the zero-pi nodes expose
+    # to the root (n_theta for dC, phi for dE_L), on their states in the primitive (theta, phi) space.
+    nθ = Matrix{ComplexF64}(Diagonal(-6.0:6.0)); φg = Matrix{ComplexF64}(Diagonal(collect(range(grid.a, grid.b; length=N))))
+    I13, IN = Matrix{ComplexF64}(I, 13, 13), Matrix{ComplexF64}(I, N, N)
+    for (s, zpn) in ((sA0, zpA), (sB0, zpB), (sB1, zpB))
+        z = materialized(s, zpn)
+        W = zpn === zpA ? z.vectors : kron(IN, z.children[1].vectors) * z.vectors       # zp states on (theta, phi)
+        @test z.ports[(:theta, nport())] ≈ W' * kron(IN, nθ) * W atol=1e-10
+        @test z.ports[(:phi, KronFreeCircuits.phiport())] ≈ W' * kron(φg, I13) * W atol=1e-10
+    end
+    # :positive_sector anchors: each root state's anchor, resolved to a primitive (theta, phi, zeta) point
+    # through the raw basis indices and the node children's peak components, carries a real positive
+    # amplitude equal to the stored peak amplitude; a raw grid axis's anchor lies in its positive sector.
+    lin = LinearIndices((13, N, 8))
+    function anchorA(s, j)
+        t = s.root; a, z = Tuple(CartesianIndices((6, 8))[t.peak_component[j]])
+        θi, φi = Tuple(CartesianIndices((13, N))[t.children[1].peak_component[a]])
+        return lin[θi, φi, z]
+    end
+    function anchorB(s, j)
+        t = s.root; zp = t.children[2]; z, b = Tuple(CartesianIndices((8, 6))[t.peak_component[j]])
+        q, φi = Tuple(CartesianIndices((13, N))[zp.peak_component[b]])
+        @test positive_mask(grid)[φi]
+        return lin[zp.children[1].peak_component[q], φi, z]
+    end
+    for (s, Ψ, anchor) in ((sA0, ΨA, anchorA), (sB0, ΨB, anchorB))
+        P = Ψ(s)
+        for j in 1:6
+            p = anchor(s, j)
+            @test abs(imag(P[p, j])) < 1e-12 && real(P[p, j]) > 0
+            @test P[p, j] ≈ s.root.peak_amplitudes[j, j] atol=1e-12
+        end
+    end
 end
