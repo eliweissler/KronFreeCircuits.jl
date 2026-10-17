@@ -370,14 +370,14 @@ end
 end
 
 @testset "previous solution warm-starts a LOBPCG node" begin
-    iters = Int[]
-    cb = info -> (push!(iters, info.n_iter); info)
+    matvecs = Int[]
+    cb = info -> (push!(matvecs, info.n_matvec); info)          # cumulative H columns; the last value is the solve's total
     θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
     tree() = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
                   solver=LOBPCG(tol=1e-10, callback=cb), compute=6, keep=lowest(6))
     Random.seed!(2)
-    s1 = materialize(tree(), spec, θ); cold = maximum(iters); empty!(iters)
-    s2 = materialize(tree(), spec, two_transmons_params(; g=0.101); previous=s1); warm = maximum(iters)
+    s1 = materialize(tree(), spec, θ); cold = last(matvecs); empty!(matvecs)
+    s2 = materialize(tree(), spec, two_transmons_params(; g=0.101); previous=s1); warm = last(matvecs)
     @test warm < cold          # warm and cold are H-column counts (info.n_matvec at the last callback), not iterations: guard columns converge from random either way while the active block is tiny (amended during execution)
     @test energies(s2) ≈ energies(materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]; solver=Dense(), keep=lowest(6)), spec, two_transmons_params(; g=0.101))) atol=1e-7
 end
@@ -390,13 +390,14 @@ Add, in the same file:
 ```julia
 @testset "warm start: unchanged Hamiltonian, partial block, exact seeds" begin
     θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
-    iters = Int[]; cb = info -> push!(iters, info.n_iter)          # returns a Vector, not info: must be tolerated
+    matvecs = Int[]; cb = info -> push!(matvecs, info.n_matvec)    # returns a Vector, not info: must be tolerated
     leaves() = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]
     tree(; keep) = Node(leaves(); solver=LOBPCG(tol=1e-10, callback=cb), compute=8, keep=keep)
     Random.seed!(4)
-    s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = maximum(iters); empty!(iters)
+    s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = last(matvecs); empty!(matvecs)
     s_same = materialize(tree(; keep=lowest(8)), spec, θ; previous=s1)                 # exact eigenvectors as the seed
-    @test energies(s_same) ≈ energies(s1) atol=1e-9 && maximum(iters) < cold; empty!(iters)
+    @test energies(s_same) ≈ energies(s1) atol=1e-9
+    @test last(matvecs) < cold; empty!(matvecs)                                        # H columns, not iterations (amended)
     s_part = materialize(tree(; keep=lowest(3)), spec, θ)                              # compute 8, keep 3: partial warm start
     s_part2 = materialize(tree(; keep=lowest(3)), spec, two_transmons_params(; g=0.101); previous=s_part)
     @test energies(s_part2) ≈ energies(materialize(Node(leaves(); solver=Dense(), keep=lowest(3)), spec, two_transmons_params(; g=0.101))) atol=1e-7
