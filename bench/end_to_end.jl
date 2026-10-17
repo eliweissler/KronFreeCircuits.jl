@@ -28,7 +28,8 @@
 #
 # Further knobs (defaults are the brief's configuration):
 #   BENCH_LEAF_SOLVER   lobpcg (LOBPCG(:ritz) on BENCH_DEVICE) | lanczos (Lanczos() on the host,
-#                       the audit's leaf solver; a labelled substitute)
+#                       the audit's leaf solver) | dense (Dense() on the host); the last two are
+#                       labelled substitutes
 #   BENCH_LEAF_MAXITER  LOBPCG maxiter at the leaves (default 1000, the solver default)
 #   BENCH_LEAVES        which leaves the `leaf` stage times (default "1,2")
 #   BENCH_WARMUP        1: one untimed full-size run before the samples of the leaf-dominated
@@ -51,7 +52,7 @@ const NEV = parse(Int, get(ENV, "BENCH_NEV", SMOKE ? "12" : "120"))
 const STAGES = split(get(ENV, "BENCH_STAGES", "leaf,tree,parts,f3,f9,f8"), ",")
 const TOL = 1e-8
 const LEAF_SOLVER = get(ENV, "BENCH_LEAF_SOLVER", "lobpcg")
-LEAF_SOLVER in ("lobpcg", "lanczos") || error("BENCH_LEAF_SOLVER must be lobpcg or lanczos")
+LEAF_SOLVER in ("lobpcg", "lanczos", "dense") || error("BENCH_LEAF_SOLVER must be lobpcg, lanczos or dense")
 const LEAF_MAXITER = parse(Int, get(ENV, "BENCH_LEAF_MAXITER", "1000"))
 const LEAVES = parse.(Int, split(get(ENV, "BENCH_LEAVES", "1,2"), ","))
 const WARMUP = get(ENV, "BENCH_WARMUP", "1") == "1"
@@ -71,7 +72,8 @@ end
 reset!(c::Counter) = (c.n_iter = 0; c.n_matvec = 0; c)
 counted(c::Counter; kw...) = LOBPCG(; on=ON, callback=info -> (c.n_iter = info.n_iter; c.n_matvec = info.n_matvec; nothing), kw...)
 work(c::Counter) = Dict("iterations" => c.n_iter, "n_matvec" => c.n_matvec)
-leaf_solver(c::Counter) = LEAF_SOLVER == "lanczos" ? Lanczos() : counted(c; maxiter=LEAF_MAXITER)
+leaf_solver(c::Counter) = LEAF_SOLVER == "lanczos" ? Lanczos() : LEAF_SOLVER == "dense" ? Dense() :
+                          counted(c; maxiter=LEAF_MAXITER)
 
 function build_tree(; grid=(-6π, 6π, NPTS))
     cs = Dict("leaf1" => Counter(0, 0), "leaf2" => Counter(0, 0), "root" => Counter(0, 0))

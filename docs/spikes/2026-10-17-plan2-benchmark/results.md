@@ -16,7 +16,8 @@ Package source: commit `c28d67c` plus the benchmark scripts of the commit that a
   On CPU, 291 of 300 pairs converge after 266 s; on the A4500, 294 of 300 after 192 s.
   With `maxiter = 3000` (a diagnostic, not the configuration) the 300 requested pairs converge, but the guard columns do not, so the solve runs all 3000 iterations: 294 s on CPU, 217 s on the A4500.
   `Lanczos()` solves the same leaf in 84 s, which matches the audit's 90.4 s.
-- **The rest of the pipeline was measured with `Lanczos()` leaves as a labelled substitute.**
+  `Dense()` (the default for nodes up to 10 000 states; this leaf has 9331) solves it in 69 s on 8 CPU threads, the fastest of the three.
+- **The rest of the pipeline was measured with `Lanczos()` leaves as a labelled substitute** (measured before the `Dense()` leaf row was added; the parent rows do not depend on the leaf solver).
   A full-tree materialization takes 237 s on CPU: two 84 s leaves, a 68 s cold parent solve, and about 0.5 s for everything else.
   On the A4500 the cold parent solve takes 41 s.
   Port formation after the device solve takes 1.24 s on the host with one BLAS thread, about a third of a warm parent solve.
@@ -105,8 +106,11 @@ The root energies of the materialized tree agree with part A's cold energies to 
 | `LOBPCG(:ritz)`, `maxiter = 1000` (the configuration) | **FAILED** after 266.3 s: 291 / 300 converged, maximum residual 5.4e-6, 101 120 H columns | **FAILED** after 191.5 s: 294 / 300 converged, maximum residual 9.7e-7, 97 637 H columns |
 | `LOBPCG(:ritz)`, `maxiter = 3000` (diagnostic) | 294.1 s, 3000 iterations, 111 671 H columns; 300 pairs validated; 2 of 4 guard columns unconverged (warning) | 217.0 s, 3000 iterations, 103 779 H columns; 300 pairs validated; 2 of 4 guard columns unconverged (warning) |
 | `Lanczos()` (substitute; host), median of 2 per leaf | 84.2 s (84.0–84.4) and 84.1 s (84.0–84.1) | — |
+| `Dense()` (substitute; host), median of 2 per leaf | **69.0 s** (68.9–69.1) and **69.0 s** (69.0–69.0) | not run (no device `Dense`) |
 
-The leaf energies agree to 2.1e-11 across all three converged solves: CPU `LOBPCG` (3000), GPU `LOBPCG` (3000) and `Lanczos`.
+The leaf energies agree to 2.1e-11 across all three converged iterative solves: CPU `LOBPCG` (3000), GPU `LOBPCG` (3000) and `Lanczos`.
+`Dense` agrees with `Lanczos` to 3.4e-12, with residuals of 3.0e-11 and orthonormality error of 1.3e-14.
+`Dense` builds the 9331 × 9331 matrix (1.4 GB) and calls `eigen!(Hermitian(A), 1:300)`; it needs no tuning, so it is the right leaf solver at this size.
 A progress trace of the GPU solve (an exploratory run, not saved) showed the pattern.
 No column locks in the first 100 iterations, which take 71 s and 30 704 H columns.
 296 columns are locked at iteration 1000 and all 300 by iteration 1400 (about 195 s).
@@ -120,6 +124,9 @@ So `D` resolves neither the low-lying structure nor the stiff high-frequency par
 This diagnosis was not tested further.
 
 ### Stage breakdown, with `Lanczos()` leaves
+
+Every leaf-dependent row below used `Lanczos()` leaves; the parent and port rows used `LOBPCG(:ritz)` at the parent and do not depend on the leaf solver.
+With `Dense()` leaves the full tree would take about 30 s less on CPU (2 × (84 − 69) s), an estimate that was not measured.
 
 The parent stays `LOBPCG(:ritz)` on the run's device.
 Each line is a separate measurement.
@@ -171,6 +178,8 @@ All of these are observations, not speed gates.
   The smoke-sized version (101 → 151 points) shows the same pattern on both devices.
 - **F6 (asymmetric `full_zero_pi.json`).** Not run: it needs its own three-mode tree, and there was no time left in this task for it.
 
+Not run at full size: **F3 and F8** (smoke size only) and **F6** (not run at any size).
+
 ### Warnings
 
 The run logs (`logs/`) and the `warning_counts` field of each JSON file record the warnings.
@@ -181,6 +190,21 @@ They are:
 - guard-column warnings on every 300-state LOBPCG leaf solve that returned, and on many smoke-sized ones;
 - five branch-phase hybridization warnings at the full-size parent (kept states 15, 46, 50, 67 and 83);
 - one guard warning in part A (CPU, `:jacobi`, guard 4).
+
+## Findings
+
+(a) A diagonal (Jacobi or per-Ritz) preconditioner is weak on a phase-grid leaf, because the kinetic stencil dominates the operator there, not its diagonal.
+At a branch the diagonal holds the children's energies, which is why the same preconditioner works on part A's parent.
+The next leaf optimization is a grid-aware preconditioner (a kinetic, Teter-style one, or shift-and-invert), not more iterations.
+
+(b) On stiff leaves the guard columns can keep the solve running to `maxiter` after the requested states have converged (all 300 by iteration about 1400 on the A4500, then 1600 more iterations for the guards).
+The guard policy needs a stopping rule for that case.
+
+(c) Device-side port formation is the next optimization on the parent side: host port formation after a device solve is a third of a warm parent solve.
+
+(d) The 301-point grid is too small for 300 kept states.
+Edge warnings fire on every leaf, and widening the grid to 451 points shifts the lowest 20 energies by up to 0.12 GHz.
+The fixture is therefore a timing fixture, not a converged physics fixture.
 
 ## Expectations
 
@@ -199,7 +223,7 @@ The configured `LOBPCG(:ritz)` leaf does not converge 300 states within `maxiter
 Raising `maxiter` to 3000 converges them in 217 s (GPU) and 294 s (CPU), 2.6–3.5× slower than `Lanczos()` at 84 s, and the guard columns still do not converge.
 **The leaf solver is the stage to optimize next.**
 LOBPCG needs a preconditioner that sees the off-diagonal phase-grid structure, for example an exact solve with each one-dimensional factor, or a shift-and-invert of the dominant axis.
-Until then, `Lanczos()` is the practical choice for cold primitive leaves.
+Until then, `Dense()` (69 s) is the practical choice for a leaf of this size, and `Lanczos()` for a few states of a leaf too large for `Dense`.
 
 **Part B, port formation after the device solve visible as its own line: met.**
 It takes 1.24 s at the parent on the host with one BLAS thread, against 0.25 s on eight CPU threads.
@@ -245,6 +269,7 @@ cd ~/kronfree-plan2-ci && env <variables> BENCH_COMMIT=c28d67c timeout 590 ~/.ju
 | `end_to_end-{cpu,gpu}-leaf.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=… BENCH_STAGES=leaf BENCH_LEAVES=1 BENCH_WARMUP=0 BENCH_LEAF_REPEATS=1` |
 | `end_to_end-{cpu,gpu}-leaf-maxiter3000.json` | `bench/end_to_end.jl` | the same plus `BENCH_LEAF_MAXITER=3000` |
 | `end_to_end-cpu-lanczos-leaf.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=leaf BENCH_LEAVES=1,2 BENCH_WARMUP=0 BENCH_LEAF_REPEATS=2` |
+| `end_to_end-cpu-dense-leaf{1,2}.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=dense BENCH_STAGES=leaf BENCH_LEAVES=1` (then `=2`) `BENCH_WARMUP=0 BENCH_LEAF_REPEATS=2`, with `BENCH_COMMIT=2b8c8ee+dense` |
 | `end_to_end-cpu-lanczos-tree.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=tree BENCH_WARMUP=0 BENCH_LEAF_REPEATS=1` |
 | `end_to_end-{cpu,gpu}-lanczos-parts.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=… BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=parts BENCH_WARMUP=0 BENCH_LEAF_REPEATS=0 BENCH_REPEATS=2` |
 | `end_to_end-cpu-lanczos-f9.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=f9` |

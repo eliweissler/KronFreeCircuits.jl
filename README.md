@@ -33,15 +33,15 @@ The spec's scalar constant is added at the root only, so the `energies` of child
 Bare-state bookkeeping (labels, overlaps) is available through `bare_labels` and `bare_overlaps`.
 
 Each node has one of three solvers.
-`Dense()` diagonalizes the full product-space matrix: use it for small nodes (it warns above 10 000 states) and whenever every eigenpair is wanted (`compute = 0`).
+`Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
 `Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.
 `LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
 Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shifted Jacobi) or `:none`.
 `eta` regularizes `:ritz` and is in the Hamiltonian's energy units (GHz for these specs), so it must be set again for another energy scale.
 `guard` extra random columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
 Both preconditioners use only the diagonal of `H`.
-They work well at a retained parent, whose diagonal holds its children's energies, and poorly where the diagonal says little about the spectrum: in the plan-2 benchmark, a 300-state zero-pi leaf on a charge × phase-grid basis did not converge within the default `maxiter`, while `Lanczos()` took 84 s.
-Use `LOBPCG` for retained parents and parameter sweeps, `Lanczos` for large primitive leaves, and `Dense` for small nodes.
+They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil dominates: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
+Use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start or a future grid-aware preconditioner), and `Lanczos` for a few states of a large, stiff leaf.
 
 `materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
 Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.
