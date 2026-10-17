@@ -27,7 +27,7 @@ to_device(H::KronFreeOperator) = KronFreeCircuits._on_storage(H, CuArray)
     @test Array(mul!(Yd, Hd, Xd)) ≈ mul!(similar(Xh), Hh, Xh)
     mul!(Yv, Hd, Xv); mul!(Yv, Hd, Xv)
     CUDA.synchronize()
-    @test (CUDA.@allocated mul!(Yv, Hd, Xv)) < 4096
+    @test (CUDA.@allocated mul!(Yv, Hd, Xv)) == 0
     @test diagonal(Hd) ≈ diagonal(Hh)
     # Matrix is host-only by contract: a device operator is rejected with an informative error.
     @test_throws ArgumentError Matrix(Hd)
@@ -44,6 +44,17 @@ end
     # reach the fused method, not the generic broadcast-and-reduce fallback.
     m = which(_diagonal_expectation!, Tuple{typeof(view(theta, 1:3)), typeof(D), typeof(X[:, 1:3])})
     @test m.module === Base.get_extension(KronFreeCircuits, :KronFreeCircuitsCUDAExt)
+    # The Ritz preconditioner on device arrays: its first precondprep! (the Ritz initialization)
+    # and ldiv! allocate no device memory after warm-up.
+    P = RitzJacobi(D, 7; eta=0.01)
+    R = CuArray(randn(rng, ComplexF64, 5000, 7))
+    LOBPCGEigensolver.precondprep!(P, X); ldiv!(P, R)
+    P.ready = false                                 # the next precondprep! is a first one again
+    CUDA.synchronize()
+    @test (CUDA.@allocated LOBPCGEigensolver.precondprep!(P, X)) == 0
+    @test P.ready && P.width == 7
+    CUDA.synchronize()
+    @test (CUDA.@allocated ldiv!(P, R)) == 0
 end
 
 @testset "LOBPCG on the device equals Dense on the host" begin
@@ -135,8 +146,7 @@ end
         allocs[w] = CUDA.@allocated mul!(Y, H, X)
         @test Array(Y) ≈ ref * Array(X)
     end
-    @test allocs[8] <= allocs[3] + 1024        # one block-sized temporary would add >= 5 * N * 16 bytes
-    @test allocs[3] < 4096
+    @test allocs[3] == 0 && allocs[8] == 0     # CUDA.@allocated counts device memory only, no host metadata
     @test H.buf1 === b1 && H.buf2 === b2 && H.blockinds[3] === i3 && H.blockinds[8] === i8
 end
 
@@ -222,6 +232,7 @@ LinearAlgebra.mul!(Y::AbstractVecOrMat, W::WidthRecorder, X::AbstractVecOrMat) =
     # exact) where the host one fails; the outcome must be an informative rejection or valid pairs.
     Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5)
     out = try solve(LOBPCG(on=CuArray), Hc, 3; X0=randn(ComplexF64, 30, 3)) catch e; e end
+    @info "S1, H = c I warm start on the device: " * (out isa Exception ? "rejected" : "converged")
     if out isa Exception
         @test out isa ErrorException && occursin("Dense", out.msg)
     else
@@ -235,6 +246,7 @@ end
     # Device adjustment (as in S1): an informative rejection or valid pairs.
     for H in (KronFreeOperator([30], AxisTerm[]), KronFreeOperator([30], AxisTerm[]; constant=2.5))
         out = try solve(LOBPCG(on=CuArray), H, 3) catch e; e end
+        @info "S3, H = $(real(H.diag[1])) I cold start on the device: " * (out isa Exception ? "rejected" : "converged")
         if out isa Exception
             @test out isa ErrorException && occursin("Dense", out.msg)
         else
