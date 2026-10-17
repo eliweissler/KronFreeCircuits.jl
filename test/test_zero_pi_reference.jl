@@ -242,6 +242,8 @@ end
         W = kron(Matrix{ComplexF64}(I, 10, 10), z.vectors)
         Hproj = W' * (primitive_hamiltonian(terms, θ, prim; constant=c(θ)) * W)
         @test norm(Hproj - Hproj') < 1e-9
+        Hm = Matrix(KronFreeCircuits.operator(s))                     # the operator under test at the root
+        @test norm(Hm - Hm') < 1e-9 && norm(Hm - Hproj) < 1e-8
         Fq = eigen(Hermitian(Hproj))
         @test energies(s) ≈ Fq.values[1:m] atol=1e-7
         @test maximum(_residuals(Hproj, energies(s), eigenvectors(s))) < 1e-7
@@ -314,4 +316,12 @@ end
     fine = [grid_run(PhaseGrid(-10π, 10π, N; order=8)) for N in (201, 401, 801)]   # refine at a fixed interval
     @test issorted([f.err for f in fine]; rev=true)
     CATALOGUE_SLOW["F9"] = (wide=[(w.edge, w.err) for w in wide], steps=steps, fine=[(f.edge, f.err) for f in fine])
+end
+
+# The slow-case measurements, printed once for the outcomes record (observations, not assertions).
+println("Catalogue slow-case measurements:")
+for k in sort!(collect(keys(CATALOGUE_SLOW)))
+    v = CATALOGUE_SLOW[k]
+    println("  ", k, ":")
+    foreach(r -> println("    ", r), v isa Vector ? v : [v])
 end

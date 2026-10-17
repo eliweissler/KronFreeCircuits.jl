@@ -63,8 +63,10 @@ Reference: the explicit primitive matrix and its two parity blocks diagonalized 
   - Cause: the even and odd levels pair up to rounding, because the wavefunctions never reach the edge of the window. `Dense` may return any rotation inside each pair, and the public path has no way to request parity-resolved vectors.
   - Effect: `connected` follows those rotations across both sectors and keeps one member of a pair without its partner. On this machine the kept indices are `[1, 2, 3, 4, 5, 6, 8, 9, 10, 11]`: the partners 7 (pair at 57.62) and 12 (pair at 144.01) are left out, and the parity leakage of the kept span is `‖[Π, VV']‖ = 0.0138`.
   - Minimal reproduction: the inline `cos 2φ` spec in the testset (`E_C = 1.2`, `E_2 = 3`, `n_g = 0.5`), `ChargeBasis(20)`, Dense with `compute = 12`, `keep = connected([1], (:varphi_1, expiphi(2)), 0.05)`.
-  - What the test asserts: the outcome depends on how the BLAS rotates each pair, so the test asserts the diagnosis instead, which holds on every machine. Either the kept span is parity invariant (leakage below `1e-8`), or the kept set leaves out at least one computed state within `1e-8` (relative) of a kept energy, and adding those states removes the leakage (observed `2.9e-15`).
-    An `@info` line names the branch taken and both leakage values.
+  - What the test asserts: the outcome depends on how the BLAS rotates each pair, so the test asserts the diagnosis instead, which holds on every machine.
+    The clusters come from the independently diagonalized parity blocks: the eigenvalues within `1e-8` (relative) of a kept energy.
+    The kept span lies inside those clusters, and it leaks parity (`‖[Π, VV']‖ ≥ 1e-8`) only if it is rank-deficient in at least one of them.
+    An `@info` line names the split clusters and the leakage; here, the pairs at E = 57.62 and 144.01, leakage 0.0138.
   - Proposed fix: cluster closure by an energy tolerance in `select`. Every rule would keep or drop a near-degenerate cluster whole, consistent with spec §11.4 (near-degenerate kept states).
   - No change was made to the package.
 
@@ -87,7 +89,8 @@ Reference: the 289-dimensional primitive matrix and its exchange operator; the p
 - The primitive Hamiltonian commutes with exchange (`1e-12`).
 - Every kept state has definite exchange parity (`1e-8`), matching the primitive reference.
   Each excitation pair has one symmetric and one antisymmetric member.
-- The Bell-like moduli on `|1,0⟩` and `|0,1⟩` are 0.707105 and 0.707104, equal to each other by symmetry to `1e-8`, and they are 1/√2 rather than 1/2.
+- In each single-excitation state, the Bell-like coefficients on `|1,0⟩` and `|0,1⟩` have equal moduli, by symmetry to `1e-8`.
+  Those moduli are 0.707105 in state 2 and 0.707104 in state 3: 1/√2, not 1/2.
 - The antisymmetric states vanish on the exchange diagonal (`1e-9`).
 - The energies match the projected reference to `1e-8` and the primitive reference to `1.8e-7` (the retained-subspace error).
 - No diagnostics are emitted. Anchor cancellation is not triggered, which the catalogue says must not be relied on; T4 covers it deterministically.
@@ -102,9 +105,12 @@ A small step follows (`n_g + 1e-3`), warm-started from the all-asymmetries point
 - The charging matrix is positive definite at every point.
 - Leaf: true residuals against the independent primitive leaf matrix stay below `1e-9`. The leaf operator matrix equals that primitive matrix at the all-asymmetries point.
 - Root: the projected Hamiltonian `W' H W` is assembled from the 7878-dimensional primitive matrix. It is Hermitian to `1e-10`, its spectrum matches to `1e-8`, and the residuals stay below `1e-8`.
+  The root operator under test (`operator(sys)`, as a dense matrix) is Hermitian and equals that projection to `1e-9`; in the slow version, to `1e-8`.
   The projector onto the complete lowest 4 matches.
   The projected ports (`n_θ`, `φ`, `n_ζ`) match their primitive counterparts on the explicit states and are Hermitian.
-- `:ritz` and `:jacobi` on the same root operator, cold and warm, are all valid. Work in H columns:
+- `:ritz` and `:jacobi` were run on the same root operator, cold and warm.
+  The test requires `:ritz` to converge, and allows `:jacobi` either to converge or to fail with an explicit nonconvergence error; here all of them converged.
+  The work in H columns below was measured separately, with the same configuration:
 
 | point | `:ritz` cold | `:ritz` warm | `:jacobi` cold | `:jacobi` warm |
 | --- | --- | --- | --- | --- |
@@ -256,4 +262,5 @@ All outputs are finite. Warnings are captured with `@test_logs`.
 
 Default suite (`Pkg.test()`, wall clock including precompilation checks) on this machine: 96.3 s before Task 10 and 108.2 s after it (+11.9 s, within the ~15 s allowance).
 The added testsets' in-suite times include compilation that later testsets no longer pay; see the Task 10 report for the per-testset figures.
-The slow catalogue testsets take about 4 minutes together: F3 38 s, F6 2 min 55 s, F8 11 s, F9 21 s.
+In the full gated run (`KRONFREE_SLOW_TESTS=1 Pkg.test()`, 7 min 35 s in total), the slow catalogue testsets take F3 20.5 s, F6 2 min 48 s, F8 9.2 s and F9 19.8 s.
+The gated file prints its measurements (`CATALOGUE_SLOW`) at the end of the run; the F3, F6, F8 and F9 numbers above come from that record. The work counts reproduce exactly between runs; the F6 times in the table are from an earlier run of the same testsets and vary by about 10 %.

@@ -58,22 +58,27 @@ KronFreeCircuits.ports_needed(r::_PermutedSelection) = Tuple{Symbol,Port}[r.port
             # may return any rotation inside a pair, and the public path offers no way to request
             # parity-resolved vectors.  `connected` follows those rotations and can keep one member of a pair
             # without its partner: selection rules do not close over near-degenerate clusters (a contract
-            # gap, decision pending; see outcomes.md).  Asserted deterministically: either the kept span is
-            # parity invariant, or its parity leakage is explained by split near-degenerate clusters and
-            # nothing else (closing the kept set over computed partners within 1e-8 relative removes it).
-            leak(W) = norm(Π * (W * W') - (W * W') * Π)
-            all12 = materialize(Node([:varphi_1 => b]; compute=12, keep=lowest(12)), terms, θ)
-            Ec, Vc = energies(all12), eigenvectors(all12)              # the same computed pairs, all kept
-            kept = sys.root.kept
-            @test Vc[:, kept] ≈ V atol=1e-10
-            @test Ec[kept] ≈ E atol=1e-10
-            closure = sort(unique([j for j in eachindex(Ec), k in kept if abs(Ec[j] - Ec[k]) <= 1e-8 * max(1, abs(Ec[k]))]))
-            lk, lc = leak(V), leak(Vc[:, closure])
-            split = setdiff(closure, kept)
-            @test lk < 1e-8 || (!isempty(split) && lc < 1e-8)
-            @info "F2 n_g = 1/2: " * (lk < 1e-8 ? "kept span parity invariant" :
-                                      "parity leakage from split near-degenerate pairs (unkept partners $split)") *
-                  ", ‖[Π, VV']‖ = $(round(lk; sigdigits=3)), closed over clusters $(round(lc; sigdigits=3))"
+            # gap, decision pending; see outcomes.md).  Asserted without depending on the rotation: the
+            # clusters are built from the independently diagonalized parity blocks (eigenvalues within 1e-8
+            # relative of a kept energy); the kept span lies inside them, and it leaks parity only if it is
+            # rank-deficient in at least one cluster (a split pair).
+            tol(e) = 1e-8 * max(1, abs(e))
+            Fe, Fo = eigen(Hermitian(A[ev, ev])), eigen(Hermitian(A[.!ev, .!ev]))
+            cols, λ = Vector{ComplexF64}[], Float64[]
+            for (F, mask) in ((Fe, ev), (Fo, .!ev)), j in eachindex(F.values)
+                any(e -> abs(F.values[j] - e) <= tol(e), E) || continue
+                q = zeros(ComplexF64, length(nv)); q[mask] = F.vectors[:, j]
+                push!(cols, q); push!(λ, F.values[j])
+            end
+            Q = reduce(hcat, cols)                                   # parity-resolved, orthonormal
+            @test norm(Q * (Q' * V) - V) < 1e-8                      # span(V) ⊂ span of the kept clusters
+            clusters = unique([findall(l -> abs(l - e) <= tol(e), λ) for e in E])
+            ranks = [count(>(1e-6), svdvals(Q[:, c]' * V)) for c in clusters]
+            split = [λ[c[1]] for (c, r) in zip(clusters, ranks) if r < length(c)]
+            leak = norm(Π * (V * V') - (V * V') * Π)
+            @test leak < 1e-8 || !isempty(split)                     # leakage only through split clusters
+            @info "F2 n_g = 1/2: " * (isempty(split) ? "no cluster split" : "split near-degenerate pairs at E = $(round.(split; digits=4))") *
+                  ", ‖[Π, VV']‖ = $(round(leak; sigdigits=3))"
         end
     end
 end
@@ -132,9 +137,8 @@ end
     fock = FockBasis(6; phi_zpf=(2θa.E_Cz / θa.E_L)^(1 / 4))
     prim = [:theta => cb, :phi => grid, :zeta => fock]
     m = 4; kz = 8
-    matvecs = Int[]; record = info -> push!(matvecs, info.n_matvec)
     zpnode = Node([:theta => cb, :phi => grid]; solver=Dense(), compute=kz, keep=lowest(kz))
-    top(pc) = Node([zpnode, :zeta => fock]; solver=LOBPCG(tol=1e-9, preconditioner=pc, callback=record), compute=m,
+    top(pc) = Node([zpnode, :zeta => fock]; solver=LOBPCG(tol=1e-9, preconditioner=pc), compute=m,
                    keep=lowest(m), ports=[(:theta, nport()), (:phi, phiport()), (:zeta, nport())])
     mat(t, θ; kw...) = @test_logs (:warn, r"edge") match_mode=:any materialize(t, terms, θ; constant=c, kw...)
     configs = [("symmetric", θs), ("dE_J", merge(θs, (dE_J=θa.dE_J,))), ("dC_J", merge(θs, (dC_J=θa.dC_J,))),
@@ -147,7 +151,6 @@ end
         @test isposdef(Symmetric(EC))                            # the charging matrix stays positive definite
         # each asymmetry is a step from the symmetric solution; the small step is from all asymmetries on
         prev = name == "symmetric" ? nothing : name == "all, small step" ? sys_all : sys_sym
-        empty!(matvecs)
         sys = mat(top(:ritz), θ; previous=prev)
         name == "symmetric" && (sys_sym = sys); name == "all" && (sys_all = sys)
         # the zero-pi leaf: its matrix and its eigenpairs against the independent primitive matrix
@@ -173,16 +176,20 @@ end
             @test P ≈ Ψ' * O * Ψ atol=1e-9
             @test P ≈ P' atol=1e-10
         end
-        # fixed (:jacobi) and adaptive (:ritz) Jacobi on the same root operator, cold and warm:
-        # valid output or an explicit nonconvergence error; no required speed ordering
+        # the operator under test at the root: Hermitian and equal to the independent projection
         H = KronFreeCircuits.operator(sys)
+        Hm = Matrix(H)
+        @test norm(Hm - Hm') < 1e-10 && norm(Hm - Hproj) < 1e-9
+        # fixed (:jacobi) and adaptive (:ritz) Jacobi on that operator, cold and warm: :ritz must converge,
+        # :jacobi gives valid output or an explicit nonconvergence error; no required speed ordering
         for pc in (:ritz, :jacobi), X0 in (nothing, prev === nothing ? nothing : prev.root.vectors[:, 1:m])
-            out = try KronFreeCircuits.solve(LOBPCG(tol=1e-9, preconditioner=pc), H, m; X0=X0) catch e; e end
+            out = try KronFreeCircuits.lobpcg_solve(LOBPCG(tol=1e-9, preconditioner=pc), H, m; X0=X0) catch e; e end
             if out isa Exception
-                @test out isa ErrorException && occursin("did not converge", out.msg)
+                @test pc === :jacobi && out isa ErrorException && occursin("did not converge", out.msg)
             else
                 @test out[1] ≈ Fq.values[1:m] atol=1e-8
-                @test maximum(_residuals(Hproj, out...)) < 1e-8
+                @test maximum(_residuals(Hproj, out[1], out[2])) < 1e-8
+                @test out[3].n_matvec > 0
             end
         end
     end
