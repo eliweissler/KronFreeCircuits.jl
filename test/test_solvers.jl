@@ -70,6 +70,12 @@ end
     @test occursin("Dense", err.msg)
     @test_throws ArgumentError solve(LOBPCG(), H, 0)
     @test_throws ArgumentError LOBPCG(preconditioner=:magic)
+    # A device storage type without the CUDA extension loaded is rejected before any work.
+    struct NotAnArray end
+    if Base.get_extension(KronFreeCircuits, :KronFreeCircuitsCUDAExt) === nothing
+        err = try solve(LOBPCG(on=NotAnArray), three_oscillators(6), 3); nothing catch e; e end
+        @test err isa ArgumentError && occursin("CUDA", err.msg)
+    end
     @test_throws ArgumentError LOBPCG(guard=-1)
     H6 = three_oscillators(6)
     err = try solve(LOBPCG(tol=1e-14, maxiter=1), H6, 5); nothing catch e; e end

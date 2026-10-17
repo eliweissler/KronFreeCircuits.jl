@@ -48,6 +48,9 @@ coupling = [Term(Coefficient(0.05), [Factor(:varphi_1, nport()), Factor(:res, Po
 sys = materialize(top, spec, θ; extra_terms=coupling)
 ```
 
+A given system's `energies` must not include a constant that the parent also adds (for example a circuit spec's root constant), because the spec-form `materialize` adds `constant_term(spec)` once.
+If the given system is built from a materialized `System`, subtract it: `energies(sys) .- real(sys.constant(sys.θ))`.
+
 A term whose factors all lie on the given mode (a drive or a Stark shift) is applied at its parent through the given operators.
 
 Each node has one of three solvers.
@@ -58,6 +61,8 @@ Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shi
 `eta` regularizes `:ritz` and is in the Hamiltonian's energy units (GHz for these specs), so it must be set again for another energy scale.
 `callback` is called with each iteration's `info` named tuple, and its return value is ignored.
 `guard` extra random columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
+On a stiff grid leaf the random guard columns set the iteration count and emit the guard warning even on a warm start, because guards start random either way.
+`guard=0` avoids this for warm leaf sweeps at the documented completeness cost; a guard stopping rule is an open item (spec §20c execution notes).
 Both preconditioners use only the diagonal of `H`.
 They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, plausibly (this is untested) because the kinetic stencil dominates there: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
 Use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start or a future grid-aware preconditioner), and `Lanczos` for a few states of a large, stiff leaf.

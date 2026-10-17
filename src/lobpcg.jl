@@ -201,6 +201,10 @@ block, it is retried once from a random block with a warning. A failure on a ran
 an error. Unconverged pairs raise an error and are never retried.
 """
 function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
+    if s.on !== Array && Base.get_extension(KronFreeCircuits, :KronFreeCircuitsCUDAExt) === nothing
+        throw(ArgumentError("LOBPCG(on=$(s.on)) needs `using CUDA, cuTENSOR` so the KronFreeCircuits CUDA extension loads; " *
+                            "without it the device path falls back to allocating methods"))
+    end
     N = size(H, 1)
     m >= 1 || throw(ArgumentError("LOBPCG requires m >= 1, got $m"))
     N >= 3m + 5 || throw(ArgumentError("LOBPCG needs N ≥ 3m + 5, got N = $N for m = $m; " *

@@ -344,7 +344,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # (4) Diagonalize.
     _dense_too_large(node.solver, prod(dims)) &&
         @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
-              "LOBPCG is advised", _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
+              (all(c -> c isa Basis, children) ?
+                   "this is a leaf: Lanczos for a few states, or LOBPCG only with a warm start; see README" :
+                   "this is a branch: LOBPCG is advised"), _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
     m = _compute_count(node, dims)
     E, V = _solve(node.solver, H, m, prev, dims)
 

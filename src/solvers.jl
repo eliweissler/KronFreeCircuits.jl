@@ -17,7 +17,7 @@ function solve(::Dense, H::KronFreeOperator, m::Int)
     return Vector{Float64}(F.values), Matrix{ComplexF64}(F.vectors)
 end
 
-# Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); LOBPCG is advised.
+# Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); LOBPCG is advised at a branch, Lanczos or a warm-started LOBPCG at a stiff leaf.
 const _DENSE_WARN_DIM = 10_000
 _dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM
 

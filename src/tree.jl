@@ -38,7 +38,10 @@ through its public interface only.
   out gives a warning), then discarded, and the lowest `m` pairs of the
   sorted block are returned. Guards make exact excited-state seeds and sector-confined seeds
   recoverable in practice; they are not a completeness guarantee. The guard shrinks so that the
-  block fits `N ≥ 3(m + guard) + 5`.
+  block fits `N ≥ 3(m + guard) + 5`. On a stiff grid leaf the random guard columns set the
+  iteration count and emit the guard warning even on a warm start, because guards start random
+  either way; `guard=0` avoids this for warm leaf sweeps at the documented completeness cost.
+  A guard stopping rule is an open item (spec §20c execution notes).
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called with the solver's per-iteration `info` named tuple;
   its return value is ignored, and an exception it throws propagates unchanged.
