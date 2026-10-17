@@ -45,13 +45,13 @@ cached energy of active column `j`. At the first `precondprep!` the cache is the
 expectation `Σ_i D_i |X_ij|² / Σ_i |X_ij|²` of each column; afterwards it holds the previous
 iteration's Ritz values, copied in by `_ritz_update!` from the solver callback (hand
 `solver_callback(P, user)` to `lobpcg`), with the newly locked prefix dropped.
-`capacity` is the full block width. With `trace = true`, each `precondprep!` pushes
+`capacity` is the full block width; `eta` is stored in the diagonal's real type. With `trace = true`, each `precondprep!` pushes
 `(width, copy of the active cache)` to `P.trace`.
 """
-mutable struct RitzJacobi{V,W}
+mutable struct RitzJacobi{V,W,R<:Real}
     D::V
     theta::W
-    eta::Float64
+    eta::R
     locked::Int
     width::Int
     ready::Bool
@@ -62,7 +62,7 @@ function RitzJacobi(D::AbstractVector{<:Real}, capacity::Integer; eta::Real, tra
     _check_eta(eta)
     capacity >= 1 || throw(ArgumentError("RitzJacobi: capacity must be positive, got $capacity"))
     theta = fill!(similar(D, capacity), zero(eltype(D)))
-    return RitzJacobi(D, theta, Float64(eta), 0, 0, false, trace ? Any[] : nothing)
+    return RitzJacobi(D, theta, convert(real(eltype(D)), eta), 0, 0, false, trace ? Any[] : nothing)
 end
 
 """
@@ -160,16 +160,18 @@ _lobpcg_preconditioner(s::LOBPCG, D, width::Int) =
     s.preconditioner === :ritz ? RitzJacobi(D, width; eta=s.eta) :
     s.preconditioner === :jacobi ? FixedJacobi(D) : I
 
-# A warm-start block with each column perturbed by sqrt(eps) times its norm along a fixed
-# pseudo-random direction (its own MersenneTwister, never the global RNG). An exactly zero
-# residual column would otherwise become NaN in the eigensolver's orthogonalization.
+# A warm-start block with each column perturbed by a vector of norm sqrt(eps) times the
+# column's norm, along a fixed pseudo-random unit direction (its own MersenneTwister, never the
+# global RNG). An exactly zero residual column would otherwise become NaN in the eigensolver's
+# orthogonalization.
 function _perturbed_seed(T, X0)
     X = Matrix{T}(Array(X0))
     rng = Random.MersenneTwister(0x4b46)
     δ = sqrt(eps(real(T)))
     for j in axes(X, 2)
         c = view(X, :, j)
-        c .+= (δ * norm(c)) .* randn(rng, T, length(c))
+        r = randn(rng, T, length(c))
+        c .+= (δ * norm(c) / norm(r)) .* r
     end
     return X
 end
@@ -186,12 +188,13 @@ _lobpcg_failed(err) =
 The lowest `m` eigenpairs of `H` (`E` ascending, host arrays) and `lobpcg`'s result for the
 full block (`λ, X, residual_norms, residual_history, n_matvec, …`).
 `X0` is an `N × m` initial block (finite, no zero column) or `nothing` (random). `s.guard`
-random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`); every column of the block,
-guards included, is converged (`n_conv_check = m + g`), and the lowest `m` of the sorted block
-are returned.
-Warm starts follow a bounded policy. First, each column of `X0` is perturbed by `sqrt(eps)`
-times its norm along a fixed pseudo-random direction (a seeded `MersenneTwister`, not the global
-RNG), so an exact eigenvector seed no longer has the exactly zero residual that breaks the
+random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`). The eigensolver is asked to
+converge every column of the block, guards included (`n_conv_check = m + g`), and the lowest `m`
+of the sorted block are returned. If `maxiter` runs out with the lowest `m` converged but some
+guard columns not, the pairs are returned with a warning that a lower state may have been missed.
+Warm starts follow a bounded policy. First, each column of `X0` is perturbed by a vector of norm
+`sqrt(eps)` times the column's norm, along a fixed pseudo-random unit direction (a seeded
+`MersenneTwister`, not the global RNG), so an exact eigenvector seed no longer has the exactly zero residual that breaks the
 eigensolver's orthogonalization. Second, if the eigensolver still throws on the warm-start
 block, it is retried once from a random block with a warning. A failure on a random block raises
 an error. Unconverged pairs raise an error and are never retried.
@@ -249,10 +252,13 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
         end
     end
 
-    resid = Array(res.residual_norms)[1:m]
-    bad = count(r -> !(r <= s.tol), resid)
-    bad == 0 || error("LOBPCG: only $(m - bad) of $m eigenpairs converged within $(s.maxiter) iterations " *
-                      "(maximum residual $(maximum(resid)) > tol = $(s.tol))")
+    resid = Array(res.residual_norms)
+    bad = count(r -> !(r <= s.tol), view(resid, 1:m))
+    bad == 0 || error("LOBPCG: $bad of $m eigenpairs did not converge within $(s.maxiter) iterations " *
+                      "(only $(m - bad) converged; maximum residual $(maximum(view(resid, 1:m))) > tol = $(s.tol))")
+    gbad = count(r -> !(r <= s.tol), view(resid, m+1:w))
+    gbad == 0 || @warn "LOBPCG: $gbad of $g guard columns did not converge within $(s.maxiter) iterations; " *
+                       "a lower state may have been missed"
     E = Vector{real(T)}(Array(res.λ)[1:m])
     V = Matrix{T}(Array(view(res.X, :, 1:m)))
     return E, V, res

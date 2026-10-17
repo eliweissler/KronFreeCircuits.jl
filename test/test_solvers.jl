@@ -45,7 +45,8 @@ end
     @test_throws ArgumentError solve(Lanczos(), H, 0)
 end
 
-using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal
+using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
+                         _perturbed_seed
 import LOBPCGEigensolver
 
 @testset "LOBPCG agrees with Dense; all preconditioners; independent validation" begin
@@ -59,7 +60,7 @@ import LOBPCGEigensolver
         @test V * V' ≈ Vd[:, 1:8] * Vd[:, 1:8]' atol=1e-7       # same subspace
         @test issorted(E) && typeof((E, V)) == Tuple{Vector{Float64},Matrix{ComplexF64}}
     end
-    @test Array(_full_diagonal(H)) ≈ diagonal(H)
+    @test Array(_full_diagonal(H)) ≈ real.(diag(kron_three_oscillators(6)))   # independent of _device_diagonal
 end
 
 @testset "LOBPCG argument errors and nonconvergence" begin
@@ -76,6 +77,7 @@ end
     # the guard shrinks to fit: N = 27, m = 7 leaves room for g = 0
     E, V = solve(LOBPCG(tol=1e-10, guard=4), H, 7)
     @test E ≈ solve(Dense(), H, 7)[1] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
 end
 
 @testset "repeated eigenvalue is recovered twice (projector, not just energies)" begin
@@ -94,8 +96,9 @@ end
     H = three_oscillators(6)
     seen = Int[]
     for cb in (info -> push!(seen, info.n_iter), info -> nothing, info -> info)
-        E, _ = solve(LOBPCG(tol=1e-9, preconditioner=:ritz, callback=cb), H, 6)
+        E, V = solve(LOBPCG(tol=1e-9, preconditioner=:ritz, callback=cb), H, 6)
         @test E ≈ solve(Dense(), H, 6)[1] atol=1e-7
+        check_eigenpairs(H, E, V; tol=1e-8)
     end
     @test length(seen) >= 2                          # the first callback recorded iterations
     # an exception from the user's callback propagates unchanged, with no recovery retry
@@ -110,8 +113,11 @@ end
     H = three_oscillators(6)
     Ed, Vd = solve(Dense(), H, 0)
     E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9), H, 6)
-    _, _, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
+    Ew, Vw, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
     @test warm.n_matvec < cold.n_matvec
+    check_eigenpairs(H, E, V; tol=1e-8)
+    check_eigenpairs(H, Ew, Vw; tol=1e-8)
+    @test Ew ≈ Ed[1:6] atol=1e-7
     # an exact warm start from Dense eigenvectors: no recovery warning, same energies, less work than cold
     Ex, Vx, exact = @test_logs lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=Vd[:, 1:6])
     @test Ex ≈ Ed[1:6] atol=1e-8
@@ -147,6 +153,7 @@ end
     Hb = with_block_capacity(H, m)
     res = LOBPCGEigensolver.lobpcg(Hb, X0, I, P, 1e-9, 300; callback=solver_callback(P, cb))
     @test res.λ ≈ solve(Dense(), H, m)[1] atol=1e-7
+    check_eigenpairs(H, res.λ, res.X; tol=1e-8)
     @test length(seen) >= 5                                   # enough iterations to mean something
     @test any(w < m for (w, _) in P.trace)                    # locking actually shrank the active block
     @test seen[end][2] == m
@@ -171,6 +178,27 @@ end
     X = randn(ComplexF64, 64, 7)
     @test Hb * X ≈ kron_three_oscillators(4) * X
     @test_throws ArgumentError with_block_capacity(H, 0)
+end
+
+@testset "warm-start perturbation size, guard nonconvergence warning, eta in the diagonal's type" begin
+    Random.seed!(39)
+    for N in (50, 2000), T in (ComplexF64, Float64)
+        X0 = randn(T, N, 3) .* [1e-3 1 1e3]
+        Xp = _perturbed_seed(T, X0)
+        for j in 1:3
+            @test norm(Xp[:, j] - X0[:, j]) ≈ sqrt(eps(real(T))) * norm(X0[:, j]) rtol=1e-6
+        end
+        @test _perturbed_seed(T, X0) == Xp                     # deterministic, independent of the global RNG
+    end
+    # the lowest m converge but maxiter runs out before the guards do: a warning, not silence
+    H = three_oscillators(6)
+    Ed, Vd = solve(Dense(), H, 0)
+    E, V = @test_logs (:warn, r"guard columns did not converge") solve(LOBPCG(tol=1e-9, maxiter=2), H, 2; X0=Vd[:, 1:2])
+    @test E ≈ Ed[1:2] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-8)
+    # RitzJacobi stores eta in the diagonal's real type
+    P = RitzJacobi(Float32[1, 2, 3], 2; eta=0.01)
+    @test P.eta isa Float32
 end
 
 # ---- Pathological-test catalogue (docs/spikes/2026-10-16-pathological-test-catalogue), Task 4 cases ----
@@ -314,6 +342,7 @@ end
         res = LOBPCGEigensolver.lobpcg(W, randn(ComplexF64, 216, m), I, P, 1e-9, 300;
                                        callback=solver_callback(P, info -> push!(seen, (info.n_locked, copy(info.λs)))))
         @test res.λ ≈ Ed atol=1e-7
+        check_eigenpairs(H, res.λ, res.X; tol=1e-8)
         @test seen[end][1] == m                                   # complete locking
         @test aligned(P, seen)
         @test minimum(W.widths) >= 1 && minimum(first.(P.trace)) >= 1   # no zero-width application or preconditioning
@@ -388,7 +417,7 @@ end
         @test_throws ArgumentError solve(LOBPCG(), H, 4; X0=X0)
     end
     err = try solve(LOBPCG(tol=1e-12, maxiter=2), H, 4); nothing catch e; e end
-    @test err isa ErrorException && occursin("of 4 eigenpairs converged", err.msg) && occursin("residual", err.msg)
+    @test err isa ErrorException && occursin("4 of 4 eigenpairs did not converge", err.msg) && occursin("residual", err.msg)
 end
 
 @testset "F1: free rotor through n_g = 1/2 (operator level)" begin
@@ -423,6 +452,7 @@ end
     E, V = solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 2; X0=Vb)
     @test E ≈ levels(0.5 + 1e-6)[1:2] atol=1e-9
     @test abs2(dot(charge(1), V[:, 1])) ≈ 1 atol=1e-8
+    check_eigenpairs(rotor(0.5 + 1e-6), E, V; tol=1e-9)
     # ground state only: the old ground state stays an exact eigenstate after the crossing (wrong invariant subspace)
     _, Vg = solve(LOBPCG(tol=1e-10), rotor(0.5 - 1e-6), 1)
     E, V = solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 1; X0=Vg)
@@ -434,6 +464,10 @@ end
     # the exactly converged old ground state (zero residual) needs no recovery either
     E, V = @test_logs solve(LOBPCG(tol=1e-10), rotor(0.5 + 1e-6), 1; X0=reshape(charge(0), N, 1))
     @test E ≈ levels(0.5 + 1e-6)[1:1] atol=1e-9
+    _, Vd1 = solve(Dense(), rotor(0.5 + 1e-6), 1)
+    @test abs2(dot(Vd1[:, 1], V[:, 1])) ≈ 1 atol=1e-8           # the same state as Dense (charge 1)
+    @test abs2(dot(charge(1), V[:, 1])) ≈ 1 atol=1e-8
+    check_eigenpairs(rotor(0.5 + 1e-6), E, V; tol=1e-9)
     # small E_J: an avoided crossing, against a dense oracle
     for ng in (0.5 - 1e-6, 0.5, 0.5 + 1e-6)
         H = rotor(ng; EJ=0.1)

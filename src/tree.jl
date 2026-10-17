@@ -34,7 +34,8 @@ through its public interface only.
 - `eta`: the regularization of `:ritz`, in the Hamiltonian's energy units. The default is taken
   from the audit fixture (GHz) and must be set for other energy scales.
 - `guard`: extra random columns appended to every block (cold or warm start). They are extra
-  states: converged with the rest of the block, then discarded, and the lowest `m` pairs of the
+  states: converged with the rest of the block (a guard still unconverged when `maxiter` runs
+  out gives a warning), then discarded, and the lowest `m` pairs of the
   sorted block are returned. Guards make exact excited-state seeds and sector-confined seeds
   recoverable in practice; they are not a completeness guarantee. The guard shrinks so that the
   block fits `N ≥ 3(m + guard) + 5`.
@@ -43,8 +44,8 @@ through its public interface only.
   its return value is ignored, and an exception it throws propagates unchanged.
 
 The operator dimension must satisfy `N ≥ 3m + 5`; smaller problems call for `Dense()`.
-Warm-start columns are perturbed by `sqrt(eps)` of their norm (a fixed pseudo-random direction)
-so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
+Warm-start columns are perturbed by a vector of norm `sqrt(eps)` times the column's norm (a
+fixed pseudo-random direction) so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
 the eigensolver still fails is replaced once by a random block, with a warning.
 """
 struct LOBPCG <: Solver
