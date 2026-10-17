@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give every node the stock LOBPCGEigensolver block solver with fixed and adaptive per-Ritz Jacobi preconditioning and warm starts, apply dense ports at branches through ITensor contractions (cuTENSOR on GPU) behind the existing operator interface, run a node's solve on a CUDA device through a package extension, and make `follow` physically correct across changing child bases.
+**Goal:** Give every node the stock LOBPCGEigensolver block solver with fixed and adaptive per-Ritz Jacobi preconditioning and warm starts, apply dense ports at branches through ITensor contractions (cuTENSOR on GPU) behind the existing operator interface, run a node's solve on a CUDA device through a package extension, make `follow` physically correct across changing child bases, and admit pre-diagonalized subsystems as tree children.
 
 **Architecture:** `KronFreeOperator` becomes the single device-aware operator: it owns device copies of its factor data, fuses every pure-diagonal term into one state-shaped vector applied by a broadcast, applies `DenseOp` factors through scratch-backed ITensor contractions and structured factors through the existing KernelAbstractions kernels. `LOBPCG <: Solver` wraps `LOBPCGEigensolver.lobpcg` through its public `mul!`/`ldiv!`/`precondprep!`/callback interfaces only. Materialization passes a node's previous kept eigenvectors as the initial block and transports them into the current product basis for selection and phase. The CUDA extension adds only what the base cannot express generically (a fused diagonal-expectation kernel); everything else moves to the device through `Adapt`.
 
 **Tech Stack:** Julia 1.13, ITensors 0.9 (NDTensors), LOBPCGEigensolver 0.1.4, KernelAbstractions 0.9/0.10, KrylovKit 0.10, Adapt; CUDA 6.4 and cuTENSOR as weak dependencies; tests on the Mac (CPU) and on `ewdesktop` (RTX A4500) over ssh.
 
-**Spec:** `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`, Sections 8, 9, 9.1 as amended by Section 20c (decisions 1–6 and 9). Evidence and reference implementations: `docs/spikes/2026-10-16-itensor-audit/` (REPORT.md §5, §7; `buffer-layout.jl`, `native-gemm-parent.jl` for the buffered ITensor adapter; `ritz-preconditioner.jl` for the adaptive preconditioner; CORRECTNESS-NOTES.md for the two bugs Tasks 4 and 6 fix).
+**Spec:** `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`, Sections 8, 9, 9.1 as amended by Section 20c (decisions 1–6, 9, 11 and 12). Evidence and reference implementations: `docs/spikes/2026-10-16-itensor-audit/` (REPORT.md §5, §7; `buffer-layout.jl`, `native-gemm-parent.jl` for the buffered ITensor adapter; `ritz-preconditioner.jl` for the adaptive preconditioner; CORRECTNESS-NOTES.md for the two bugs Tasks 4 and 6 fix).
 
 ## Global Constraints
 
@@ -29,6 +29,22 @@
 3. An exactly repeated eigenvalue (`diag(0, 0, 1, …)`) must come back twice from `LOBPCG` and `Dense`; the single-vector `Lanczos` limitation is documented, not silently inherited by the default path. Pinned in Task 4.
 4. A `previous` system whose child kept order differs from the current one must give the same branch energies and ports under `follow`/`:follow`. Pinned in Task 6.
 5. A mixed branch (a `FockBasis` child beside a node child, as in the full zero-pi) runs the fused diagonal, an ITensor dense factor and a banded kernel inside one operator and still equals the Kronecker reference. Pinned in Task 2 and Task 3.
+
+## Catalogue coverage
+
+`docs/spikes/2026-10-16-pathological-test-catalogue/README.md` (Eli, 2026-10-16) lists pathological cases by identifier with corrected expectations. Each task below carries a "Catalogue cases" line; the implementer adds one testset per listed case, named by the identifier, following that case's oracle and expected behavior in the catalogue (a case whose contract is an informative rejection asserts the error). The cases that need the whole pipeline are Task 10.
+
+| Task | Cases |
+|---|---|
+| 2, 3 | O1–O5 (O5's transport part in Task 6); F7 as a term-and-application test |
+| 4 | S1–S8; F1 and F2 at operator level |
+| 5 | F1–F3, F8 (small), S9 |
+| 6 | T1–T3, F5, F10 (T2's changed-basis rejection; T4 in Task 10) |
+| 7 | O1–O5 and S1–S8 representative cases on the device; F3, F7 small |
+| 8 | B1; larger F3, F6, F8, F9 as measurements, not gates |
+| 9 | none; given systems are new |
+| 10 | F4, F6 (small), F8, F10, P1, P2, T4; S3, S4, S6, S7 if Task 4 left them; gated larger F3, F6, F8, F9 |
+
 
 ---
 
@@ -64,6 +80,8 @@
   - `KronFreeOperator(dims, terms::AbstractVector{AxisTerm}; constant=0.0, block_capacity=1, on=Array)`. `on` is the storage array type; every array the operator owns is `adapt(on, …)` at construction. Fields: `dims::Vector{Int}`, `diag` (state-shaped vector, length `prod(dims)`, the sum over all terms whose factors are all `DiagonalOp` of `coeff * ⊗_k d_k` with ones on absent axes, plus `constant`), `terms::Vector{<:Any}` (the remaining terms as device-ready records: coefficient plus, per factor, `(axis, op::LocalOp, data)` where `data` is the adapted array the apply needs: the matrix of a `DenseOp`, the weight matrix and offsets of a `BandedOp`, nothing for `ShiftOp`), `buf1`, `buf2` (shape `(dims..., block_capacity)`, storage `on`), `on`. The `constant` field is removed; `constant` is folded into `diag`.
   - `LinearAlgebra.mul!(y, H, x)`: `Y .= reshape(diag) .* X` first (replacing `fill!`), then the remaining terms accumulate as before, through the same structure-dispatched application now reading factor data from the term record (Task 3 replaces the `DenseOp` branch of that dispatch). `H * x` allocates on `on`.
   - `diagonal(H)::Vector` = `Array(H.diag) + Σ_remaining terms (coeff * ⊗ diagonal(op))`, returned on the host. `Base.Matrix(H)` unchanged in behavior (host only). `Base.eltype(H) = eltype(H.diag)`.
+
+**Catalogue cases:** O3 (extreme shifts and unusual bands), O4 (fused diagonal and cancellation, including exactly cancelling terms and complex coefficients with a real Hermitian diagonal), O5 (workspace ownership: independent instances do not share scratch; factor data never mutated).
 
 - [ ] **Step 1: Write the failing tests** in `test/test_apply.jl`:
 
@@ -116,6 +134,8 @@ end
 **Interfaces:**
 - Consumes: `KronFreeOperator` from Task 2 (`terms` records with the dense matrix as adapted data; `buf1`, `buf2`; `dims`).
 - Produces: inside `KronFreeOperator`, two new fields: `inds::Vector{ITensors.Index}` (one `Index(dims[k])` per axis, created at construction) and `blockinds::Dict{Int,ITensors.Index}` (created on demand per block width). The chain's `DenseOp` application is `_apply_dense!(dst, data, src, k, H, b)` using `ITensors.itensor(array, inds...)` wrappers over `src`, `dst` (and scratch) and the matrix (`itensor(data, inds[k]', inds[k])`), with `ITensors.mul!` / contraction into the wrapped destination; permutations, when the contraction needs them, go through explicit `permutedims!` into the operator's scratch (`docs/spikes/2026-10-16-itensor-audit/buffer-layout.jl` is the reference layout for a middle axis). The public `apply_axis!(Y, ::DenseOp, X, k)` keeps its gemm implementation and is the reference the ITensor path is tested against.
+
+**Catalogue cases:** O1 (axis identity with equal dimensions `(4,4,4)`, singleton axes `(1,5,3)`, distinct nonsymmetric complex factors per axis), O2 (block widths `8 → 3 → 1 → 12 → 2` with sentinels and stale scratch), F7 (the complex three-mode cosine as an adjoint pair of terms, Hermiticity of the sum, three-axis chain; assert the composite-port rejection for the unsupported grouping).
 
 - [ ] **Step 1: Write the failing tests** in `test/test_apply.jl`:
 
@@ -198,6 +218,8 @@ end
   - `check_eigenpairs(H, E, V; tol)` in `test/helpers.jl`: asserts `norm(H * V[:, j] - E[j] * V[:, j]) < tol` for every column and `norm(V' * V - I) < 1e-10`; used by every solver test from here on.
   - `_dense_too_large` warning text in `materialize.jl` changes "Lanczos is advised" to "LOBPCG is advised".
   - `Lanczos` docstring gains the sentence: "A single-vector Krylov space does not resolve repeated eigenvalues (KrylovKit documents this); use `LOBPCG` or `Dense` where exact degeneracies are expected."
+
+**Catalogue cases:** S1–S8 beyond the testsets above: S3 (exact degeneracy, `H = 0`, `H = cI`, tight clusters with a cutoff inside a cluster; projector of the complete lower subspace and membership in the boundary eigenspace), S4 (exact resonance `D[i] == θ_j` gives the finite `R/η`; zero, negative, NaN and infinite `η` rejected before iterating), S5 (complete locking and a single remaining active column; no zero-width backend call), S6 (`aH + bI` with scaled tolerances; the shift finite and strictly below the diagonal), S7 (constant diagonal with strong off-diagonal coupling: valid output or explicit nonconvergence for all three preconditioners), S8 (`m = 1`, `N` at and just below `3m + 5`, malformed `X0` dimensions); F1 and F2 at operator level (free rotor through `n_g = 1/2`; `cos 2φ` sectors with a seed confined to one parity, using the oracle and window correction the catalogue gives).
 
 - [ ] **Step 1: Write the failing tests** in `test/test_solvers.jl` (and `check_eigenpairs` in `test/helpers.jl`; add `LOBPCGEigensolver` to `test/Project.toml`):
 
@@ -325,6 +347,8 @@ end
 - Consumes: `lobpcg_solve`, `LOBPCG.on`, `KronFreeOperator(…; block_capacity, on)`, `prev::MaterializedNode` (`vectors`, `dims`).
 - Produces: in `_materialize`, `storage(::Solver) = Array`, `storage(s::LOBPCG) = s.on`; `H = KronFreeOperator(dims, terms; constant, block_capacity=(node.solver isa LOBPCG ? m + node.solver.guard : 1), on=storage(node.solver))`; `_initial_block(prev, dims, m)` = `nothing` when `prev === nothing` or `prev.dims != dims`, else a copy of `prev.vectors` padded on the right with `randn` columns to `m` (truncated to `m` columns when it has more); `solve(::LOBPCG, …)` receives it as `X0` (the other solvers ignore it). The guess is the raw previous coefficients, never the transported reference of Task 6 (spec §20c, decision 2). Documented limitation: only the *kept* vectors survive in a `MaterializedNode`, so when `compute > keep` the remaining columns start random and the block is only partially warm; retaining the whole computed block in an optional cache is future work. The solver's guard columns and its warm-start recovery policy (Task 4) apply unchanged.
 
+**Catalogue cases:** F1 and F2 through the public path with `previous` across the crossing; F3 (identical uncoupled zero-pis at `g = 0` on the small fixture: sorted pairwise sums, exchange degeneracy, a cutoff inside a cluster); F8 (deliberately inadequate truncation: hierarchical result equals Dense on the same projected Hamiltonian while both differ from the primitive reference); S9 (reordered `indices` selections, increased and decreased `compute`).
+
 - [ ] **Step 1: Write the failing tests** in `test/test_materialize.jl`:
 
 ```julia
@@ -406,6 +430,8 @@ end
   - `_transport_previous(prev::MaterializedNode, children, dims)::Matrix{ComplexF64}` = `(⊗_a S_a') prev.vectors`, applying `DenseOp(Matrix(S_a'))` along each axis `a` whose child is a `MaterializedNode` (`S_a = _child_overlap(prev.children[a], children[a])`), identity on basis axes (after the same basis-equality check). `apply_axis!` forbids aliasing, so the chain copies `prev.vectors` into a fresh array and alternates between two distinct work arrays, one application per transformed axis; `prev.vectors` is never written. At a leaf it returns a copy of `prev.vectors`.
   - `SelectionContext(energies, vectors, ports, previous, reference)`; the four-argument constructor keeps working with `reference = previous === nothing ? nothing : previous.vectors`. `select(::Follow, ctx)` uses `ctx.reference` where it used `ctx.previous.vectors`.
   - In `_materialize`, when `uses_prev` and `prev !== nothing`: `R̃ = _transport_previous(prev, children, dims)` once; it is the `reference` of the `SelectionContext` and the reference handed to `fix_phases!(V, :follow, mask, R̃)`. The basis-equality check runs at every node that uses `prev`, leaves included: a `follow` at a leaf whose grid changed is as wrong as at a branch.
+
+**Catalogue cases:** T1 (gauge covariance through two levels with phases, permutations and rotations of exactly degenerate clusters, two children changed at once, unequal depths), T2 (the rejection tests above), T3 (competing assignments, ties, near-zero assigned overlap, more references than computed states), F5 (a sweep through resonance: fine steps, one jump, a step landing on resonance; the low-overlap warning actually fires), F10 (a raw basis child beside a materialized branch, reversed order, an extra level on one side).
 
 - [ ] **Step 1: Write the failing tests.** In `test/test_selection.jl` a unit test against brute force on hand-built nodes (construct `MaterializedNode` positionally; `ports` empty, `peak_component`/`peak_amplitudes` arbitrary valid values):
 
@@ -496,6 +522,8 @@ end
 - Consumes: everything above with `on=CuArray`; `Adapt`; CUDA's KernelAbstractions backend; NDTensors' CUDA/cuTENSOR extensions (loaded by `using CUDA, cuTENSOR`).
 - Produces: `LOBPCG(; on=CuArray)` works end to end through `materialize`, returning host arrays; `KronFreeCircuitsCUDAExt` defines `KronFreeCircuits._diagonal_expectation!(theta::CuVector, D::CuVector, X::CuMatrix)` as one fused reduction kernel (one block per column, FP64 accumulators; `docs/spikes/2026-10-16-itensor-audit/ritz-preconditioner.jl` lines 22–50 are the reference) so the Ritz initialization allocates no `N×k` temporary. Tests live in `test/cuda/` and run only there.
 
+**Catalogue cases:** O1, O2, O4 and S1, S3, S5 on `CuArray` as small correctness cases; F3 and F7 small through `LOBPCG(on=CuArray)`; `CUDA.@allocated` bounds only after warm-up and synchronization (catalogue Section 2).
+
 - [ ] **Step 1: Write the device tests** in `test/cuda/test_device.jl` (run with `julia --project=test/cuda test/cuda/runtests.jl`, which includes `../helpers.jl`):
 
 ```julia
@@ -573,6 +601,8 @@ ssh ewdesktop 'cd ~/kronfree-plan2-ci && ~/.juliaup/bin/julia --project=test/cud
   - Part B, `bench/end_to_end.jl`: materializes the two coupled symmetric zero-pis (`ChargeBasis(15)`, `PhaseGrid(-6π, 6π, 301; order=8)`, 300 kept states per leaf with `LOBPCG(:ritz)`, then the parent for `BENCH_NEV` states), reporting separately: leaf solves, operator construction and transfers, parent solve, and port formation (which runs on the host after a device solve in plan 2; see spec §20c decision 4). The cold 300-state adaptive leaf solve is a new measurement with no audit counterpart.
   - Both scripts are driven by `BENCH_DEVICE=cpu|gpu`, `BENCH_NEV` (default 120), `BENCH_REPEATS` (default 3), `BENCH_SMOKE=1` (reduced sizes), print one line per configuration and write a JSON file of all samples next to `results.md`.
 
+**Catalogue cases:** B1 (both parts above, reporting setup, transfers, leaf solve, parent solve, selection/transport and port formation separately, with true residuals, orthogonality, iterations and cumulative H columns); larger F3, F6, F8 and F9 as cold/warm robustness measurements, recorded with explicit failures and timeouts, never as speed gates.
+
 - [ ] **Step 1: Write both scripts.**
 
 - [ ] **Step 2: Smoke-check on the Mac** with `BENCH_SMOKE=1 BENCH_DEVICE=cpu` (part B at 101 points, `ncut=6`, 30 kept states, 12 parent states; part A at `BENCH_NEV=6` if the fixture is present) and confirm both complete and validate.
@@ -584,3 +614,109 @@ ssh ewdesktop 'cd ~/kronfree-plan2-ci && ~/.juliaup/bin/julia --project=test/cud
 - [ ] **Step 5: Update `README.md`**: the three solvers and when to use each, `LOBPCG(; preconditioner, eta, guard, on)`, warm starts through `previous` and their partial nature when `compute > keep`, the device test command, the benchmark commands, the KernelAbstractions 0.9/0.10 note.
 
 - [ ] **Step 6: Commit** `bench/`, `docs/spikes/2026-10-17-plan2-benchmark/`, `README.md`.
+
+
+---
+
+### Task 9: Given systems (pre-diagonalized subsystems as tree children)
+
+**Files:**
+- Create: `src/given.jl` (included after `tree.jl`)
+- Modify: `src/tree.jl` (`Node` accepts a `GivenSystem` child; `_child_modes`), `src/materialize.jl` (materialization of a given child; `extra_terms`; transport treats given children), `src/KronFreeCircuits.jl` (export `GivenSystem`)
+- Test: `test/test_given.jl` (new; auto-included by `runtests.jl`)
+
+**Interfaces:**
+- Consumes: `Node`, `Term`, `Factor`, `Port`, `Coefficient(x::Number)`, `MaterializedNode`, `_child_overlap` and `_transport_previous` from Task 6, `materialize` in both forms.
+- Produces (spec §20c decision 11):
+  - `struct GivenSystem` with fields `mode::Symbol`, `energies::Vector{Float64}`, `operators::Dict{Symbol,Matrix{ComplexF64}}`; constructor `GivenSystem(mode; energies, operators)` requiring ascending `energies` (`ArgumentError` otherwise), every operator square of size `length(energies)`, and at least one energy. `dimension(g) = length(g.energies)`.
+  - `Node` accepts `GivenSystem` children; `_child_modes(g) = [g.mode]`; `axis_of`, `modes`, `route` and `required_ports` work unchanged (routing never descends into a given system, so a term with all factors on its mode is applied at the parent through the given ports).
+  - `MaterializedNode.node::Union{Node,GivenSystem}`; `materialized(sys, g::GivenSystem)` finds it.
+  - In `_materialize`, a `GivenSystem` child becomes `MaterializedNode(g, [k], g.energies, Matrix{ComplexF64}(I, k, k), 1:k, Dict((g.mode, Port(kind, 0)) => M for (kind, M) in g.operators), Any[g], collect(1:k), Matrix{ComplexF64}(I, k, k))`. The parent's `_childop` on a given axis looks up `p.kind` in the given ports and requires `p.k == 0`; a missing kind throws `ArgumentError` naming the kind and the mode. Everything downstream (energy diagonal term, joint-peak phase with identity amplitudes, dressed labels) is unchanged.
+  - Task 6's basis-equality check gains `_same_basis(a::GivenSystem, b::GivenSystem) = a.mode == b.mode && length(a.energies) == length(b.energies)`; the overlap of a given system with its previous self is the identity by construction (identity vectors), as the spec states.
+  - `materialize(root, spec, θ; previous, extra_terms::Vector{Term}=Term[])` appends `extra_terms` to `circuit_terms(spec)`.
+  - `route`'s "in no term of the spec" message becomes "in no term".
+
+- [ ] **Step 1: Write the failing tests** in `test/test_given.jl`:
+
+```julia
+using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient
+@testset "two given systems: explicit Kronecker reference" begin
+    E1 = [0.0, 1.0, 2.5]; X1 = ComplexF64[0 1 0; 1 0 √2; 0 √2 0]
+    E2 = [0.0, 0.8];     X2 = ComplexF64[0 1; 1 0]
+    g1 = GivenSystem(:a; energies=E1, operators=Dict(:x => X1))
+    g2 = GivenSystem(:b; energies=E2, operators=Dict(:x => X2))
+    top = Node([g1, g2]; solver=Dense(), keep=lowest(6), ports=[(:a, Port(:x, 0))])
+    terms = [Term(Coefficient(0.1), [Factor(:a, Port(:x, 0)), Factor(:b, Port(:x, 0))])]
+    sys = materialize(top, terms, (;))
+    Href = kron(Matrix{ComplexF64}(I, 2, 2), Diagonal(E1)) + kron(Diagonal(E2), Matrix{ComplexF64}(I, 3, 3)) + 0.1 * kron(X2, X1)
+    @test energies(sys) ≈ eigvals(Hermitian(Href))
+    @test bare_labels(sys) == [Tuple(Int(i) for i in Tuple(c)) for c in CartesianIndices((3, 2))]
+    @test port(sys, :a, Port(:x, 0)) ≈ port(sys, :a, Port(:x, 0))'
+    # a single-mode term on a given mode is applied at the parent through the given port
+    sys2 = materialize(top, vcat(terms, [Term(Coefficient(0.3), [Factor(:b, Port(:x, 0))])]), (;))
+    @test energies(sys2) ≈ eigvals(Hermitian(Href + 0.3 * kron(X2, Matrix{ComplexF64}(I, 3, 3))))
+end
+
+@testset "a materialized transmon re-entered as a given system matches the node tree" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    leaf1 = Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(5), ports=[(:varphi_1, nport())])
+    leaf2 = Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(5))
+    full = materialize(Node([leaf1, leaf2]; solver=Dense(), keep=lowest(8)), spec, θ)
+    one = materialize(leaf1, load_spec(fixture("transmon.json")), (E_J=θ.E_J1, E_C=θ.E_C1, n_g=θ.n_g1))   # check the transmon fixture's names
+    g = GivenSystem(:q; energies=energies(one), operators=Dict(:n => port(one, :varphi_1, nport())))
+    # the coupling term of two_transmons.json, written by hand on the given mode
+    coupling = [Term(Coefficient("g", [:g]), [Factor(:q, Port(:n, 0)), Factor(:varphi_2, nport())])]
+    # the spec's own terms on varphi_2 come from a one-transmon spec with renamed parameters: use the term-list entry point
+    terms2 = [t for t in circuit_terms(spec) if all(f.mode == :varphi_2 for f in t.factors)]
+    sys = materialize(Node([g, leaf2]; solver=Dense(), keep=lowest(8)), vcat(terms2, coupling), θ; modetypes=Dict(:varphi_2 => :c))
+    @test energies(sys) ≈ energies(full) atol=1e-10
+    @test_throws ArgumentError materialize(Node([g, leaf2]; solver=Dense(), keep=lowest(8)),
+                                           [Term(Coefficient(1.0), [Factor(:q, Port(:phi, 0)), Factor(:varphi_2, nport())])], θ)   # :phi not provided
+end
+
+@testset "GivenSystem validation, extra_terms, follow with a given child" begin
+    @test_throws ArgumentError GivenSystem(:a; energies=[1.0, 0.0], operators=Dict(:x => zeros(ComplexF64, 2, 2)))
+    @test_throws ArgumentError GivenSystem(:a; energies=[0.0, 1.0], operators=Dict(:x => zeros(ComplexF64, 3, 3)))
+    @test_throws ArgumentError GivenSystem(:a; energies=Float64[], operators=Dict{Symbol,Matrix{ComplexF64}}())
+    θ = (E_J=30.0, E_C=1.2, n_g=0.25); spec = load_spec(fixture("transmon.json"))
+    r = GivenSystem(:r; energies=[0.0, 5.0, 10.0], operators=Dict(:x => ComplexF64[0 1 0; 1 0 √2; 0 √2 0]))
+    tree() = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(4)), r]; solver=Dense(), compute=6, keep=follow())   # check the mode name
+    extra = [Term(Coefficient(0.2), [Factor(:varphi_1, nport()), Factor(:r, Port(:x, 0))])]
+    s1 = materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(4)), r]; solver=Dense(), keep=lowest(6)), spec, θ; extra_terms=extra)
+    s2 = materialize(tree(), spec, θ; previous=s1, extra_terms=extra)
+    @test energies(s2) ≈ energies(s1)
+    @test materialized(s2, r).vectors == I
+end
+```
+
+- [ ] **Step 2: Run** and confirm failure (`GivenSystem` undefined).
+
+- [ ] **Step 3: Implement** `src/given.jl` and the tree/materialize changes. Check the actual mode names in `transmon.json` and `two_transmons.json` and the two-transmon coupling form before finalizing the second test; the assertion is that the given-system tree reproduces the node tree exactly, since both keep the lowest five states of the same leaf.
+
+- [ ] **Step 4: Run the full default suite.** Expected: pass.
+
+- [ ] **Step 5: Document** `GivenSystem` in `README.md` (a short example coupling a given resonator to a circuit leaf through `extra_terms`).
+
+- [ ] **Step 6: Commit** `src/given.jl`, `src/tree.jl`, `src/materialize.jl`, `src/KronFreeCircuits.jl`, `test/test_given.jl`, `README.md`.
+
+---
+
+### Task 10: Catalogue regressions before acceptance
+
+**Files:**
+- Create: `test/test_catalogue.jl` (default suite; each testset named by its catalogue identifier), additions to `test/test_zero_pi_reference.jl` for the larger gated versions
+- Create: `docs/spikes/2026-10-16-pathological-test-catalogue/outcomes.md`
+
+**Interfaces:**
+- Consumes: the whole pipeline as built by Tasks 1–9; the catalogue `docs/spikes/2026-10-16-pathological-test-catalogue/README.md`, whose per-case "Oracle" and "Expected" paragraphs are the requirements (read the case before writing its test; do not restate it here).
+- Produces: default-suite testsets for F4, F6 (small), F8, F10, P1, P2, T4 and, where Task 4 did not already cover them, S3, S4, S6, S7; gated slow testsets for the larger F3, F6, F8 and F9 versions. `outcomes.md` records, per case identifier, the status the catalogue's Section 8 asks for (implemented/passing, implemented/failing, unsupported-by-contract, deferred), the test file and testset name, and any minimal reproduction of a failure.
+
+- [ ] **Step 1: Write the testsets** in `test/test_catalogue.jl`, one per case, following each case's oracle; keep every default-suite case small enough for an independent dense reference built without the apply routine under test (catalogue Section 2). A case whose documented contract is an informative rejection asserts the error.
+
+- [ ] **Step 2: Run the default suite**; the suite must stay under about 60 s, so move anything slower to the gated file.
+
+- [ ] **Step 3: Run the gated suite** (`KRONFREE_SLOW_TESTS=1`) and record outcomes. A failing case is recorded as implemented/failing with its reproduction and reported in the task report; it is not deleted or weakened to pass.
+
+- [ ] **Step 4: Write `outcomes.md`.**
+
+- [ ] **Step 5: Commit** both test files and `outcomes.md`.
