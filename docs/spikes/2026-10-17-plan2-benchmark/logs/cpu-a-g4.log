@@ -1,0 +1,11 @@
+fixture actual two zero-pi 300x300: dims [300, 300], coupling 0.05 + 0.0im, ‖Hx − y‖/‖y‖ = 9.60e-17
+setup: operator construction on cpu 0.022 s (stored point), 0.011 s (stepped point)
+cold ritz guard=4              67.153 s  H columns  4718  iters   52  max residual 9.70e-09  ortho 5.8e-14  ok
+entry overhead per warm solve: seed perturbation 0.218 s, upload 0.000 s, download 0.090 s
+┌ Warning: LOBPCG: 1 of 4 guard columns did not converge within 1000 iterations; a lower state may have been missed
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/lobpcg.jl:262
+warm jacobi guard=4          median 25.588 s (min 25.028, max 36.475, n=3)  H columns 1958/1929/2571  iters 349/347/1000  max residual 9.73e-09  ortho 6.6e-14  ΔE vs first 0.0e+00  ok
+warm ritz guard=4            median 7.676 s (min 7.281, max 8.069, n=3)  H columns 574  iters 26  max residual 7.12e-09  ortho 3.8e-14  ΔE vs first 1.1e-12  ok
+port formation               median 0.254 s (min 0.252, max 0.257, n=3)  (2 ports, 120 states, host)
+wrote out/parent_solve-cpu-guard4.json
+exit 0

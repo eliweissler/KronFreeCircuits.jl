@@ -1,0 +1,13 @@
+fixture actual two zero-pi 300x300: dims [300, 300], coupling 0.05 + 0.0im, ‖Hx − y‖/‖y‖ = 9.53e-17
+setup: operator construction on gpu 0.150 s (stored point), 0.002 s (stepped point)
+cold ritz guard=4              41.747 s  H columns  4864  iters   88  max residual 8.68e-09  ortho 9.4e-14  ok
+entry overhead per warm solve: seed perturbation 0.248 s, upload 0.028 s, download 0.099 s
+warm jacobi guard=4          median 16.450 s (min 16.428, max 20.002, n=3)  H columns 2143/1883/1892  iters 585/320/317  max residual 9.85e-09  ortho 1.4e-13  ΔE vs first 0.0e+00  ok
+warm ritz guard=4            median 4.346 s (min 4.326, max 4.366, n=3)  H columns 574/571  iters 26/23  max residual 7.12e-09  ortho 1.2e-13  ΔE vs first 9.1e-13  ok
+port formation               median 1.237 s (min 1.235, max 1.238, n=3)  (2 ports, 120 states, host)
+operator upload alone        median 0.001 s (min 0.001, max 0.001, n=3)
+agreement with parent_solve-cpu-guard4.json, cold ritz guard=4      max |ΔE| = 1.48e-12  ok
+agreement with parent_solve-cpu-guard4.json, warm jacobi guard=4    max |ΔE| = 9.45e-13  ok
+agreement with parent_solve-cpu-guard4.json, warm ritz guard=4      max |ΔE| = 7.39e-13  ok
+wrote out/parent_solve-gpu-guard4.json
+exit 0

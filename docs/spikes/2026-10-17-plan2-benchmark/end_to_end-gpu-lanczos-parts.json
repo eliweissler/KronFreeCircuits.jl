@@ -1,0 +1,169 @@
+{
+    "nev": 120,
+    "leaf_maxiter": 1000,
+    "environment": {
+        "commit": "c28d67c",
+        "packages": {
+            "KrylovKit": "0.10.4",
+            "JSON3": "1.14.3",
+            "cuTENSOR": "6.4.2",
+            "KronFreeCircuits": "0.1.0",
+            "CUDA": "6.4.2",
+            "LOBPCGEigensolver": "0.1.4",
+            "ITensors": "0.9.32",
+            "KernelAbstractions": "0.9.45",
+            "Adapt": "4.7.4",
+            "NDTensors": "0.4.32"
+        },
+        "date": "2026-10-17T04:38:43.594",
+        "cuda_runtime": "13.4.0",
+        "smoke": false,
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+        "blas_threads": 1,
+        "host": "eliweissler-Precision-3650-Tower",
+        "repeats": 2,
+        "julia": "1.13.2",
+        "device": "gpu",
+        "gpu": "NVIDIA RTX A4500",
+        "julia_threads": 1,
+        "blas": "LBTConfig([ILP64] libopenblas64_.so)",
+        "cuda_driver": "13.3.0"
+    },
+    "points": 301,
+    "leaf_repeats": 0,
+    "stages": {
+        "port_formation_leaf1": [
+            {
+                "seconds": 0.11314721,
+                "ports": [
+                    "theta1:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 0.112855035,
+                "ports": [
+                    "theta1:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "parent_operator_upload": [
+            {
+                "seconds": 0.000884659,
+                "ok": true
+            },
+            {
+                "seconds": 0.000881967,
+                "ok": true
+            }
+        ],
+        "setup_materialize_seconds": 208.483551798,
+        "parent_vectors_download": [
+            {
+                "seconds": 0.051425975,
+                "ok": true
+            },
+            {
+                "seconds": 0.051813062,
+                "ok": true
+            }
+        ],
+        "parent_operator_construction": [
+            {
+                "seconds": 0.001231134,
+                "ok": true
+            },
+            {
+                "seconds": 0.000996821,
+                "ok": true
+            }
+        ],
+        "port_formation_root": [
+            {
+                "seconds": 1.237255556,
+                "ports": [
+                    "theta1:n",
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 1.237638835,
+                "ports": [
+                    "theta1:n",
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "port_formation_leaf2": [
+            {
+                "seconds": 0.112529965,
+                "ports": [
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 0.112088255,
+                "ports": [
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "parent_solve": [
+            {
+                "seconds": 41.107077264,
+                "iterations": 47,
+                "max_energy_difference_to_tree": 7.887024366937112e-13,
+                "n_matvec": 4840,
+                "validation": {
+                    "max_residual": 8.860502308374409e-9,
+                    "ortho": 9.366241619825153e-14,
+                    "ok": true
+                }
+            },
+            {
+                "seconds": 40.899447964,
+                "iterations": 47,
+                "max_energy_difference_to_tree": 8.029132914089132e-13,
+                "n_matvec": 4750,
+                "validation": {
+                    "max_residual": 9.470370651209817e-9,
+                    "ortho": 9.386806597768578e-14,
+                    "ok": true
+                }
+            }
+        ],
+        "leaf_operator_construction": [
+            {
+                "seconds": 0.000362878,
+                "ok": true
+            },
+            {
+                "seconds": 0.000147166,
+                "ok": true
+            }
+        ]
+    },
+    "warning_counts": {
+        "Branch node on modes [:theta1, :phi1, :theta2, :phi2]: kept ": 5,
+        "PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, ": 2,
+        "PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, ": 2
+    },
+    "tol": 1.0e-8,
+    "part": "B",
+    "warmup": false,
+    "g": 0.05,
+    "leaf_keep": 300,
+    "leaf_solver": "lanczos",
+    "ncut": 15
+}

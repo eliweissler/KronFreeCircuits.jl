@@ -1,0 +1,8 @@
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.061634242570670975 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.06163424268309365 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+compilation warm-up (small tree) 25.2 s
+leaf_materialize_leaf1             FAILED after 266.3 s: LOBPCG: 9 of 300 eigenpairs did not converge within 1000 iterations (only 291 converged; maximum residual 5.388030579983995e-6 > tol = 1.0e-8)
+wrote out/end_to_end-cpu-leaf.json
+exit 0

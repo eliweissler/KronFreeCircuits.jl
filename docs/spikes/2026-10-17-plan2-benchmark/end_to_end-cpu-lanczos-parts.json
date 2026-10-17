@@ -1,0 +1,144 @@
+{
+    "nev": 120,
+    "leaf_maxiter": 1000,
+    "environment": {
+        "commit": "c28d67c",
+        "packages": {
+            "ITensors": "0.9.32",
+            "JSON3": "1.14.3",
+            "KronFreeCircuits": "0.1.0",
+            "LOBPCGEigensolver": "0.1.4",
+            "NDTensors": "0.4.32",
+            "KernelAbstractions": "0.9.45",
+            "Adapt": "4.7.4",
+            "KrylovKit": "0.10.4"
+        },
+        "date": "2026-10-17T04:30:26.371",
+        "smoke": false,
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+        "blas_threads": 8,
+        "host": "eliweissler-Precision-3650-Tower",
+        "repeats": 2,
+        "julia": "1.13.2",
+        "device": "cpu",
+        "julia_threads": 1,
+        "blas": "LBTConfig([ILP64] libopenblas64_.so)"
+    },
+    "points": 301,
+    "leaf_repeats": 0,
+    "stages": {
+        "port_formation_leaf1": [
+            {
+                "seconds": 0.021876388,
+                "ports": [
+                    "theta1:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 0.021169772,
+                "ports": [
+                    "theta1:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "setup_materialize_seconds": 239.211647937,
+        "parent_operator_construction": [
+            {
+                "seconds": 0.000327901,
+                "ok": true
+            },
+            {
+                "seconds": 0.000332639,
+                "ok": true
+            }
+        ],
+        "port_formation_root": [
+            {
+                "seconds": 0.254164494,
+                "ports": [
+                    "theta1:n",
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 0.254012718,
+                "ports": [
+                    "theta1:n",
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "port_formation_leaf2": [
+            {
+                "seconds": 0.021025211,
+                "ports": [
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            },
+            {
+                "seconds": 0.021053028,
+                "ports": [
+                    "theta2:n"
+                ],
+                "ok": true,
+                "max_difference_to_stored": 0
+            }
+        ],
+        "parent_solve": [
+            {
+                "seconds": 68.502774716,
+                "iterations": 62,
+                "max_energy_difference_to_tree": 5.471179065352771e-13,
+                "n_matvec": 4818,
+                "validation": {
+                    "max_residual": 9.113904575012218e-9,
+                    "ortho": 6.253213563210784e-14,
+                    "ok": true
+                }
+            },
+            {
+                "seconds": 68.131742124,
+                "iterations": 53,
+                "max_energy_difference_to_tree": 6.039613253960852e-13,
+                "n_matvec": 4794,
+                "validation": {
+                    "max_residual": 8.900292832604253e-9,
+                    "ortho": 6.29848801834937e-14,
+                    "ok": true
+                }
+            }
+        ],
+        "leaf_operator_construction": [
+            {
+                "seconds": 0.000434551,
+                "ok": true
+            },
+            {
+                "seconds": 0.000165752,
+                "ok": true
+            }
+        ]
+    },
+    "warning_counts": {
+        "Branch node on modes [:theta1, :phi1, :theta2, :phi2]: kept ": 5,
+        "PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, ": 2,
+        "PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, ": 2
+    },
+    "tol": 1.0e-8,
+    "part": "B",
+    "warmup": false,
+    "g": 0.05,
+    "leaf_keep": 300,
+    "leaf_solver": "lanczos",
+    "ncut": 15
+}

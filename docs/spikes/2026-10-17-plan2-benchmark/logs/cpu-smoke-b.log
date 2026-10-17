@@ -1,0 +1,49 @@
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.06163424257329307 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.06163424264442363 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+compilation warm-up (small tree) 25.2 s
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083470156 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083461926 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: LOBPCG: 2 of 4 guard columns did not converge within 1000 iterations; a lower state may have been missed
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/lobpcg.jl:262
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083749033 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+leaf materialize (leaf1)           median 2.057 s (min 2.031, max 2.082, n=2) H columns 9725 iters 1000 ok
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108274722 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108359713 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083054236 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+leaf materialize (leaf2)           median 2.021 s (min 2.009, max 2.033, n=2) H columns 9649 iters 945 ok
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083351487 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.24710641083756518 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:398
+┌ Warning: LOBPCG: 2 of 4 guard columns did not converge within 1000 iterations; a lower state may have been missed
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/lobpcg.jl:262
+full-tree materialize              median 4.232 s (min 4.163, max 4.301, n=2) H columns leaf1/leaf2/root 9534/10310/269 ok
+leaf operator construction         median 0.000 s (min 0.000, max 0.000, n=2)  ok
+parent operator construction       median 0.000 s (min 0.000, max 0.000, n=2)  ok
+leaf solve alone (leaf1, cold)     median 2.002 s (min 1.999, max 2.005, n=2) H columns 9538 iters 894 ok
+parent solve alone (cold)          median 0.029 s (min 0.029, max 0.029, n=2) H columns 268 iters 16 ok
+port formation (leaf1, 1 ports)    median 0.001 s (min 0.000, max 0.001, n=2)  ok
+port formation (leaf2, 1 ports)    median 0.000 s (min 0.000, max 0.000, n=2)  ok
+port formation (root, 2 ports)     median 0.000 s (min 0.000, max 0.000, n=2)  ok
+F3 g=0 warm materialize 3.30 s (H columns 5699/4613/65); |E − pairwise sums| 5.0e-14; degenerate pairs 5/5; lost weight -1.8e-15; cold parent 0.03 s, 236 H columns (warm 65) ok
+┌ Warning: LOBPCG: 2 of 4 guard columns did not converge within 1000 iterations; a lower state may have been missed
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/lobpcg.jl:262
+F9 leaf grid 101 → 151 points: 1.97 / 3.55 s; ground state -1.819223 → -1.819243; max |ΔE| lowest 20: 1.1e-01, lowest 30: 4.1e-01; edge support max 2.5e-01 → 1.4e-03, states above 1e-6 30 → 29 ok
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2]: kept state 11 has joint-peak amplitude 7.009609165232355e-12, ratio 5.580517279512501e-10 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:362
+F8 g=0.50 warm materialize from g=0.05: 3.12 s (H columns 5995/4988/239) ok
+F8 cutoff k= 30: 0.03 s,  312 H columns, max |E − E(k=30)| 0.00e+00, vs Dense 2.6e-13 ok
+F8 cutoff k= 20: 0.02 s,  263 H columns, max |E − E(k=30)| 8.86e-04, vs Dense 1.5e-13 ok
+F8 cutoff k= 10: 0.00 s,  184 H columns, max |E − E(k=30)| 8.75e-03, vs Dense 9.2e-14 ok
+F8 cutoff k=  5: 0.00 s,   69 H columns, max |E − E(k=30)| 2.22e-02, vs Dense 1.1e-13 ok
+F8 large step, 6 states: warm 0.02 s / 159 H columns, cold 0.03 s / 303 H columns, |ΔE| 8.5e-14 ok
+wrote out/end_to_end-cpu-smoke.json
+exit 0

@@ -1,0 +1,58 @@
+{
+    "nev": 120,
+    "leaf_maxiter": 1000,
+    "environment": {
+        "commit": "c28d67c",
+        "packages": {
+            "KrylovKit": "0.10.4",
+            "JSON3": "1.14.3",
+            "cuTENSOR": "6.4.2",
+            "KronFreeCircuits": "0.1.0",
+            "CUDA": "6.4.2",
+            "LOBPCGEigensolver": "0.1.4",
+            "ITensors": "0.9.32",
+            "KernelAbstractions": "0.9.45",
+            "Adapt": "4.7.4",
+            "NDTensors": "0.4.32"
+        },
+        "date": "2026-10-17T03:16:23.651",
+        "cuda_runtime": "13.4.0",
+        "smoke": false,
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+        "blas_threads": 1,
+        "host": "eliweissler-Precision-3650-Tower",
+        "repeats": 3,
+        "julia": "1.13.2",
+        "device": "gpu",
+        "gpu": "NVIDIA RTX A4500",
+        "julia_threads": 1,
+        "blas": "LBTConfig([ILP64] libopenblas64_.so)",
+        "cuda_driver": "13.3.0"
+    },
+    "points": 301,
+    "leaf_repeats": 1,
+    "stages": {
+        "leaf_materialize_leaf1": {
+            "work_at_failure": {
+                "leaf1": {
+                    "iterations": 1000,
+                    "n_matvec": 97637
+                }
+            },
+            "seconds_to_failure": 191.509063861,
+            "failed": true,
+            "error": "LOBPCG: 6 of 300 eigenpairs did not converge within 1000 iterations (only 294 converged; maximum residual 9.665963875975647e-7 > tol = 1.0e-8)"
+        }
+    },
+    "warning_counts": {
+        "PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, ": 1,
+        "PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, ": 1
+    },
+    "tol": 1.0e-8,
+    "part": "B",
+    "warmup": false,
+    "g": 0.05,
+    "leaf_keep": 300,
+    "leaf_solver": "lobpcg",
+    "ncut": 15
+}

@@ -32,6 +32,24 @@ By default each kept state's phase makes its full-space amplitude real and posit
 The spec's scalar constant is added at the root only, so the `energies` of child nodes exclude it.
 Bare-state bookkeeping (labels, overlaps) is available through `bare_labels` and `bare_overlaps`.
 
+Each node has one of three solvers.
+`Dense()` diagonalizes the full product-space matrix: use it for small nodes (it warns above 10 000 states) and whenever every eigenpair is wanted (`compute = 0`).
+`Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.
+`LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
+Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shifted Jacobi) or `:none`.
+`eta` regularizes `:ritz` and is in the Hamiltonian's energy units (GHz for these specs), so it must be set again for another energy scale.
+`guard` extra random columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
+Both preconditioners use only the diagonal of `H`.
+They work well at a retained parent, whose diagonal holds its children's energies, and poorly where the diagonal says little about the spectrum: in the plan-2 benchmark, a 300-state zero-pi leaf on a charge × phase-grid basis did not converge within the default `maxiter`, while `Lanczos()` took 84 s.
+Use `LOBPCG` for retained parents and parameter sweeps, `Lanczos` for large primitive leaves, and `Dense` for small nodes.
+
+`materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
+Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.
+`previous` also feeds the `follow` rule and the `:follow` phase convention, which compare physical overlaps with the previous kept states.
+
+On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` stores a node's operator and block on the device.
+Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
+
 ## Tests
 
 ```bash
@@ -41,13 +59,31 @@ KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'
 
 Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute.
 
+The device tests have their own environment and need a CUDA device:
+
+```bash
+julia --project=test/cuda -e 'using Pkg; Pkg.develop(path="."); Pkg.instantiate()'
+julia --project=test/cuda test/cuda/runtests.jl
+```
+
+Two benchmark scripts take their settings from environment variables, documented at the top of each file.
+`bench/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
+Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`.
+
+```bash
+BENCH_SMOKE=1 julia --project=. -t 1 bench/end_to_end.jl                                  # reduced sizes, CPU
+BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=. -t 1 bench/parent_solve.jl
+BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=test/cuda -t 1 bench/parent_solve.jl
+```
+
 ## Status and plans
 
 The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`.
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
+Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
+KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Later plans:
 
 1. Automatic differentiation rules.
-2. LOBPCG and CUDA.
-3. Export, caching, and NPZ output.
-4. The Python exporter in `circuit-quantization`.
+2. Export, caching, and NPZ output.
+3. The Python exporter in `circuit-quantization`.
