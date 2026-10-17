@@ -1,0 +1,10 @@
+fixture actual two zero-pi 300x300: dims [300, 300], coupling 0.05 + 0.0im, ‖Hx − y‖/‖y‖ = 9.60e-17
+setup: operator construction on cpu 0.022 s (stored point), 0.011 s (stepped point)
+cold ritz guard=4              66.673 s (loop 65.196 s)  H columns  4808  iters   69  max residual 8.65e-09  ortho 6.1e-14  ok
+entry overhead per warm solve: seed perturbation 0.218 s, upload 0.000 s, download 0.089 s
+warm ritz guard=4            median 7.257 s (min 7.203, max 7.648, n=3)  loop median 5.683 s (min 5.634, max 6.138, n=3)  H columns 574  iters 26  max residual 7.12e-09  ortho 4.1e-14  ΔE vs first 0.0e+00  ok
+warm ritz guard=0            median 6.174 s (min 6.170, max 6.177, n=3)  loop median 4.820 s (min 4.815, max 4.832, n=3)  H columns 514  iters 7  max residual 7.17e-09  ortho 3.8e-14  ΔE vs first 2.9e-13  ok
+port formation               median 0.252 s (min 0.246, max 0.252, n=3)  (2 ports, 120 states, host)
+wrote out/parent_solve-cpu-ritz-loop.json
+summary: 0 of 7 samples failed or did not validate
+exit 0

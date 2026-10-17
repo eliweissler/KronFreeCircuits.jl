@@ -1,0 +1,14 @@
+fixture actual two zero-pi 300x300: dims [300, 300], coupling 0.05 + 0.0im, ‖Hx − y‖/‖y‖ = 9.53e-17
+setup: operator construction on gpu 0.149 s (stored point), 0.002 s (stepped point)
+cold ritz guard=4              42.909 s (loop 42.209 s)  H columns  4920  iters  148  max residual 8.68e-09  ortho 9.1e-14  ok
+entry overhead per warm solve: seed perturbation 0.239 s, upload 0.028 s, download 0.099 s
+warm ritz guard=4            median 4.299 s (min 4.289, max 4.305, n=3)  loop median 3.458 s (min 3.443, max 3.463, n=3)  H columns 574  iters 26  max residual 7.12e-09  ortho 1.2e-13  ΔE vs first 0.0e+00  ok
+warm ritz guard=0            median 3.765 s (min 3.616, max 3.772, n=3)  loop median 3.008 s (min 3.008, max 3.009, n=3)  H columns 514  iters 7  max residual 7.39e-09  ortho 1.1e-13  ΔE vs first 3.8e-13  ok
+port formation               median 1.222 s (min 1.216, max 1.224, n=3)  (2 ports, 120 states, host)
+operator upload alone        median 0.001 s (min 0.001, max 0.001, n=3)
+agreement with parent_solve-cpu-ritz-loop.json, cold ritz guard=4      max |ΔE| = 1.24e-12  ok
+agreement with parent_solve-cpu-ritz-loop.json, warm ritz guard=4      max |ΔE| = 6.32e-13  ok
+agreement with parent_solve-cpu-ritz-loop.json, warm ritz guard=0      max |ΔE| = 6.54e-13  ok
+wrote out/parent_solve-gpu-ritz-loop.json
+summary: 0 of 7 samples failed or did not validate
+exit 0

@@ -2,13 +2,14 @@
 
 Date: 2026-10-17.
 Machine: `ewdesktop` (i7-11700K, 8 physical cores; NVIDIA RTX A4500, driver 595.99.02).
-Package source: commit `c28d67c` plus the benchmark scripts of the commit that adds this file (`bench/common.jl`, `bench/parent_solve.jl`, `bench/end_to_end.jl`).
+Package source: `src/` as of commit `c28d67c` (unchanged since) with the benchmark scripts in `bench/`.
+The script revision of each run is the `commit` field of its JSON file: `c28d67c` (the scripts as first committed in `2b8c8ee`), `2b8c8ee+dense` (the `Dense()` leaf rows) or `3351300+loop` (the part-A iteration-loop rerun).
 
 ## Summary
 
 - **Part A (stored parent) meets both expectations.**
-  With the audit's boundary (no guard columns), `:ritz` on the A4500 takes 3.64 s against the audit's 3.20 s (1.14×), with the audit's work count exactly (514 H columns).
-  With the default `guard=4` it takes 4.35 s (1.36×).
+  With the audit's boundary (no guard columns), the `:ritz` iteration loop on the A4500 takes 3.01 s against the audit's 3.20 s, with the audit's work count exactly (514 H columns); the whole `lobpcg_solve` call, including entry work, takes 3.64 s.
+  With the default `guard=4` the loop takes 3.46 s and the whole call 4.35 s.
   `:ritz` is 2.75–3.79× faster than `:jacobi` on both devices.
   Every solve validates, and CPU and GPU energies agree to 1.5e-12.
 - **Part B as specified fails at its first stage.**
@@ -18,7 +19,7 @@ Package source: commit `c28d67c` plus the benchmark scripts of the commit that a
   `Lanczos()` solves the same leaf in 84 s, which matches the audit's 90.4 s.
   `Dense()` (the default for nodes up to 10 000 states; this leaf has 9331) solves it in 69 s on 8 CPU threads, the fastest of the three.
 - **The rest of the pipeline was measured with `Lanczos()` leaves as a labelled substitute** (measured before the `Dense()` leaf row was added; the parent rows do not depend on the leaf solver).
-  A full-tree materialization takes 237 s on CPU: two 84 s leaves, a 68 s cold parent solve, and about 0.5 s for everything else.
+  A full-tree materialization takes 237 s on CPU: two 84 s leaves, a 68 s cold parent solve, 0.3 s of port formation and about 0.5 s for everything else.
   On the A4500 the cold parent solve takes 41 s.
   Port formation after the device solve takes 1.24 s on the host with one BLAS thread, about a third of a warm parent solve.
 - **The next stage to optimize is the leaf solver, then device-side port formation.**
@@ -29,7 +30,7 @@ Package source: commit `c28d67c` plus the benchmark scripts of the commit that a
 |---|---|
 | Julia | 1.13.2, run as `julia -t 1` |
 | BLAS | OpenBLAS (`LBTConfig([ILP64] libopenblas64_.so)`); 8 threads for CPU runs, 1 for GPU runs |
-| KronFreeCircuits | 0.1.0 (`c28d67c` + bench scripts) |
+| KronFreeCircuits | 0.1.0 (`src/` at `c28d67c`; bench script revisions `c28d67c`/`2b8c8ee`, `2b8c8ee+dense`, `3351300+loop`, see above) |
 | ITensors / NDTensors | 0.9.32 / 0.4.32 |
 | LOBPCGEigensolver | 0.1.4 |
 | KernelAbstractions | 0.9.45 |
@@ -55,22 +56,44 @@ How the numbers were obtained:
 - Each warm configuration runs one untimed `lobpcg_solve` and then three timed ones.
   A timed sample is one `lobpcg_solve(LOBPCG(; preconditioner, guard, on), H, 120; X0)` call, wrapped in `CUDA.synchronize()` and run after `GC.gc()`.
   The table gives the median, with the minimum–maximum range below it.
-- A sample therefore includes `lobpcg_solve`'s own entry work, which the audit's resident timing did not.
-  This entry work is the host-side seed perturbation (0.25 s), the block upload (0.027 s) and the result download (0.099 s), 0.38 s in total on the GPU.
-  On CPU it is 0.23 s + 0.09 s.
+- A sample's total therefore includes `lobpcg_solve`'s own entry work, which the audit's resident timing did not.
+  This entry work is the host-side seed perturbation, the block upload and the result download: 0.25 s + 0.027 s + 0.099 s on the GPU, and 0.23 s + 0 s + 0.09 s on CPU.
   Each part was measured once per run, separately.
+- The `:ritz` configurations were rerun (one process per device, both guards) with an iteration-loop time measured inside the solve.
+  The solver callback takes a wall-clock stamp after each iteration, after `CUDA.synchronize()` on the GPU; the loop time is first to last callback.
+  The rerun also records the time from the call to the first callback: entry work plus the eigensolver's setup through its first residuals.
+  The audit rows are compared with the loop time below, the same way on both devices.
 - Every timed sample is validated afterwards, outside the timing: each true residual ‖H v − λ v‖ is recomputed with a host copy of the operator and must be below 1e-8, and ‖V'V − I‖ must be below 1e-10.
 - The default guard (4) and the audit's boundary (`guard=0`) ran as separate processes, `BENCH_GUARDS=4` and `BENCH_GUARDS=0`.
   Each process repeats the cold solve, so there are two cold samples per device.
 
 | Configuration | Audit A4500 | A4500, guard 0 | A4500, guard 4 | Audit CPU, 8 threads | CPU 8 threads, guard 0 | CPU 8 threads, guard 4 |
 |---|---:|---:|---:|---:|---:|---:|
-| fixed Jacobi, seconds | 10.178 | **10.985** (10.940–10.988) | **16.450** (16.428–20.002) | 15.671 | **16.923** (16.857–17.057) | **25.588** (25.028–36.475) |
+| fixed Jacobi, seconds including entry work | 10.178 | **10.985** (10.940–10.988) | **16.450** (16.428–20.002) | 15.671 | **16.923** (16.857–17.057) | **25.588** (25.028–36.475) |
 | fixed Jacobi, H columns / iterations | 1409 | 1415 / 59 | 1883–2143 / 317–585 | 1409 | 1415 / 59 | 1929–2571 / 347–1000 |
-| `:ritz`, seconds | 3.197 | **3.642** (3.627–3.834) | **4.346** (4.326–4.366) | 5.721 | **6.153** (6.136–6.188) | **7.676** (7.281–8.069) |
+| `:ritz`, seconds including entry work | 3.197 | **3.642** (3.627–3.834) | **4.346** (4.326–4.366) | 5.721 | **6.153** (6.136–6.188) | **7.676** (7.281–8.069) |
 | `:ritz`, H columns / iterations | 514 | 514 / 7 | 571–574 / 23–26 | 514 | 514 / 7 | 574 / 26 |
 | fixed / `:ritz` | 3.18× | 3.02× | 3.79× | 2.74× | 2.75× | 3.33× |
-| ours / audit, `:ritz` | | 1.14× | 1.36× | | 1.08× | 1.34× |
+
+The audit's figures are its resident solve times; ours in this table include entry work.
+`:jacobi` was not rerun with the loop timing, so its comparison with the audit is through these totals only.
+
+Iteration-loop rerun (`:ritz`, 120 states, medians of 3 with min–max; `parent_solve-{cpu,gpu}-ritz-loop.json`):
+
+| | Audit A4500 | A4500, guard 0 | A4500, guard 4 | Audit CPU, 8 threads | CPU 8 threads, guard 0 | CPU 8 threads, guard 4 |
+|---|---:|---:|---:|---:|---:|---:|
+| total, including entry work | | 3.765 (3.616–3.772) | 4.299 (4.289–4.305) | | 6.174 (6.170–6.177) | 7.257 (7.203–7.648) |
+| call to first callback | | 0.480 (0.470–0.489) | 0.547 (0.542–0.558) | | 1.249 (1.182–1.275) | 1.481 (1.408–1.487) |
+| **iteration loop** (first to last callback) | 3.197 | **3.008** (3.008–3.009) | **3.458** (3.443–3.463) | 5.721 | **4.820** (4.815–4.832) | **5.683** (5.634–6.138) |
+| loop / audit | | 0.94× | 1.08× | | 0.84× | 0.99× |
+| loop + eigensolver setup (estimate) / audit | | 1.01× | 1.17× | | 1.02× | 1.21× |
+| H columns / iterations | 514 | 514 / 7 | 574 / 26 | 514 | 514 / 7 | 574 / 26 |
+
+The loop excludes the eigensolver's setup (initial orthonormalization, the first block application and residuals), which the audit's resident time most likely included, so the loop alone understates a like-for-like time.
+The estimate row adds that setup back: call-to-first-callback minus the separately measured seed perturbation and upload (GPU 0.239 s + 0.028 s, CPU 0.218 s + 0 s).
+The two devices are treated identically.
+The rerun's totals differ from the first runs' by −0.42 s to +0.12 s (the stamping callback adds one synchronization per iteration on the GPU); the first runs' totals stay in the table above.
+All 14 rerun samples validate, and CPU and GPU energies agree to 1.2e-12.
 
 Every sample has true residuals below 9.85e-9 and orthonormality error below 1.4e-13.
 Within a process, `:jacobi` and `:ritz` energies agree to 1.1e-12.
@@ -82,7 +105,7 @@ Other part-A measurements:
 
 | Measurement | CPU, 8 threads | A4500 |
 |---|---:|---:|
-| Cold solve of the stored point (`:ritz`, guard 4), one sample per process | 67.2 s, 70.3 s (4718, 4908 H columns) | 41.7 s, 40.6 s (4864, 4725 H columns) |
+| Cold solve of the stored point (`:ritz`, guard 4), one sample per process, including entry work | 67.2 s, 70.3 s, 66.7 s (4718, 4908, 4808 H columns) | 41.7 s, 40.6 s, 42.9 s (4864, 4725, 4920 H columns) |
 | Operator construction on the device | 0.022 s | 0.150 s (first construction), 0.002 s (second) |
 | Operator upload alone (`_on_storage(H_host, CuArray)`, median of 3) | — | 0.001 s |
 | Port formation after the warm `:ritz` solve: the coupling's two charge ports on 120 states, host, median of 3 | 0.25 s | 1.24 s (one BLAS thread) |
@@ -108,6 +131,9 @@ The root energies of the materialized tree agree with part A's cold energies to 
 | `Lanczos()` (substitute; host), median of 2 per leaf | 84.2 s (84.0–84.4) and 84.1 s (84.0–84.1) | — |
 | `Dense()` (substitute; host), median of 2 per leaf | **69.0 s** (68.9–69.1) and **69.0 s** (69.0–69.0) | not run (no device `Dense`) |
 
+On the A4500 no leaf solve converged in the specified configuration; the only one that returned is the `maxiter = 3000` diagnostic.
+All rows are leaf `materialize` times (operator construction, solve, phase fixing, edge checks); there is no "leaf solve alone" row for the converged solvers (`Lanczos`, `Dense`), because the `parts` runs skipped it to fit the 10-minute bound.
+
 The leaf energies agree to 2.1e-11 across all three converged iterative solves: CPU `LOBPCG` (3000), GPU `LOBPCG` (3000) and `Lanczos`.
 `Dense` agrees with `Lanczos` to 3.4e-12, with residuals of 3.0e-11 and orthonormality error of 1.3e-14.
 `Dense` builds the 9331 × 9331 matrix (1.4 GB) and calls `eigen!(Hermitian(A), 1:300)`; it needs no tuning, so it is the right leaf solver at this size.
@@ -117,7 +143,7 @@ No column locks in the first 100 iterations, which take 71 s and 30 704 H column
 The remaining guard columns stall.
 Smoke-sized leaves (13 × 101 points, 30 states) show the same stall: they need 850–1000 iterations, and several leaf solves end at `maxiter` with guard warnings (`logs/*-smoke-b.log`).
 Those smoke solves validated, because their 30 requested pairs had converged.
-The likely cause is that the diagonal preconditioners carry little information for this leaf.
+The likely cause, untested, is that the diagonal preconditioners carry little information for this leaf.
 In the charge × phase-grid basis the cosine potential is off-diagonal, since it shifts the charge.
 The phase-grid kinetic stencil has the same diagonal at every point.
 So `D` resolves neither the low-lying structure nor the stiff high-frequency part of the spectrum.
@@ -132,19 +158,20 @@ The parent stays `LOBPCG(:ritz)` on the run's device.
 Each line is a separate measurement.
 The leaf-dominated stages are single samples or medians of 2, because one full materialization takes about 4 minutes and each remote command was bounded at 10 minutes.
 Every validated solve is below its tolerance: residuals of 4.3e-11 at the leaves (Lanczos) and below 9.5e-9 at the parent, with orthonormality error below 4e-12.
+The one unvalidated number is the A4500 full-tree time (the setup run of the `parts` invocation); the parent solves that the same invocation timed afterwards validate.
 
 | Stage | CPU, 8 threads | A4500 (host work on one BLAS thread) | How obtained |
 |---|---:|---:|---|
 | Leaf materialize, each leaf | 84.2 s, 84.1 s | — | `leaf` stage, `materialize` on the leaf's own terms, median of 2 |
-| Full-tree materialize, cold | 237.4 s | 208.5 s | CPU: `tree` stage, one timed sample. GPU: the untimed setup `materialize` of the `parts` run, measured with `@elapsed` (its leaves run `Lanczos` on the host with one BLAS thread) |
-| Leaf operator construction | < 1 ms | < 1 ms | `operator(sys, leaf1)`, median of 2 after a warm-up |
+| Full-tree materialize, cold | 237.4 s | 208.5 s, **unvalidated** | CPU: `tree` stage, one timed and validated sample. GPU: the setup `materialize` of the `parts` run, measured with `@elapsed` and not validated (its leaves run `Lanczos` on the host with one BLAS thread) |
+| Leaf operator construction | < 1 ms (host) | < 1 ms (host storage: `Lanczos` leaves build host operators; no device leaf upload was measured) | `operator(sys, leaf1)`, median of 2 after a warm-up |
 | Parent operator construction (on the solver's storage) | < 1 ms | 1 ms | `operator(sys)` |
 | Parent operator upload alone | — | 1 ms | `_on_storage(host copy, CuArray; capacity = 124)` |
 | Parent solve alone, cold, 120 states | 68.3 s (68.1–68.5), 4794 H columns, 53 iterations | 41.0 s (40.9–41.1), 4750 H columns, 47 iterations | `lobpcg_solve(root solver, operator(sys), 120)`, warm-up then 2 samples |
 | Parent eigenvector download (90 000 × 120) | — | 0.052 s | `Array(CuArray(eigenvectors(sys)))`, the download alone |
 | Port formation, each leaf (1 port, 300 states) | 0.021 s | 0.113 s | `_port_matrix` on the leaf's kept vectors, for every port `required_ports` assigns |
 | Port formation, root (2 ports, 120 states) | 0.254 s | 1.237 s | the same, on the root's kept vectors |
-| Remainder (selection, phase fixing, peak amplitudes, edge checks) | ≈ 0.5 s | — | CPU tree total minus the medians above; the medians come from different processes, so this is approximate |
+| Remainder (selection, phase fixing, peak amplitudes, edge checks) | ≈ 0.47 s | — | 237.36 − 84.20 − 84.07 (leaves) − 68.32 (parent solve) = 0.77 s, minus 0.30 s of port formation (0.022 + 0.021 + 0.254; the leaf-alone materializations form no ports) = 0.47 s. The medians come from different processes, so this is approximate |
 
 The parent's 1.24 s port formation after a device solve is a third of the 3.64 s warm parent solve (part A).
 It is 3 % of the cold one.
@@ -193,8 +220,8 @@ They are:
 
 ## Findings
 
-(a) A diagonal (Jacobi or per-Ritz) preconditioner is weak on a phase-grid leaf, because the kinetic stencil dominates the operator there, not its diagonal.
-At a branch the diagonal holds the children's energies, which is why the same preconditioner works on part A's parent.
+(a) A diagonal (Jacobi or per-Ritz) preconditioner is weak on a phase-grid leaf.
+The likely explanation, not tested, is that the kinetic stencil and the off-diagonal cosine, not the diagonal, dominate the operator there; at a branch the diagonal holds the children's energies, which would explain why the same preconditioner works on part A's parent.
 The next leaf optimization is a grid-aware preconditioner (a kinetic, Teter-style one, or shift-and-invert), not more iterations.
 
 (b) On stiff leaves the guard columns can keep the solve running to `maxiter` after the requested states have converged (all 300 by iteration about 1400 on the A4500, then 1600 more iterations for the guards).
@@ -209,11 +236,11 @@ The fixture is therefore a timing fixture, not a converged physics fixture.
 ## Expectations
 
 **Part A, `:ritz` on the A4500 within 1.5× of 3.20 s: met.**
-It takes 3.64 s at the audit's boundary (no guards) and 4.35 s with the default four guards.
+At the audit's boundary (no guards) the iteration loop takes 3.01 s (0.94× the audit) and the loop with the eigensolver's setup an estimated 3.22 s (1.01×); with the default four guards the loop takes 3.46 s (1.08×).
+The whole `lobpcg_solve` call, including entry work, takes 3.64–3.77 s (guard 0) and 4.30–4.35 s (guard 4).
 At `guard = 0` the work matches the audit exactly (514 H columns, 7 iterations).
-Of the 0.44 s difference, 0.38 s is `lobpcg_solve`'s entry work (seed perturbation, block upload, result download), which the audit's resident timing excluded.
-The resident solve is therefore within about 2 % of the audit.
-The CPU rows are 8 % slower than the audit's at the same work (514 H columns for `:ritz`; 1415 against 1409 for `:jacobi`).
+On CPU, measured the same way, the loop takes 4.82 s (0.84×) and the loop with setup an estimated 5.85 s (1.02×), at the same work.
+`:jacobi` totals, including entry work, are 8 % above the audit's on both devices (1415 against 1409 H columns).
 The default guards cost 19 % on the A4500 and 25 % on CPU at `:ritz`, and 50 % on both devices at `:jacobi`, where the four random guard columns converge slowly.
 
 **Part A, `:ritz` at least 2× faster than `:jacobi` on both devices: met**, at 3.02× and 3.79× on the A4500 and 2.75× and 3.33× on CPU.
@@ -270,6 +297,7 @@ cd ~/kronfree-plan2-ci && env <variables> BENCH_COMMIT=c28d67c timeout 590 ~/.ju
 | `end_to_end-{cpu,gpu}-leaf-maxiter3000.json` | `bench/end_to_end.jl` | the same plus `BENCH_LEAF_MAXITER=3000` |
 | `end_to_end-cpu-lanczos-leaf.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=leaf BENCH_LEAVES=1,2 BENCH_WARMUP=0 BENCH_LEAF_REPEATS=2` |
 | `end_to_end-cpu-dense-leaf{1,2}.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=dense BENCH_STAGES=leaf BENCH_LEAVES=1` (then `=2`) `BENCH_WARMUP=0 BENCH_LEAF_REPEATS=2`, with `BENCH_COMMIT=2b8c8ee+dense` |
+| `parent_solve-{cpu,gpu}-ritz-loop.json` | `bench/parent_solve.jl` | `BENCH_DEVICE=… BENCH_PRECONDITIONERS=ritz BENCH_GUARDS=4,0 BENCH_FIXTURE=…` (GPU also `BENCH_COMPARE=out/parent_solve-cpu-ritz-loop.json`), with `BENCH_COMMIT=3351300+loop` |
 | `end_to_end-cpu-lanczos-tree.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=tree BENCH_WARMUP=0 BENCH_LEAF_REPEATS=1` |
 | `end_to_end-{cpu,gpu}-lanczos-parts.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=… BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=parts BENCH_WARMUP=0 BENCH_LEAF_REPEATS=0 BENCH_REPEATS=2` |
 | `end_to_end-cpu-lanczos-f9.json` | `bench/end_to_end.jl` | `BENCH_DEVICE=cpu BENCH_LEAF_SOLVER=lanczos BENCH_STAGES=f9` |
@@ -280,5 +308,7 @@ The failed-leaf runs (`end_to_end-{cpu,gpu}-leaf.json`) and the F9 run came from
 That revision timed each stage's validation inside its `repeated` samples.
 The failed runs never reached validation, so their times stand.
 F9 times only `materialize` and never used `repeated`, and its code is identical in the final script.
-Every other part-B file and all part-A files come from the committed scripts.
+Every other part-B file comes from the committed scripts, unchanged in its timed path by later revisions.
+The later revisions added the loop stamps and the `BENCH_PRECONDITIONERS` filter to part A, the nonzero exit status on failures to both scripts, and the `Dense()` leaf option to part B.
+The part-A files before the loop rerun have no loop fields.
 The stored fixture (5.5 MB) is not committed: it lives in the untracked audit directory `docs/spikes/2026-10-16-itensor-audit/profiling/`.

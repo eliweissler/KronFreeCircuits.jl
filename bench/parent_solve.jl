@@ -8,6 +8,11 @@
 # no guard columns). The operator is built on the device before timing; each timed sample is one
 # `lobpcg_solve` call (its host-side seed perturbation, block upload and result download included;
 # measured separately as the entry overhead). One untimed warm-up precedes BENCH_REPEATS samples.
+# Each sample also records the iteration-loop time inside the solve: wall-clock stamps taken in the
+# solver callback (after a device synchronization on the GPU), first to last callback, and the
+# time from the call to the first callback (lobpcg_solve's entry work plus the eigensolver's setup
+# through its first residuals). BENCH_PRECONDITIONERS selects the warm preconditioners (default
+# "jacobi,ritz"). The script exits nonzero when any sample failed or did not validate.
 # BENCH_COMPARE=path/to/cpu.json compares the energies with an earlier run's, configuration by
 # configuration (host/device agreement).
 
@@ -21,6 +26,12 @@ if isempty(FIXTURE)
 end
 const NEV = parse(Int, get(ENV, "BENCH_NEV", SMOKE ? "6" : "120"))
 const GUARDS = parse.(Int, split(get(ENV, "BENCH_GUARDS", "4,0"), ","))
+const PRECONDITIONERS = Symbol.(split(get(ENV, "BENCH_PRECONDITIONERS", "jacobi,ritz"), ","))
+
+# Wall-clock stamps of the current solve: the call, then one per solver callback (synchronized).
+const STAMPS = Float64[]
+stamp!() = (devsync(); push!(STAMPS, time_ns() / 1e9); nothing)
+stamp_callback(info) = stamp!()
 const TOL = 1e-8
 const STEP = 1.01
 
@@ -57,8 +68,9 @@ lobpcg_solve(LOBPCG(; on=ON), H0, 4)
 # time to failure) and returns `nothing`.
 function sample!(cfg, s, H, X0)
     t0 = time_ns()
+    empty!(STAMPS)
     t, (E, V, res) = try
-        timed(() -> lobpcg_solve(s, H, NEV; X0=X0))
+        timed(() -> (stamp!(); lobpcg_solve(s, H, NEV; X0=X0)))
     catch err
         err isa InterruptException && rethrow()
         msg = sprint(showerror, err)
@@ -68,6 +80,8 @@ function sample!(cfg, s, H, X0)
     end
     v = validate(H, E, V; tol=TOL)
     push!(cfg["samples"], Dict("seconds" => t, "n_matvec" => res.n_matvec, "iterations" => iterations(res),
+                               "loop_seconds" => STAMPS[end] - STAMPS[2], "to_first_callback_seconds" => STAMPS[2] - STAMPS[1],
+                               "callbacks" => length(STAMPS) - 1,
                                "max_residual" => v.max_residual, "ortho" => v.ortho, "ok" => v.ok))
     v.ok || @warn "validation failed" cfg["label"] v
     return E, V
@@ -76,7 +90,7 @@ end
 # Cold solve of the stored point: its vectors seed every warm configuration.
 cold = Dict{String,Any}("label" => "cold ritz guard=4", "kind" => "cold", "preconditioner" => "ritz", "guard" => 4,
                         "samples" => Any[])
-cold_result = sample!(cold, LOBPCG(; on=ON), H0, nothing)
+cold_result = sample!(cold, LOBPCG(; on=ON, callback=stamp_callback), H0, nothing)
 push!(record["configs"], cold)
 if cold_result === nothing
     write_json("parent_solve-$DEVICE$(SMOKE ? "-smoke" : "").json", record)
@@ -85,8 +99,8 @@ end
 E0, V0 = cold_result
 cold["energies"] = E0
 s0 = only(cold["samples"])
-@printf("%-28s %8.3f s  H columns %5d  iters %4d  max residual %.2e  ortho %.1e  %s\n", cold["label"],
-        s0["seconds"], s0["n_matvec"], s0["iterations"], s0["max_residual"], s0["ortho"], s0["ok"] ? "ok" : "FAILED")
+@printf("%-28s %8.3f s (loop %.3f s)  H columns %5d  iters %4d  max residual %.2e  ortho %.1e  %s\n", cold["label"],
+        s0["seconds"], s0["loop_seconds"], s0["n_matvec"], s0["iterations"], s0["max_residual"], s0["ortho"], s0["ok"] ? "ok" : "FAILED")
 
 # Entry overhead inside each timed lobpcg_solve call: seed perturbation, block upload, result download.
 let T = eltype(H1)
@@ -102,9 +116,9 @@ end
 
 Eref = nothing
 Vport = nothing
-for pc in (:jacobi, :ritz), g in GUARDS
+for pc in PRECONDITIONERS, g in GUARDS
     global Eref, Vport
-    s = LOBPCG(; preconditioner=pc, guard=g, on=ON)
+    s = LOBPCG(; preconditioner=pc, guard=g, on=ON, callback=stamp_callback)
     cfg = Dict{String,Any}("label" => "warm $pc guard=$g", "kind" => "warm", "preconditioner" => string(pc),
                            "guard" => g, "samples" => Any[])
     push!(record["configs"], cfg)
@@ -127,8 +141,8 @@ for pc in (:jacobi, :ritz), g in GUARDS
     cfg["max_energy_difference_to_first_config"] = maximum(abs.(Es[1] .- Eref))
     ts = [x["seconds"] for x in cfg["samples"]]
     smp = cfg["samples"]
-    @printf("%-28s %s  H columns %s  iters %s  max residual %.2e  ortho %.1e  ΔE vs first %.1e  %s\n", cfg["label"],
-            summary_line(ts), join(unique(x["n_matvec"] for x in smp), "/"), join(unique(x["iterations"] for x in smp), "/"),
+    @printf("%-28s %s  loop %s  H columns %s  iters %s  max residual %.2e  ortho %.1e  ΔE vs first %.1e  %s\n", cfg["label"],
+            summary_line(ts), summary_line([x["loop_seconds"] for x in smp]), join(unique(x["n_matvec"] for x in smp), "/"), join(unique(x["iterations"] for x in smp), "/"),
             maximum(x["max_residual"] for x in smp), maximum(x["ortho"] for x in smp),
             cfg["max_energy_difference_to_first_config"], all(x["ok"] for x in smp) ? "ok" : "FAILED")
 end
@@ -164,3 +178,8 @@ if !isempty(compare)
 end
 
 write_json("parent_solve-$DEVICE$(SMOKE ? "-smoke" : "").json", record)
+
+nfailed = count(x -> !x["ok"], (x for cfg in record["configs"] for x in cfg["samples"]))
+nsamples = sum(length(cfg["samples"]) for cfg in record["configs"])
+println("summary: $nfailed of $nsamples samples failed or did not validate")
+nfailed == 0 || exit(1)

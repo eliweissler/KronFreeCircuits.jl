@@ -38,7 +38,8 @@
 #   BENCH_LEAF_REPEATS  samples of the leaf-dominated stages (default BENCH_REPEATS; 0 skips the
 #                       leaf solve alone in `parts`)
 # A stage that throws (an unconverged solve) is recorded as failed, with its time to failure and,
-# for LOBPCG nodes, the iterations and H columns reached; dependent stages are then skipped.
+# for LOBPCG nodes, the iterations and H columns reached; dependent stages are then skipped, and
+# the script exits nonzero after writing the JSON.
 
 include(joinpath(@__DIR__, "common.jl"))
 using Test                                    # test/helpers.jl defines @test-based helpers
@@ -94,7 +95,8 @@ function check(H, E, V)
 end
 check(sys::System, node) = check(operator(sys, node), energies(sys, node), eigenvectors(sys, node))
 
-ok(d::Dict) = haskey(d, "ok") ? d["ok"] : all(ok(v) for v in values(d) if v isa Dict)
+ok(d::Dict) = haskey(d, "ok") ? d["ok"] : all(ok(v) for v in values(d) if v isa Union{Dict,AbstractVector})
+ok(v::AbstractVector) = all(ok(x) for x in v if x isa Union{Dict,AbstractVector})
 times(samples) = [s["seconds"] for s in samples]
 function report(label, samples; extra="")
     smp = samples
@@ -145,7 +147,7 @@ let
     tsmall = @elapsed begin
         s1 = LOBPCG(; on=ON)
         lf(i) = Node([Symbol("theta$i") => ChargeBasis(3), Symbol("phi$i") => PhaseGrid(-6π, 6π, 41; order=8)];
-                     solver=leaf_solver(Counter(0, 0)), compute=8, keep=lowest(8))
+                     solver=LEAF_SOLVER == "lobpcg" ? s1 : leaf_solver(Counter(0, 0)), compute=8, keep=lowest(8))
         r = Node([lf(1), lf(2)]; solver=s1, compute=6, keep=lowest(6), ports=[(:theta1, nport()), (:theta2, nport())])
         materialize(r, spec, θ)
     end
@@ -358,3 +360,16 @@ end
 end
 
 write_json("end_to_end-$DEVICE$(SMOKE ? "-smoke" : "")-$(join(STAGES, "+")).json", record)
+
+# Failed stages and samples that did not validate; the script then exits nonzero.
+bad = String[]
+for (k, v) in stages
+    if v isa AbstractVector
+        n = count(x -> x isa Dict && !ok(x), v)
+        n > 0 && push!(bad, "$k ($n of $(length(v)) samples)")
+    elseif v isa Dict
+        (get(v, "failed", false) || !ok(v)) && push!(bad, k)
+    end
+end
+println("summary: ", isempty(bad) ? "no failed stages or samples" : "failed: " * join(bad, ", "))
+isempty(bad) || exit(1)
