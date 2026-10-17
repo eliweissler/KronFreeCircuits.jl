@@ -2,8 +2,9 @@
 # Hamiltonian composed as a sum of products of such applications.
 #
 # Dispatch is on operator structure only, never on device.  BandedOp and ShiftOp run as
-# KernelAbstractions kernels on `get_backend(Y)`; DenseOp and DiagonalOp use `mul!` and
-# broadcasting.
+# KernelAbstractions kernels on `get_backend(Y)`; DiagonalOp uses broadcasting.  A DenseOp
+# uses `mul!` in the public `apply_axis!` (the reference) and an ITensor contraction inside
+# `KronFreeOperator` (`_apply_dense!`).
 
 function _check_axis(Y::AbstractArray, op::LocalOp, X::AbstractArray, k::Int)
     size(Y) == size(X) || throw(DimensionMismatch("apply_axis!: size(Y) = $(size(Y)) differs from size(X) = $(size(X))"))
@@ -134,10 +135,7 @@ _factor_data(on, op::BandedOp) = adapt(on, _banded_data(op))
 _factor_data(on, ::ShiftOp) = nothing
 
 # apply_axis! reading the factor's data from `data` (see `_factor_data`) instead of from `op`.
-function _apply_factor!(Y::AbstractArray, op::DenseOp, data, X::AbstractArray, k::Int)
-    _check_axis(Y, op, X, k)
-    return _dense_axis!(Y, data, X, k)
-end
+# DenseOp factors inside an operator go through `_apply_dense!` instead.
 function _apply_factor!(Y::AbstractArray, op::DiagonalOp, data, X::AbstractArray, k::Int)
     _check_axis(Y, op, X, k)
     return _diagonal_axis!(Y, data, X, k)
@@ -180,6 +178,9 @@ Terms whose factors are all `DiagonalOp` are fused with `constant` into one stat
 `H.diag`, applied by a single broadcast; the remaining terms are kept in `H.terms` as records
 holding, per factor, `(axis, op, data)` with `data` the array the application reads.
 Every array `H` owns (`diag`, factor data, scratch) is `adapt(on, …)` at construction.
+`DenseOp` factors are applied as ITensor contractions over `H.inds` (one index per axis) and
+`H.blockinds` (one block-axis index per width, cached on first use); the other factors keep
+their kernels and broadcasts.
 Two work buffers reserve `block_capacity` columns at construction. Calls reuse their active
 prefix, growing storage only when the requested block exceeds capacity. Reserve the solver's
 maximum block width before iteration to avoid state-sized scratch reallocations.
@@ -196,6 +197,8 @@ mutable struct KronFreeOperator{V<:AbstractVector,B<:AbstractArray}
     buf1::B
     buf2::B
     on::Any
+    inds::Vector{ITensors.Index}               # one distinct index per axis, even for equal sizes
+    blockinds::Dict{Int,ITensors.Index}        # block-axis index per block width, made on demand
 end
 
 function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm};
@@ -221,7 +224,9 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
     end
     shape = (dims..., Int(block_capacity))
     return KronFreeOperator(dims, adapt(on, vec(D)), kept,
-                            adapt(on, Array{T}(undef, shape)), adapt(on, Array{T}(undef, shape)), on)
+                            adapt(on, Array{T}(undef, shape)), adapt(on, Array{T}(undef, shape)), on,
+                            ITensors.Index[ITensors.Index(d, "axis$k") for (k, d) in enumerate(dims)],
+                            Dict{Int,ITensors.Index}())
 end
 
 Base.size(H::KronFreeOperator) = (n = prod(H.dims); (n, n))
@@ -241,12 +246,60 @@ end
 _active_buffer(buf::AbstractArray, shape::Tuple) =
     size(buf) == shape ? buf : reshape(view(vec(buf), 1:prod(shape)), shape)
 
+# The ITensor index of the block axis of width `w`, created on first use and reused after.
+_block_index(H::KronFreeOperator, w::Int) = get!(() -> ITensors.Index(w, "block"), H.blockinds, w)
+
+# dst = M applied along axis k of src, M = data (the factor matrix, stored like dst), as an
+# ITensor contraction into wrappers of the arrays themselves (no copies, no result ITensor).
+# Every wrapper lists its indices in storage order, and the operator is A = M[k', k], so
+# NDTensors runs one gemm without hidden permutations or temporaries:
+#   left == 1 (axis k leads in memory):   dst(k', rest) = A(k', k) src(k, rest)
+#   right == 1 (axis k trails in memory): dst(rest, k') = src(rest, k) A(k', k)  (gemm, A transposed)
+#   otherwise, axis k moved to the front through scratch:
+#     dst <- permutedims(src), work(k', rest) = A(k', k) dst(k, rest), dst <- permutedims(work).
+# `rest` is every other axis in order, then the block axis; size-1 axes may sit anywhere.
+# `work` is state-shaped scratch distinct from dst that may be overwritten; it may be src
+# itself when src is chain scratch (src is fully read before work is written).
+function _apply_dense!(dst::AbstractArray, data::AbstractMatrix, src::AbstractArray, k::Int,
+                       H::KronFreeOperator, work::AbstractArray)
+    size(dst) == size(src) == size(work) || throw(DimensionMismatch("_apply_dense!: state shapes differ"))
+    size(src, k) == size(data, 1) == size(data, 2) ||
+        throw(DimensionMismatch("_apply_dense!: size(src, $k) = $(size(src, k)), factor is $(size(data))"))
+    (Base.mightalias(dst, src) || Base.mightalias(dst, work)) &&
+        throw(ArgumentError("_apply_dense!: dst must not alias src or work"))
+    isempty(dst) && return dst
+    T = eltype(dst)
+    left, d = _axis_layout(src, k)
+    right = length(src) ÷ (left * d)
+    ik = H.inds[k]
+    ik′ = ITensors.prime(ik)
+    A = ITensors.itensor(data, (ik′, ik))
+    rest = (H.inds[1:k-1]..., H.inds[k+1:end]..., _block_index(H, size(src, ndims(src))))
+    if left == 1
+        mul!(ITensors.itensor(dst, (ik′, rest...)), A, ITensors.itensor(src, (ik, rest...)), one(T), zero(T))
+    elseif right == 1
+        mul!(ITensors.itensor(dst, (rest..., ik′)), ITensors.itensor(src, (rest..., ik)), A, one(T), zero(T))
+    else
+        front = reshape(dst, d, left, right)
+        permutedims!(front, reshape(src, left, d, right), (2, 1, 3))
+        mul!(ITensors.itensor(work, (ik′, rest...)), A, ITensors.itensor(front, (ik, rest...)), one(T), zero(T))
+        permutedims!(reshape(dst, left, d, right), reshape(work, d, left, right), (2, 1, 3))
+    end
+    return dst
+end
+
 # Y .+= coeff * (⊗ factors) X, chaining factor applications through the two buffers.
-function _accumulate_term!(Y::AbstractArray, term::_OperatorTerm, X::AbstractArray, b1::AbstractArray, b2::AbstractArray)
+# `other` is free scratch for a dense factor: b2 for the first factor, then the consumed src.
+function _accumulate_term!(Y::AbstractArray, term::_OperatorTerm, X::AbstractArray, b1::AbstractArray, b2::AbstractArray,
+                           H::KronFreeOperator)
     src = X
     dst, other = b1, b2
     for (a, op, data) in term.factors
-        _apply_factor!(dst, op, data, src, a)
+        if op isa DenseOp
+            _apply_dense!(dst, data, src, a, H, other)
+        else
+            _apply_factor!(dst, op, data, src, a)
+        end
         src = dst
         dst, other = other, dst
     end
@@ -268,7 +321,7 @@ function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::Abstrac
     # the dynamically ranked reshape can box every element for active-column views.
     y .= H.diag .* x
     for term in H.terms
-        _accumulate_term!(Y, term, X, b1, b2)
+        _accumulate_term!(Y, term, X, b1, b2, H)
     end
     return y
 end

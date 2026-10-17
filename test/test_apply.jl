@@ -258,3 +258,172 @@ end
     @test snapshot() == before                                                # factor data untouched
     @test diagonal(H1) ≈ diag(ref) && H1.diag ≈ H2.diag                       # diagonal(H) does not write H.diag
 end
+
+@testset "ITensor dense factors match the gemm reference" begin
+    rng = MersenneTwister(41)
+    dims = [5, 6, 4]
+    ops = [DenseOp(randn(rng, ComplexF64, d, d)) for d in dims]
+    for k in 1:3, width in (1, 3)      # first, middle and last axis; vector and block
+        H = KronFreeOperator(dims, [AxisTerm(1.0, [(k, ops[k])])]; block_capacity=3)
+        X = randn(rng, ComplexF64, prod(dims), width)
+        Y = similar(X); Yref = similar(X)
+        apply_axis!(reshape(Yref, dims..., width), ops[k], reshape(X, dims..., width), k)
+        @test mul!(Y, H, X) ≈ Yref
+    end
+    H2 = KronFreeOperator(dims, [AxisTerm(0.3 + 0.1im, [(1, ops[1]), (3, ops[3])]), AxisTerm(-0.8, [(2, ops[2]), (3, ops[3])])])
+    ref = kron_reference(dims, [(0.3 + 0.1im, [(1, dense(ops[1])), (3, dense(ops[3]))]), (-0.8 + 0im, [(2, dense(ops[2])), (3, dense(ops[3]))])])
+    X = randn(rng, ComplexF64, prod(dims), 2)
+    @test mul!(similar(X), H2, X) ≈ ref * X
+    @test Matrix(H2) ≈ ref
+end
+
+@testset "ITensor dense path: offset views, input preserved, no state-sized allocation" begin
+    rng = MersenneTwister(42)
+    dims = [60, 50]
+    H = KronFreeOperator(dims, [AxisTerm(1.0, [(1, DenseOp(randn(rng, ComplexF64, 60, 60))), (2, DenseOp(randn(rng, ComplexF64, 50, 50)))])]; block_capacity=8)
+    Xp = randn(rng, ComplexF64, 3000, 8); Yp = fill(ComplexF64(7), 3000, 8)
+    X = view(Xp, :, 3:7); Y = view(Yp, :, 3:7)
+    saved = copy(Xp)
+    mul!(Y, H, X); mul!(Y, H, X)
+    @test (@allocated mul!(Y, H, X)) < 64 * 1024          # 240 kB state block; metadata only
+    @test Xp == saved
+    @test all(==(7), Yp[:, [1, 2, 8]])
+    @test Y ≈ H * copy(X)
+end
+
+@testset "mixed branch operator: fused diagonal + ITensor dense + banded kernel" begin
+    rng = MersenneTwister(43)
+    dims = [4, 7]
+    E = DiagonalOp(ComplexF64.(sort(randn(rng, 4)))); P = DenseOp(randn(rng, ComplexF64, 4, 4))
+    B = BandedOp(7, [-1, 0, 1], [ones(7), 2 .* ones(7), ones(7)])
+    terms = [AxisTerm(1.0, [(1, E)]), AxisTerm(0.1, [(1, P), (2, B)])]
+    H = KronFreeOperator(dims, terms)
+    ref = kron_reference(dims, [(t.coeff, [(a, dense(op)) for (a, op) in t.factors]) for t in terms])
+    X = randn(rng, ComplexF64, 28, 3)
+    @test mul!(similar(X), H, X) ≈ ref * X
+    @test diagonal(H) ≈ diag(ref)
+end
+
+@testset "O1: axis identity, equal sizes, and complex factor order (ITensor dense path)" begin
+    rng = MersenneTwister(44)
+    for (dims, width) in (([3, 5, 7], 3), ([4, 4, 4], 4), ([1, 5, 3], 2))
+        # A distinct complex nonsymmetric factor per axis, kept as plain matrices for the oracle.
+        A = [randn(rng, ComplexF64, d, d) for d in dims]
+        @test all(d == 1 || norm(M - transpose(M)) > 0.1 for (d, M) in zip(dims, A))
+        groups = [[1], [2], [3], [1, 2], [2, 3], [1, 3], [1, 2, 3]]     # single factors and chains
+        terms = [AxisTerm(cis(0.4g) * (1 + g / 10), [(a, DenseOp(A[a])) for a in grp]) for (g, grp) in enumerate(groups)]
+        ref = kron_reference(dims, [(ComplexF64(t.coeff), [(a, A[a]) for a in grp]) for (t, grp) in zip(terms, groups)])
+        H = KronFreeOperator(dims, terms; block_capacity=width)
+        # One distinct index per axis, even when dimensions coincide.
+        @test length(H.inds) == 3 && allunique(H.inds)
+        @test [KronFreeCircuits.ITensors.dim(i) for i in H.inds] == dims
+        X = randn(rng, ComplexF64, prod(dims), width)
+        @test mul!(similar(X), H, X) ≈ ref * X
+        x = randn(rng, ComplexF64, prod(dims))
+        @test H * x ≈ ref * x
+        @test Matrix(H) ≈ ref
+        # Each single-axis term against the gemm reference on the same equal-size state.
+        for k in 1:3
+            Hk = KronFreeOperator(dims, [AxisTerm(1.0, [(k, DenseOp(A[k]))])]; block_capacity=width)
+            Yref = similar(X)
+            apply_axis!(reshape(Yref, dims..., width), DenseOp(A[k]), reshape(X, dims..., width), k)
+            @test mul!(similar(X), Hk, X) ≈ Yref
+        end
+    end
+end
+
+@testset "O2: shrinking/growing blocks, views, and stale scratch (ITensor dense path)" begin
+    rng = MersenneTwister(45)
+    dims = [4, 5, 3]
+    A = [randn(rng, ComplexF64, d, d) for d in dims]
+    terms = [AxisTerm(0.7 - 0.2im, [(1, DenseOp(A[1])), (2, DenseOp(A[2])), (3, DenseOp(A[3]))]),
+             AxisTerm(0.4, [(2, DenseOp(A[2])), (3, BandedOp(3, [-1, 1], [ones(3), ones(3)]))]),
+             AxisTerm(-1.1, [(2, DiagonalOp(randn(rng, 5)))])]
+    ref = kron_reference(dims, [(ComplexF64(t.coeff), [(a, dense(op)) for (a, op) in t.factors]) for t in terms])
+    N = prod(dims)
+    H = KronFreeOperator(dims, terms; block_capacity=8)
+    for (step, w) in enumerate((8, 3, 1, 12, 2))
+        # Stale scratch: NaNs on even steps, garbage of the wrong scale on odd ones.
+        isodd(step) ? (H.buf1 .= 1e300; H.buf2 .= -1e300) : (fill!(H.buf1, NaN); fill!(H.buf2, NaN))
+        Xp = randn(rng, ComplexF64, N, w + 3); Yp = fill(ComplexF64(-5), N, w + 3)
+        X = view(Xp, :, 2:w+1); Y = view(Yp, :, 3:w+2)                 # offset column views
+        saved = copy(Xp)
+        @test mul!(Y, H, X) === Y
+        @test Y ≈ ref * X
+        @test Xp == saved
+        @test all(==(-5), Yp[:, [1, 2, w + 3]])
+        @test haskey(H.blockinds, w)
+        @test KronFreeCircuits.ITensors.dim(H.blockinds[w]) == w
+    end
+    @test size(H.buf1, 4) == 12                                         # grown once, retained
+    # Vector versus one-column-matrix calls give the same result.
+    x = randn(rng, ComplexF64, N)
+    @test H * x ≈ ref * x
+    @test vec(H * reshape(x, N, 1)) ≈ H * x
+    # Overlapping input/output views are rejected.
+    Z = randn(rng, ComplexF64, N, 4)
+    @test_throws ArgumentError mul!(view(Z, :, 1:2), H, view(Z, :, 2:3))
+    # After warm-up within capacity: buffers and block indices are reused, and the allocation is
+    # per-contraction metadata (about 20 kB each here) that does not grow with the block width.
+    b1, b2, i3, i8 = H.buf1, H.buf2, H.blockinds[3], H.blockinds[8]
+    allocs = Dict{Int,Int}()
+    for w in (3, 8)
+        X = view(randn(rng, ComplexF64, N, w + 2), :, 2:w+1); Y = similar(X, N, w)
+        mul!(Y, H, X); mul!(Y, H, X)
+        allocs[w] = @allocated mul!(Y, H, X)
+        @test Y ≈ ref * X
+    end
+    @test allocs[8] <= allocs[3] + 1024        # one block-sized temporary would add >= 5 * N * 16 bytes
+    @test allocs[3] < 4 * 32 * 1024            # four dense contractions, metadata only
+    @test H.buf1 === b1 && H.buf2 === b2 && H.blockinds[3] === i3 && H.blockinds[8] === i8
+end
+
+@testset "F7: complex three-mode cosine as an adjoint pair (operator level)" begin
+    rng = MersenneTwister(46)
+    EJ, δ = 1.3, 0.37π
+    bc, be, bh = ChargeBasis(2), PhaseGrid(-2π, 2π, 11), FockBasis(6; phi_zpf=0.6)
+    # Independent finite matrices of e^{±iφ} in each basis.
+    Sc(k) = ComplexF64[i == j + k for i in 1:5, j in 1:5]                       # e^{ikφ}|n⟩ = |n+k⟩
+    Ee(k) = Matrix(Diagonal(cis.(k .* collect(range(-2π, 2π; length=11)))))
+    a = diagm(1 => sqrt.(1.0:59))
+    Dh(k) = exp(im * k * 0.6 * (a + a'))[1:6, 1:6]                             # converged block of a large truncation
+    # cos(φc + φe - φh + δ) = (e^{iδ} e^{iφc} e^{iφe} e^{-iφh} + h.c.) / 2
+    for pos in ((1, 2, 3), (1, 3, 2), (2, 3, 1))                               # the Fock (dense) mode last, middle, first
+        pc, pe, ph = pos
+        dims = zeros(Int, 3); dims[pc] = 5; dims[pe] = 11; dims[ph] = 6
+        term(s) = AxisTerm(-EJ / 2 * cis(s * δ),
+                           sort([(pc, localop(bc, expiphi(s))), (pe, localop(be, expiphi(s))), (ph, localop(bh, expiphi(-s)))]; by=first))
+        @test term(1).factors[findfirst(f -> f[1] == ph, term(1).factors)][2] isa DenseOp
+        Tp = kron_reference(dims, [(-EJ / 2 * cis(δ), [(pc, Sc(1)), (pe, Ee(1)), (ph, Dh(-1))])])
+        Tm = kron_reference(dims, [(-EJ / 2 * cis(-δ), [(pc, Sc(-1)), (pe, Ee(-1)), (ph, Dh(1))])])
+        @test norm(Tm - Tp') <= 1e-12 * norm(Tp)                                # adjoint pair
+        @test norm(Tp - Tp') > 0.1                                              # each term non-Hermitian
+        Hp = KronFreeOperator(dims, [term(1)]; block_capacity=3)
+        Hm = KronFreeOperator(dims, [term(-1)]; block_capacity=3)
+        H = KronFreeOperator(dims, [term(1), term(-1)]; block_capacity=3)
+        @test norm(Matrix(Hp) - Tp) <= 1e-10 * norm(Tp)
+        @test norm(Matrix(Hm) - Matrix(Hp)') <= 1e-12 * norm(Tp)
+        M = Matrix(H)
+        @test norm(M - M') <= 1e-12 * norm(M)                                   # Hermitian sum
+        @test norm(M - (Tp + Tm)) <= 1e-10 * norm(M)
+        X = randn(rng, ComplexF64, prod(dims), 3)
+        @test norm(mul!(similar(X), H, X) - (Tp + Tm) * X) <= 1e-10 * norm(X) * norm(M)
+        x = randn(rng, ComplexF64, prod(dims))
+        @test norm(H * x - (Tp + Tm) * x) <= 1e-10 * norm(x) * norm(M)
+    end
+    # Grouping two of the cosine's modes inside one child needs a composite port: rejected.
+    json = """
+    {"format": "kronfree-spec", "version": 1, "units": "GHz",
+     "parameters": ["E_C", "E_J", "E_L"],
+     "modes": [{"name": "c", "type": "c"}, {"name": "e", "type": "e"}, {"name": "h", "type": "h"}],
+     "E_C": [["E_C", "0", "0"], ["0", "E_C", "0"], ["0", "0", "E_C"]],
+     "E_L": [["0", "0", "0"], ["0", "E_L", "0"], ["0", "0", "E_L"]],
+     "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
+     "cosines": [{"energy": "E_J", "omega": [1, 1, -1], "offset": "0.37*pi"}]}
+    """
+    spec = KronFreeCircuits.parse_spec(json)
+    tree = Node([Node([:c => bc, :e => be]), Node([:h => bh])])
+    err = try materialize(tree, spec, (E_C=1.0, E_J=EJ, E_L=0.5)); nothing catch e e end
+    @test err isa ArgumentError
+    @test occursin("[:c, :e]", err.msg) && occursin("composite (multi-mode) ports are not yet supported", err.msg)
+end
