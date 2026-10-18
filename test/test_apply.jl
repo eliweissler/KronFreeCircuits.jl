@@ -443,10 +443,17 @@ end
     E = eigvals(Hermitian(Matrix(H)))
     @test all(real(diag(X' * (Matrix(H) * X))) .< E[end ÷ 2])
     # a branch-like operator (dense factors, no single-axis structure) seeds with unit vectors by the diagonal
-    Hb = KronFreeOperator([4, 3], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64.(1:4)))]), AxisTerm(1.0, [(2, DiagonalOp(ComplexF64.([0.0, 5.0, 10.0])))]),
-                                   AxisTerm(0.1, [(1, DenseOp(randn(rng, ComplexF64, 4, 4))), (2, DenseOp(randn(rng, ComplexF64, 3, 3)))])])
+    termsb = [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64.(1:4)))]), AxisTerm(1.0, [(2, DiagonalOp(ComplexF64.([0.0, 5.0, 10.0])))]),
+              AxisTerm(0.1, [(1, DenseOp(randn(rng, ComplexF64, 4, 4))), (2, DenseOp(randn(rng, ComplexF64, 3, 3)))])]
+    Hb = KronFreeOperator([4, 3], termsb)
     Xb = product_seed(Hb, 3)
     @test all(count(!iszero, Xb[:, j]) == 1 for j in 1:3) && sort(findall(!iszero, Xb[:, 1]))[1] == argmin(real(Hb.diag))
+    # ... ranked by the full diagonal: a kept zero-shift ShiftOp ⊗ DiagonalOp term (not fused into H.diag) reorders the seed
+    Hk = KronFreeOperator([4, 3], [termsb; AxisTerm(1.0, [(1, ShiftOp(4, 0, 1.0)), (2, DiagonalOp(ComplexF64.([0.0, -20.0, 0.0])))])])
+    Dk = KronFreeCircuits._full_diagonal(Hk)
+    @test argmin(Dk) != argmin(real(Hk.diag))
+    Xk = product_seed(Hk, 3)
+    @test findall(!iszero, Xk[:, 1]) == [argmin(Dk)] && [only(findall(!iszero, Xk[:, j])) for j in 1:3] == sortperm(Dk)[1:3]
     # the nonzero cap refuses before assembling
     Hbig = KronFreeOperator([300, 300], [AxisTerm(1.0, [(1, DenseOp(randn(rng, ComplexF64, 300, 300))), (2, DenseOp(randn(rng, ComplexF64, 300, 300)))])])
     err = try sparse(Hbig; maxnnz=10^6); nothing catch e; e end

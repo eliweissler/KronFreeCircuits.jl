@@ -241,12 +241,17 @@ end
 @testset "repeated eigenvalue is recovered twice (projector, not just energies)" begin
     H = KronFreeOperator([12], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))])])
     Random.seed!(3)
-    E, V = solve(LOBPCG(tol=1e-10, guard=0), H, 2)
+    E, V = solve(LOBPCG(tol=1e-10, guard=0, seed=:random), H, 2)
     Ed, Vd = solve(Dense(), H, 2)
     @test E ≈ [0.0, 0.0] atol=1e-8
     @test Ed ≈ [0.0, 0.0] atol=1e-12
     @test V * V' ≈ Vd * Vd' atol=1e-8
     check_eigenpairs(H, E, V; tol=1e-9)
+    # a product-state seed of a diagonal operator is exactly an eigenblock; the eigensolver fails on it and the solve recovers from a random block without a warning
+    E2, V2 = @test_logs solve(LOBPCG(tol=1e-10, guard=0), H, 2)
+    @test E2 ≈ [0.0, 0.0] atol=1e-8
+    @test V2 * V2' ≈ Vd * Vd' atol=1e-8
+    check_eigenpairs(H, E2, V2; tol=1e-9)
 end
 
 @testset "user callbacks of any return type run with the original info" begin
@@ -270,7 +275,7 @@ end
     Random.seed!(11)
     H = three_oscillators(6)
     Ed, Vd = solve(Dense(), H, 0)
-    E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9), H, 6)
+    E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9, seed=:random), H, 6)
     Ew, Vw, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
     @test warm.n_matvec < cold.n_matvec
     check_eigenpairs(H, E, V; tol=1e-8)
@@ -688,4 +693,17 @@ end
     @test E ≈ eigvals(A)[1:m] atol=1e-8
     @test sum(abs2, V[ev, 1]) > 1e-3 && sum(abs2, V[.!ev, 1]) > 1e-3
     check_eigenpairs(H, E, V; tol=1e-9)
+end
+
+@testset "LOBPCG product-state seed cuts the cold start" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    work = Dict{Symbol,Int}()
+    tree(seed) = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
+                      solver=LOBPCG(tol=1e-10, seed=seed, callback=info -> (work[seed] = info.n_matvec; nothing)), compute=6, keep=lowest(6))
+    Random.seed!(5)
+    sp = materialize(tree(:product), spec, θ); sr = materialize(tree(:random), spec, θ)
+    @test energies(sp) ≈ energies(sr) atol=1e-9
+    @test work[:product] < work[:random]
+    check_eigenpairs(KronFreeCircuits.operator(sp), energies(sp), eigenvectors(sp); tol=1e-9)
+    @test_throws ArgumentError LOBPCG(seed=:bogus)
 end

@@ -42,6 +42,10 @@ through its public interface only.
   iteration count and emit the guard warning even on a warm start, because guards start random
   either way; `guard=0` avoids this for warm leaf sweeps at the documented completeness cost.
   A guard stopping rule is an open item (spec §20c execution notes).
+- `seed`: the cold start (no `X0`): `:product` starts the whole block of `m + guard` columns from
+  [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the separable part, unperturbed, no
+  random columns), `:random` from a random block. A previous solution's vectors (`X0`) win over either, and the
+  cold retry after a failed warm start is always random.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called with the solver's per-iteration `info` named tuple;
   its return value is ignored, and an exception it throws propagates unchanged.
@@ -52,7 +56,8 @@ iteration count: the guard columns converge from random on warm and cold starts 
 seeded columns lock, each remaining iteration applies `H` to only a few active columns.
 Warm-start columns are perturbed by a vector of norm `sqrt(eps)` times the column's norm (a
 fixed pseudo-random direction) so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
-the eigensolver still fails is replaced once by a random block, with a warning.
+the eigensolver still fails is replaced once by a random block, with a warning. A product-state seed of a diagonal
+operator is an exact eigenblock the eigensolver rejects; it is replaced the same way, logged at debug level only.
 """
 struct LOBPCG <: Solver
     tol::Float64
@@ -60,20 +65,22 @@ struct LOBPCG <: Solver
     preconditioner::Symbol
     eta::Float64
     guard::Int
+    seed::Symbol
     on::Any
     callback::Any
-    function LOBPCG(tol::Real, maxiter::Integer, preconditioner::Symbol, eta::Real, guard::Integer, on, callback)
+    function LOBPCG(tol::Real, maxiter::Integer, preconditioner::Symbol, eta::Real, guard::Integer, seed::Symbol, on, callback)
         tol > 0 && isfinite(tol) || throw(ArgumentError("LOBPCG: tol must be positive and finite, got $tol"))
         maxiter >= 1 || throw(ArgumentError("LOBPCG: maxiter must be at least 1, got $maxiter"))
         preconditioner in (:ritz, :jacobi, :none) ||
             throw(ArgumentError("LOBPCG: preconditioner must be :ritz, :jacobi or :none, got :$preconditioner"))
         eta > 0 && isfinite(eta) || throw(ArgumentError("LOBPCG: eta must be positive and finite, got $eta"))
         guard >= 0 || throw(ArgumentError("LOBPCG: guard must be nonnegative, got $guard"))
-        return new(tol, maxiter, preconditioner, eta, guard, on, callback)
+        seed in (:product, :random) || throw(ArgumentError("LOBPCG: seed must be :product or :random, got $(repr(seed))"))
+        return new(tol, maxiter, preconditioner, eta, guard, seed, on, callback)
     end
 end
-LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing) =
-    LOBPCG(tol, maxiter, preconditioner, eta, guard, on, callback)
+LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:product, on=Array, callback=nothing) =
+    LOBPCG(tol, maxiter, preconditioner, eta, guard, seed, on, callback)
 
 """
     ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,

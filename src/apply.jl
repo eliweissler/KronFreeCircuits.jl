@@ -580,8 +580,8 @@ end
 `Σ_a λ_a[i_a]` (`partialsortperm` over the length-`prod(dims)` Kronecker sum of the `λ_a`, which is
 smaller than the result), each column built by `kron` of the small per-axis vectors.
 When every `U_a` is the identity (a branch, whose axes are already eigenbases) the columns are the
-unit vectors of the `k` smallest entries of the fused diagonal `real(H.diag)`, which also holds the
-diagonal coupling terms.
+unit vectors of the `k` smallest entries of the full diagonal `_full_diagonal(H)` (the fused diagonal plus the
+diagonals of the kept terms, which include diagonal matrices that are not `DiagonalOp`s and the port couplings).
 """
 function product_seed(H::KronFreeOperator, k::Integer)
     n = prod(H.dims)
@@ -589,7 +589,7 @@ function product_seed(H::KronFreeOperator, k::Integer)
     sep = separable_eigenbases(H)
     X = zeros(eltype(H), n, k)
     if all(U -> U == I, sep.U)
-        for (j, i) in enumerate(partialsortperm(real.(Array(H.diag)), 1:k))
+        for (j, i) in enumerate(partialsortperm(Array(_full_diagonal(H)), 1:k))
             X[i, j] = 1
         end
         return X

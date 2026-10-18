@@ -332,10 +332,11 @@ end
     matvecs = Int[]
     cb = info -> (push!(matvecs, info.n_matvec); info)
     θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
-    tree() = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
-                  solver=LOBPCG(tol=1e-10, callback=cb), compute=6, keep=lowest(6))
+    tree(seed=:product) = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))];
+                  solver=LOBPCG(tol=1e-10, seed=seed, callback=cb), compute=6, keep=lowest(6))
     Random.seed!(2)
-    s1 = materialize(tree(), spec, θ); cold = last(matvecs); empty!(matvecs)
+    s1 = materialize(tree(), spec, θ); empty!(matvecs)
+    materialize(tree(:random), spec, two_transmons_params(; g=0.101)); cold = last(matvecs); empty!(matvecs)   # work of a random cold start
     s2 = materialize(tree(), spec, two_transmons_params(; g=0.101); previous=s1); warm = last(matvecs)
     @test warm < cold
     @test energies(s2) ≈ energies(materialize(Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]; solver=Dense(), keep=lowest(6)), spec, two_transmons_params(; g=0.101))) atol=1e-7
@@ -346,9 +347,10 @@ end
     θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
     matvecs = Int[]; cb = info -> push!(matvecs, info.n_matvec)   # returns a Vector, not info: must be tolerated
     leaves() = [Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]
-    tree(; keep) = Node(leaves(); solver=LOBPCG(tol=1e-10, callback=cb), compute=8, keep=keep)
+    tree(; keep, seed=:product) = Node(leaves(); solver=LOBPCG(tol=1e-10, seed=seed, callback=cb), compute=8, keep=keep)
     Random.seed!(4)
-    s1 = materialize(tree(; keep=lowest(8)), spec, θ); cold = last(matvecs); empty!(matvecs)
+    s1 = materialize(tree(; keep=lowest(8)), spec, θ); empty!(matvecs)
+    materialize(tree(; keep=lowest(8), seed=:random), spec, θ); cold = last(matvecs); empty!(matvecs)   # work of a random cold start
     s_same = materialize(tree(; keep=lowest(8)), spec, θ; previous=s1)                 # exact eigenvectors as the seed
     @test energies(s_same) ≈ energies(s1) atol=1e-9
     check_eigenpairs(KronFreeCircuits.operator(s_same), energies(s_same), eigenvectors(s_same); tol=1e-9)

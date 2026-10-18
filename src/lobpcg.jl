@@ -197,7 +197,8 @@ Warm starts follow a bounded policy. First, each column of `X0` is perturbed by 
 `sqrt(eps)` times the column's norm, along a fixed pseudo-random unit direction (a seeded
 `MersenneTwister`, not the global RNG), so an exact eigenvector seed no longer has the exactly zero residual that breaks the
 eigensolver's orthogonalization. Second, if the eigensolver still throws on the warm-start
-block, it is retried once from a random block with a warning. A failure on a random block raises
+block, it is retried once from a random block with a warning; a failure on a product-state block (exact
+eigenvectors of a diagonal operator) is retried the same way with a debug-level log only. A failure on a random block raises
 an error. Unconverged pairs raise an error and are never retried.
 """
 function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
@@ -221,6 +222,8 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     rng = Random.default_rng()
     g = min(s.guard, (N - 5) ÷ 3 - m)
     w = m + g
+    # The product seed is built on the host from the operator as given, before it moves to `s.on`.
+    pseed = X0 === nothing && s.seed === :product ? product_seed(H, w) : nothing
     H = _on_storage(H, s.on; capacity=max(w, _block_capacity(H)))   # the operator lives with the block
     _block_capacity(H) < w && (H = with_block_capacity(H, w))
     D = adapt(s.on, _full_diagonal(H))
@@ -233,10 +236,15 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
         rethrow()
     end
 
+    # `seed` is the first m columns, or `:product` for the whole block of w columns from product_seed.
     function attempt(seed)
         X = Matrix{T}(undef, N, w)
-        X[:, 1:m] .= seed
-        randn!(rng, view(X, :, m+1:w))
+        if seed === :product
+            X .= pseed
+        else
+            X[:, 1:m] .= seed
+            randn!(rng, view(X, :, m+1:w))
+        end
         P = _lobpcg_preconditioner(s, D, w)
         # Every column, guards included, must converge: a lower state found by a guard then sorts
         # into the lowest m of the library's final λ instead of being cut off by early locking.
@@ -245,11 +253,17 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     end
 
     res = try
-        attempt(X0 === nothing ? randn(rng, T, N, m) : _perturbed_seed(T, X0))
+        attempt(X0 !== nothing ? _perturbed_seed(T, X0) : s.seed === :product ? :product : randn(rng, T, N, m))
     catch err
         (err isa InterruptException || user_threw[]) && rethrow()
-        X0 === nothing && _lobpcg_failed(err)
-        @warn "LOBPCG: the eigensolver failed on the warm-start block; retrying once from a random block" exception = err
+        X0 === nothing && s.seed !== :product && _lobpcg_failed(err)
+        # An exact-eigenvector seed (a diagonal operator, whose product states are eigenstates) has an exactly
+        # zero residual, which the eigensolver cannot orthonormalize; that recovery is routine, so it is only logged at debug level.
+        if X0 === nothing
+            @debug "LOBPCG: the eigensolver failed on the product-state block; retrying once from a random block" exception = err
+        else
+            @warn "LOBPCG: the eigensolver failed on the warm-start block; retrying once from a random block" exception = err
+        end
         try
             attempt(randn(rng, T, N, m))
         catch err2
