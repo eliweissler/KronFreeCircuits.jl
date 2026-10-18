@@ -19,7 +19,8 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        Lanczos, LOBPCG, lowest, indices, connected, follow, materialize,
        System, energies, port, eigenvectors, materialized, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, SelectionRule,
-       SelectionContext, GivenSystem
+       SelectionContext, GivenSystem, gershgorin_bound,
+       separable_eigenbases, product_seed, infnorm
 
 include("parameters.jl")
 include("spec.jl")

@@ -177,6 +177,10 @@ end
 Terms whose factors are all `DiagonalOp` are fused with `constant` into one state-shaped vector
 `H.diag`, applied by a single broadcast; the remaining terms are kept in `H.terms` as records
 holding, per factor, `(axis, op, data)` with `data` the array the application reads.
+The fused terms are kept in `H.diagterms` (the constant as a zero-factor term) for introspection;
+the application reads only `H.diag`.
+Derived quantities (`sparse(H)`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`) are
+computed on request and memoized; nothing is assembled at construction.
 Every array `H` owns (`diag`, factor data, scratch) is stored on `on` at construction (`adapt(on, …)`;
 the scratch is allocated like the adapted `diag`).
 `DenseOp` factors are applied as ITensor contractions over `H.inds` (one index per axis) and
@@ -200,7 +204,15 @@ mutable struct KronFreeOperator{V<:AbstractVector,B<:AbstractArray}
     on::Any
     inds::Vector{ITensors.Index}               # one distinct index per axis, even for equal sizes
     blockinds::Dict{Int,ITensors.Index}        # block-axis index per block width, made on demand
+    diagterms::Vector{AxisTerm}                # the terms fused into `diag` (the constant as a zero-factor term); introspection only
+    # Derived quantities, computed on first request and memoized (host data, valid for every storage);
+    # shared by `with_block_capacity` and `_on_storage` copies.
+    sparse::Base.RefValue{Any}                 # `sparse(H)`
+    gershgorin::Base.RefValue{Any}             # `gershgorin_bound(H)`
+    separable::Base.RefValue{Any}              # `separable_eigenbases(H)`
 end
+
+_empty_memos() = (Ref{Any}(nothing), Ref{Any}(nothing), Ref{Any}(nothing))
 
 function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm};
                           constant::Number=0.0, block_capacity::Integer=1, on=Array)
@@ -215,9 +227,12 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
     T = promote_type(fieldtype(AxisTerm, :coeff), typeof(constant))
     D = fill(T(constant), dims...)
     kept = _OperatorTerm[]
+    fused = AxisTerm[]
+    iszero(constant) || push!(fused, AxisTerm(constant, Tuple{Int,LocalOp}[]))
     for term in terms
         if all(f -> f[2] isa DiagonalOp, term.factors)
             _add_term_diagonal!(D, term.coeff, term.factors)
+            push!(fused, term)
         else
             push!(kept, _OperatorTerm(term.coeff,
                                       Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op)) for (a, op) in term.factors]))
@@ -228,11 +243,12 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
     # Scratch allocated like the stored diagonal, so directly on `on` (no host staging).
     return KronFreeOperator(dims, diag, kept, similar(diag, T, shape), similar(diag, T, shape), on,
                             ITensors.Index[ITensors.Index(d, "axis$k") for (k, d) in enumerate(dims)],
-                            Dict{Int,ITensors.Index}())
+                            Dict{Int,ITensors.Index}(), fused, _empty_memos()...)
 end
 
 # `H` with its fused diagonal, factor data and fresh scratch for `capacity` columns stored as `on`
-# (`H` itself, unchanged, when it is already stored as `on`). Terms' operators and ITensor indices are shared.
+# (`H` itself, unchanged, when it is already stored as `on`). Terms' operators, the fused terms, ITensor
+# indices and the memos of derived quantities (host data, valid for both) are shared.
 function _on_storage(H::KronFreeOperator, on; capacity::Integer=_block_capacity(H))
     H.on === on && return H
     diag = adapt(on, H.diag)
@@ -240,7 +256,7 @@ function _on_storage(H::KronFreeOperator, on; capacity::Integer=_block_capacity(
                           for t in H.terms]
     shape = (H.dims..., Int(capacity))
     return KronFreeOperator(H.dims, diag, terms, similar(diag, eltype(H), shape), similar(diag, eltype(H), shape),
-                            on, H.inds, H.blockinds)
+                            on, H.inds, H.blockinds, H.diagterms, H.sparse, H.gershgorin, H.separable)
 end
 
 Base.size(H::KronFreeOperator) = (n = prod(H.dims); (n, n))
@@ -399,14 +415,15 @@ _block_capacity(H::KronFreeOperator) = length(H.buf1) ÷ prod(H.dims)
 """
     with_block_capacity(H::KronFreeOperator, m::Integer) -> KronFreeOperator
 
-The same operator, sharing `H`'s factor data, `diag`, terms and indices, with its own fresh
-scratch buffers reserved for blocks of `m` columns (scratch is never shared with `H`).
+The same operator, sharing `H`'s factor data, `diag`, terms, indices and memoized derived
+quantities, with its own fresh scratch buffers reserved for blocks of `m` columns (scratch is
+never shared with `H`).
 """
 function with_block_capacity(H::KronFreeOperator, m::Integer)
     m >= 1 || throw(ArgumentError("with_block_capacity: m must be positive, got $m"))
     shape = (H.dims..., Int(m))
     return KronFreeOperator(H.dims, H.diag, H.terms, similar(H.buf1, shape), similar(H.buf2, shape),
-                            H.on, H.inds, H.blockinds)
+                            H.on, H.inds, H.blockinds, H.diagterms, H.sparse, H.gershgorin, H.separable)
 end
 
 const _MATRIX_BLOCK = 256
@@ -442,4 +459,158 @@ function Base.Matrix(H::KronFreeOperator)
         end
     end
     return M
+end
+
+# ---------------------------------------------------------------------------------------------
+# Derived quantities (spec §20e decision 2): computed when asked for, memoized on the operator in
+# `Ref` fields that start empty, never built at construction. All are host data.
+
+"""
+    sparse(H::KronFreeOperator; maxnnz=10^8) -> SparseMatrixCSC
+
+The sparse matrix of `H`: the Kronecker sum `Σ_t c_t ⊗_k A_{t,k}` of the terms kept in the
+contraction sum (each factor's sparse matrix built from its data, identity on absent axes, axis 1
+fastest, i.e. `kron(A_N, …, A_1)`) plus the fused diagonal `H.diag`, with exact zeros dropped.
+Before anything is assembled, the nonzeros are estimated as `prod(dims)` (the diagonal) plus
+`Σ_t Π_k nnz(A_{t,k}) · Π_{absent} d` over the terms with nonzero coefficient; an estimate above
+`maxnnz` throws `ArgumentError`, so a branch with dense port factors cannot ask for it.
+Memoized in `H.sparse`; the memo is a host matrix whatever `H.on` is, and a later call returns it
+regardless of `maxnnz`.
+"""
+function SparseArrays.sparse(H::KronFreeOperator; maxnnz::Integer=10^8)
+    H.sparse[] === nothing || return H.sparse[]
+    T = eltype(H)
+    n = prod(H.dims)
+    local_ = [Dict(a => sparse(op) for (a, op, _) in t.factors) for t in H.terms]
+    estimate = Int128(n)
+    for (t, ops) in zip(H.terms, local_)
+        iszero(t.coeff) && continue
+        estimate += prod((haskey(ops, a) ? Int128(nnz(ops[a])) : Int128(d) for (a, d) in enumerate(H.dims)); init=Int128(1))
+    end
+    estimate > maxnnz &&
+        throw(ArgumentError("sparse(H): an estimated $estimate nonzeros exceed the cap maxnnz = $maxnnz; " *
+                            "raise maxnnz to assemble it anyway"))
+    rows, cols, vals = collect(1:n), collect(1:n), Vector{T}(Array(H.diag))
+    for (t, ops) in zip(H.terms, local_)
+        iszero(t.coeff) && continue
+        M = sparse(fill(one(T), 1, 1))
+        for (a, d) in enumerate(H.dims)                          # kron(A_N, …, A_1): axis 1 fastest
+            M = kron(haskey(ops, a) ? ops[a] : sparse(one(T) * I, d, d), M)
+        end
+        i, j, v = findnz(M)
+        append!(rows, i); append!(cols, j); append!(vals, t.coeff .* v)
+    end
+    S = dropzeros!(sparse(rows, cols, vals, n, n))
+    H.sparse[] = S
+    return S
+end
+
+"""
+    gershgorin_bound(H::KronFreeOperator) -> Float64
+
+A rigorous upper bound on the largest eigenvalue of the Hermitian operator `H`:
+`maximum(real(H.diag)) + Σ_t |c_t| Π_k infnorm(A_{t,k})` over the terms kept in the contraction sum
+(plus `maximum(abs ∘ imag, H.diag)`, zero for a Hermitian fused diagonal).
+It holds because `H − Re(diag)` is Hermitian, so its 2-norm is at most its ∞-norm, and the ∞-norm
+of a Kronecker product is the product of the factors' ∞-norms. Memoized in `H.gershgorin`.
+"""
+function gershgorin_bound(H::KronFreeOperator)
+    H.gershgorin[] === nothing || return H.gershgorin[]
+    R = real(eltype(H))
+    off = sum((abs(t.coeff) * prod((infnorm(op) for (_, op, _) in t.factors); init=one(R)) for t in H.terms); init=zero(R))
+    b = maximum(real, H.diag) + maximum(x -> abs(imag(x)), H.diag) + off
+    H.gershgorin[] = b
+    return b
+end
+
+"""
+    separable_eigenbases(H::KronFreeOperator) -> (; U, λ)
+
+Per axis `k`, the eigendecomposition `U[k] * Diagonal(λ[k]) * U[k]'` of the `d_k × d_k` sum of
+every term with exactly one factor, on axis `k` (`c_t · dense(A)`, terms fused into the diagonal
+included); the constant `H` was built with is added to axis 1. Terms on two or more axes, diagonal or
+not, are coupling and are ignored. An axis whose single-axis sum is diagonal (in particular one with
+no single-axis term) keeps the identity as `U[k]` and the diagonal, unsorted, as `λ[k]`; otherwise
+`λ[k]` is ascending from `eigen!`. A single-axis sum that is not Hermitian to round-off means `H` is
+not Hermitian and throws `ArgumentError`. Memoized in `H.separable`; host data.
+"""
+function separable_eigenbases(H::KronFreeOperator)
+    H.separable[] === nothing || return H.separable[]
+    T = eltype(H)
+    A = [zeros(T, d, d) for d in H.dims]
+    for t in H.terms
+        length(t.factors) == 1 || continue
+        a, op, _ = t.factors[1]
+        A[a] .+= t.coeff .* dense(op)
+    end
+    for t in H.diagterms
+        if length(t.factors) == 1
+            a, op = t.factors[1]
+            A[a] .+= t.coeff .* dense(op)
+        elseif isempty(t.factors)                                # the constant
+            A[1] .+= t.coeff .* Matrix{T}(I, H.dims[1], H.dims[1])
+        end
+    end
+    U = Matrix{T}[]
+    λ = Vector{real(T)}[]
+    for (k, M) in enumerate(A)
+        asym, nrm = norm(M - M'), norm(M)
+        asym <= sqrt(eps(real(T))) * nrm ||
+            throw(ArgumentError("separable_eigenbases: the single-axis terms on axis $k sum to a non-Hermitian " *
+                                "matrix (‖M − M'‖ = $asym, ‖M‖ = $nrm), so the operator is not Hermitian"))
+        if isdiag(M)
+            push!(U, Matrix{T}(I, size(M)...))
+            push!(λ, real(diag(M)))
+        else
+            F = eigen!(Hermitian((M + M') / 2))
+            push!(U, F.vectors)
+            push!(λ, F.values)
+        end
+    end
+    sep = (U=U, λ=λ)
+    H.separable[] = sep
+    return sep
+end
+
+"""
+    product_seed(H::KronFreeOperator, k::Integer) -> Matrix
+
+`k` orthonormal product states on the host, of size `(prod(dims), k)`: the columns
+`⊗_a U_a[:, i_a]` (axis 1 fastest) of `separable_eigenbases(H)` with the `k` smallest summed energies
+`Σ_a λ_a[i_a]` (`partialsortperm` over the length-`prod(dims)` Kronecker sum of the `λ_a`, which is
+smaller than the result), each column built by `kron` of the small per-axis vectors.
+When every `U_a` is the identity (a branch, whose axes are already eigenbases) the columns are the
+unit vectors of the `k` smallest entries of the fused diagonal `real(H.diag)`, which also holds the
+diagonal coupling terms.
+"""
+function product_seed(H::KronFreeOperator, k::Integer)
+    n = prod(H.dims)
+    1 <= k <= n || throw(ArgumentError("product_seed: k must lie in 1:$n (the operator's dimension), got $k"))
+    sep = separable_eigenbases(H)
+    X = zeros(eltype(H), n, k)
+    if all(U -> U == I, sep.U)
+        for (j, i) in enumerate(partialsortperm(real.(Array(H.diag)), 1:k))
+            X[i, j] = 1
+        end
+        return X
+    end
+    sums = sep.λ[1]
+    for a in 2:length(H.dims)
+        sums = vec(sums .+ transpose(sep.λ[a]))                   # axis 1 fastest
+    end
+    cart = CartesianIndices(Tuple(H.dims))
+    K = length(H.dims)
+    for (j, flat) in enumerate(partialsortperm(sums, 1:k))
+        idx = Tuple(cart[flat])
+        if K == 1
+            X[:, j] .= view(sep.U[1], :, idx[1])
+        else
+            v = sep.U[1][:, idx[1]]
+            for a in 2:K-1
+                v = kron(view(sep.U[a], :, idx[a]), v)
+            end
+            kron!(view(X, :, j), view(sep.U[K], :, idx[K]), v)
+        end
+    end
+    return X
 end

@@ -427,3 +427,87 @@ end
     @test err isa ArgumentError
     @test occursin("[:c, :e]", err.msg) && occursin("composite (multi-mode) ports are not yet supported", err.msg)
 end
+
+@testset "sparse(H), gershgorin_bound, separable_eigenbases, product_seed" begin
+    rng = MersenneTwister(71)
+    H = three_oscillators(5)                                   # 125 states, structured factors only
+    S = sparse(H)
+    @test S ≈ Matrix(H) && S === sparse(H)                    # exact and memoized
+    @test gershgorin_bound(H) >= maximum(eigvals(Hermitian(Matrix(H))))
+    @test gershgorin_bound(H) <= 1.5 * maximum(eigvals(Hermitian(Matrix(H))))   # not absurdly loose on this fixture
+    sep = separable_eigenbases(H)
+    @test length(sep.U) == 3 && all(U -> U' * U ≈ I, sep.U)
+    X = product_seed(H, 6)
+    @test size(X) == (125, 6) && X' * X ≈ I
+    # the seed's Rayleigh quotients sit below the median of the spectrum
+    E = eigvals(Hermitian(Matrix(H)))
+    @test all(real(diag(X' * (Matrix(H) * X))) .< E[end ÷ 2])
+    # a branch-like operator (dense factors, no single-axis structure) seeds with unit vectors by the diagonal
+    Hb = KronFreeOperator([4, 3], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64.(1:4)))]), AxisTerm(1.0, [(2, DiagonalOp(ComplexF64.([0.0, 5.0, 10.0])))]),
+                                   AxisTerm(0.1, [(1, DenseOp(randn(rng, ComplexF64, 4, 4))), (2, DenseOp(randn(rng, ComplexF64, 3, 3)))])])
+    Xb = product_seed(Hb, 3)
+    @test all(count(!iszero, Xb[:, j]) == 1 for j in 1:3) && sort(findall(!iszero, Xb[:, 1]))[1] == argmin(real(Hb.diag))
+    # the nonzero cap refuses before assembling
+    Hbig = KronFreeOperator([300, 300], [AxisTerm(1.0, [(1, DenseOp(randn(rng, ComplexF64, 300, 300))), (2, DenseOp(randn(rng, ComplexF64, 300, 300)))])])
+    err = try sparse(Hbig; maxnnz=10^6); nothing catch e; e end
+    @test err isa ArgumentError && occursin("maxnnz", err.msg)
+    @test infnorm(ShiftOp(5, 1, 0.3)) == 0.3 && infnorm(DiagonalOp(ComplexF64[1, -2, 0])) == 2
+end
+
+@testset "derived quantities: every factor kind, the constant, non-identity bases, shared memos" begin
+    rng = MersenneTwister(72)
+    herm(d) = (A = randn(rng, ComplexF64, d, d); (A + A') / 2)
+    # sparse(op) and infnorm(op) against the dense matrix, for every LocalOp
+    for op in (DenseOp(randn(rng, ComplexF64, 4, 4)), DiagonalOp(randn(rng, 5)), DiagonalOp(ComplexF64[1, -2, 0]),
+               BandedOp(5, [-1, 0, 2], [randn(rng, ComplexF64, 5) for _ in 1:3]), BandedOp(4, [-3, 1], [randn(rng, 4) for _ in 1:2]),
+               ShiftOp(5, -2, 0.5im), ShiftOp(3, 1, 0.3), ShiftOp(3, 4, 1.0))
+        @test sparse(op) isa SparseMatrixCSC{ComplexF64} && sparse(op) == dense(op)
+        @test infnorm(op) ≈ opnorm(dense(op), Inf) atol=1e-14
+    end
+    # A Hermitian operator on dims [4, 5, 3]: non-diagonal single-axis terms on every axis, a fused
+    # two-axis diagonal coupling, a banded ⊗ shift coupling with its adjoint, and a constant.
+    dims = [4, 5, 3]
+    A1 = herm(4)
+    w = randn(rng, ComplexF64, 5)
+    B2 = BandedOp(5, [-1, 0, 1], [[0; conj.(w[1:4])], randn(rng, 5), [w[1:4]; 0]])     # Hermitian tridiagonal
+    Bc = BandedOp(4, [0, 2], [randn(rng, ComplexF64, 4) for _ in 1:2])
+    c = 0.3 + 0.2im
+    terms = [AxisTerm(1.0, [(1, DenseOp(A1))]), AxisTerm(0.5, [(2, B2)]),
+             AxisTerm(0.4, [(3, ShiftOp(3, 1, 1.0))]), AxisTerm(0.4, [(3, ShiftOp(3, -1, 1.0))]),
+             AxisTerm(0.2, [(1, DiagonalOp(randn(rng, 4))), (2, DiagonalOp(randn(rng, 5)))]),
+             AxisTerm(c, [(1, Bc), (3, ShiftOp(3, 1, 1.0))]), AxisTerm(conj(c), [(1, Bc'), (3, ShiftOp(3, -1, 1.0))])]
+    H = KronFreeOperator(dims, terms; constant=0.7)
+    ref = kron_reference(dims, [(t.coeff, [(a, dense(op)) for (a, op) in t.factors]) for t in terms]) + 0.7I
+    @test norm(ref - ref') <= 1e-14 * norm(ref)
+    @test length(H.diagterms) == 2                                               # the fused coupling and the constant
+    S = sparse(H)
+    @test S isa SparseMatrixCSC{ComplexF64} && norm(Matrix(S) - ref) <= 1e-13 * norm(ref)
+    @test H.sparse[] === S
+    @test gershgorin_bound(H) >= maximum(eigvals(Hermitian(ref)))
+    @test gershgorin_bound(H) === gershgorin_bound(H)
+    # per-axis bases diagonalize the single-axis sums; the constant sits in axis 1's energies
+    sep = separable_eigenbases(H)
+    @test sep === separable_eigenbases(H)
+    single = [A1 + 0.7I, 0.5 * dense(B2), 0.4 * (dense(ShiftOp(3, 1, 1.0)) + dense(ShiftOp(3, -1, 1.0)))]
+    for k in 1:3
+        @test sep.U[k]' * sep.U[k] ≈ I
+        @test sep.U[k] * Diagonal(sep.λ[k]) * sep.U[k]' ≈ single[k]
+        @test !(sep.U[k] ≈ I)
+    end
+    # the seed is the lowest product states of the separable part, against brute force
+    Hsep = kron_reference(dims, [(1.0 + 0im, [(k, single[k])]) for k in 1:3])
+    sums = vec([a + b + d for a in sep.λ[1], b in sep.λ[2], d in sep.λ[3]])
+    X = product_seed(H, 5)
+    @test size(X) == (60, 5) && X' * X ≈ I
+    @test real(diag(X' * Hsep * X)) ≈ sort(sums)[1:5]
+    @test norm(X' * Hsep * X - Diagonal(sort(sums)[1:5])) <= 1e-12
+    @test_throws ArgumentError product_seed(H, 0)
+    @test_throws ArgumentError product_seed(H, 61)
+    # memos are shared with a re-capacitied operator
+    Hc = KronFreeCircuits.with_block_capacity(H, 3)
+    @test sparse(Hc) === S && separable_eigenbases(Hc) === sep && Hc.diagterms === H.diagterms
+    # a non-Hermitian single-axis sum is refused
+    Hn = KronFreeOperator([3], [AxisTerm(1.0, [(1, ShiftOp(3, 1, 1.0))])])
+    err = try separable_eigenbases(Hn); nothing catch e; e end
+    @test err isa ArgumentError && occursin("Hermitian", err.msg)
+end

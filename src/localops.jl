@@ -88,3 +88,42 @@ function dense(op::ShiftOp)
     end
     return A
 end
+
+# Sparse matrices built from each operator's own data (never through `dense`), in the element
+# type `dense` returns.
+SparseArrays.sparse(op::DenseOp) = sparse(op.M)
+SparseArrays.sparse(op::DiagonalOp) = spdiagm(0 => Vector{ComplexF64}(op.d))
+function SparseArrays.sparse(op::BandedOp)
+    I, J, V = Int[], Int[], ComplexF64[]
+    for (o, w) in zip(op.offsets, op.weights), i in 1:op.n
+        if 1 <= i + o <= op.n          # A[i, i+o] = w[i]
+            push!(I, i); push!(J, i + o); push!(V, w[i])
+        end
+    end
+    return sparse(I, J, V, op.n, op.n)
+end
+function SparseArrays.sparse(op::ShiftOp)
+    J = max(1, 1 - op.s):min(op.n, op.n - op.s)   # A[j+s, j] = factor
+    return sparse(collect(J) .+ op.s, collect(J), fill(ComplexF64(op.factor), length(J)), op.n, op.n)
+end
+
+"""
+    infnorm(op::LocalOp) -> Float64
+
+The induced ∞-norm of `op`, the maximum absolute row sum of its matrix, from the operator's data.
+"""
+function infnorm end
+infnorm(op::DenseOp) = float(opnorm(op.M, Inf))
+infnorm(op::DiagonalOp) = float(maximum(abs, op.d; init=zero(real(eltype(op.d)))))
+function infnorm(op::BandedOp)
+    m = zero(real(eltype(eltype(op.weights))))
+    for i in 1:op.n
+        r = zero(m)
+        for (o, w) in zip(op.offsets, op.weights)
+            1 <= i + o <= op.n && (r += abs(w[i]))
+        end
+        m = max(m, r)
+    end
+    return float(m)
+end
+infnorm(op::ShiftOp) = abs(op.s) < op.n ? float(abs(op.factor)) : float(zero(abs(op.factor)))
