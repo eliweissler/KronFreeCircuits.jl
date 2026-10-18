@@ -250,6 +250,9 @@ end
     err = try solve(ChebyshevFilter(tol=1e-9, degree=100, bound=0.5 * λtrue), H, 8); nothing catch e; e end
     @test err isa ErrorException && occursin("bound", err.msg)
     @test_throws ArgumentError ChebyshevFilter(degree=0)
+    @test_throws ArgumentError ChebyshevFilter(extra=1)       # no column could serve as a guard
+    @test_throws ArgumentError ChebyshevFilter(extra=0)
+    @test ChebyshevFilter(extra=2).extra == 2
 end
 
 # An exactly invariant product seed that excludes the ground state: product states of energy i + 10j on a
@@ -290,7 +293,7 @@ _trap_coupling(e) = sqrt(((101 - 2e)^2 - 1) / 4)
         @test Ed[1] < 0.75                                             # a state below the seeded energy 1, outside the seed span
         P = KronFreeCircuits.product_seed(H, 43)
         @test norm(H * P - P * (P' * (H * P))) == 0
-        for m in ms, tol in (1e-8, 1e-4), extra in (40, 2, 1)       # extra = 1 has no guard column: the admixture alone
+        for m in ms, tol in (1e-8, 1e-4), extra in (40, 2)
             E, V = solve(ChebyshevFilter(tol=tol, extra=extra), H, m)
             @testset "$name, m = $m, tol = $tol, extra = $extra" begin
                 @test E ≈ Ed[1:m] atol=10tol * max(1, maximum(abs, Ed[1:m]))

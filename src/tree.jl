@@ -200,10 +200,12 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   orthogonalization). On a narrow spectrum the cap binds hard (the three-oscillator test runs at
   degree 14 of 100); on a grid leaf with a large bound it binds moderately (the small zero-pi leaf
   runs at degree 65–81 of 100). The applied degree is reported to `callback` and in the `maxiter` error.
-- `extra ≥ 1`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states).
+- `extra ≥ 2`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states);
+  at least two so at least one column serves as a convergence guard, since the top column sets the filter cut.
   Up to four of them double as guards that must converge before the iteration stops, as `LOBPCG`'s:
   `g = min(extra − 1, 4)`, one fewer than `extra` because the top column sets `λ_cut` and sits at the
-  cut, where the filter does not converge it (so `extra = 1` has no guard). A guard is waived only
+  cut, where the filter does not converge it (hence `extra ≥ 2`: with `extra = 1` there is no guard, and
+  a lower state outside the seed span can be missed with passing residuals). A guard is waived only
   while the last filter's log-gain at its Ritz value (`degree · acosh|x|`, `x` its image on the filter
   interval mapped to `[−1, 1]`) is below `0.1` times the log-gain at the lowest Ritz value: one
   (near-)degenerate with the top column gains about nothing and would never lock, while under a filter
@@ -258,8 +260,8 @@ struct ChebyshevFilter <: Solver
                              ortho::Symbol, bound::Union{Symbol,Real}, seed::Symbol, on, callback)
         tol > 0 && isfinite(tol) || throw(ArgumentError("ChebyshevFilter: tol must be positive and finite, got $tol"))
         1 <= degree <= 200 || throw(ArgumentError("ChebyshevFilter: degree must lie in 1:200, got $degree"))
-        extra >= 1 || throw(ArgumentError("ChebyshevFilter: extra must be at least 1 (λ_cut is the largest Ritz value of " *
-                                          "the block, so the m-th state needs a column above it), got $extra"))
+        extra >= 2 || throw(ArgumentError("ChebyshevFilter: extra must be at least 2 so at least one column serves as a convergence " *
+                                          "guard; the top column sets the filter cut and cannot be one, got $extra"))
         maxiter >= 1 || throw(ArgumentError("ChebyshevFilter: maxiter must be at least 1, got $maxiter"))
         rescale_every >= 1 || throw(ArgumentError("ChebyshevFilter: rescale_every must be at least 1, got $rescale_every"))
         ortho in (:svqb, :cholqr) || throw(ArgumentError("ChebyshevFilter: ortho must be :svqb or :cholqr, got $(repr(ortho))"))
