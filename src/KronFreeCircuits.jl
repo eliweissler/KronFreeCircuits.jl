@@ -18,7 +18,7 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense,
        Lanczos, LOBPCG, ShiftInvert, ChebyshevFilter, isreal_assembled, lowest, indices, connected, follow, materialize,
        System, energies, port, eigenvectors, materialized, bare_labels,
-       bare_overlaps, decompose, dressed_index, constant_term, SelectionRule,
+       bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm
 

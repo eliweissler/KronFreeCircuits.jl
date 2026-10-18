@@ -71,18 +71,20 @@ Both preconditioners use only the diagonal of `H`.
 They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, plausibly (this is untested) because the kinetic stencil dominates there: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
 When choosing explicitly, use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start), and `ShiftInvert` or `ChebyshevFilter` (or `Lanczos` for a few states) at a large, stiff leaf.
 
-A user-defined solver subtypes `KronFreeCircuits.Solver` and needs one method, `KronFreeCircuits.solve(s, H, m; X0=nothing)`, returning the lowest `m` energies in ascending order and orthonormal eigenvectors as host arrays, with true residuals below its tolerance.
+A user-defined solver subtypes `Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors as host arrays, with true residuals below its tolerance.
 The `Solver` docstring states the full contract and what `H` provides (`mul!` on blocks, `diagonal`, `sparse`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`).
 
 ```julia
 using LinearAlgebra
-struct MySolver <: KronFreeCircuits.Solver end
-function KronFreeCircuits.solve(::MySolver, H, m; X0=nothing)
+struct MySolver <: Solver end
+function KronFreeCircuits.solve(::MySolver, H, m)          # qualified: `solve` is not exported
     F = eigen(Hermitian(Matrix(H)), 1:m)                      # exact, so the residuals are at round-off
     return F.values, F.vectors
 end
 leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=MySolver(), compute=6, keep=lowest(6))
 ```
+
+Define the method as `KronFreeCircuits.solve` (or after `import KronFreeCircuits: solve`): an unqualified `function solve(...)` after `using KronFreeCircuits` creates a new function instead of adding a method.
 
 `materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
 Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.

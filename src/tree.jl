@@ -249,8 +249,9 @@ the node's kind, product dimension and storage (spec §20e decision 5).
 The resolved solvers take their default settings; for other settings, pass the solver explicitly
 (an explicit solver always wins). `compute == 0` (all eigenpairs) is valid only for a node that
 resolves to `Dense`; otherwise `materialize` raises an `ArgumentError` naming the resolved solver.
-`dense_cutoff` is a placeholder (to be benchmarked); the warning for a large `Dense` node
-(above 10 000 states) applies only to an explicit `Dense()`.
+`dense_cutoff` is a placeholder (to be benchmarked). The warning for a large `Dense` node (above
+10 000 states) applies to any `Dense` that runs, explicit or resolved (e.g. `Auto(dense_cutoff=20000)`
+on a 15 000-state node).
 """
 struct Auto <: Solver
     dense_cutoff::Int

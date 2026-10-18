@@ -11,9 +11,9 @@ solver implements; a user solver needs only `solve`.
   operator `H::KronFreeOperator`, with `E::Vector{Float64}` ascending and `V::Matrix` on the host
   (`size(H, 1) × m`, orthonormal columns, `V[:, j]` the eigenvector of `E[j]`). Every true residual
   `‖H V[:, j] − E[j] V[:, j]‖` must be below the solver's tolerance, checked with `H` itself before
-  returning (an inner Krylov tolerance is not an acceptance criterion). `X0` is `nothing` or an initial
-  block of `m` columns; `materialize` supplies it only to `LOBPCG` (from `previous`) and calls every
-  other solver as `solve(s, H, m)`, so the keyword must default to `nothing`.
+  returning (an inner Krylov tolerance is not an acceptance criterion). `materialize` calls
+  `solve(s, H, m)` for every solver except `LOBPCG`, which receives the previous block (`nothing` or
+  `m` columns) as `X0`; a user solver may accept `X0=nothing` but need not.
 - `KronFreeCircuits.storage(s)` (optional, default `Array`): the array type `materialize` builds `H`
   on; a device solver returns its device array type, and still returns `E` and `V` on the host.
 - `KronFreeCircuits.resolve(s, info)` (optional, default `s`): the solver that actually runs, given
@@ -23,7 +23,9 @@ What `H` provides: `mul!(Y, H, X)` and `H * X` on vectors and blocks of any widt
 `size(H)` and `eltype(H)`; and, on the host, computed when asked for and memoized on the operator,
 `diagonal(H)`, `sparse(H; maxnnz)` (from SparseArrays), `gershgorin_bound(H)`,
 `separable_eigenbases(H)` and `product_seed(H, k)`. On `Array` storage `Matrix(H)` forms the dense matrix.
-A node with `compute == 0` (all eigenpairs) accepts only `Dense`.
+A node with `compute == 0` (all eigenpairs) accepts only a solver that is, or resolves to, `Dense`.
+The `Node` constructor exempts only `Auto` from this check, so a user solver with a custom `resolve`
+that resolves to `Dense` must set `compute` explicitly.
 """
 Solver
 
