@@ -33,19 +33,20 @@ through its public interface only.
   `:jacobi` (fixed shifted Jacobi, `1 / (D − σ)` with `σ = minimum(D) − 1`) or `:none`.
 - `eta`: the regularization of `:ritz`, in the Hamiltonian's energy units. The default is taken
   from the audit fixture (GHz) and must be set for other energy scales.
-- `guard`: extra random columns appended to every block (cold or warm start). They are extra
+- `guard`: extra columns appended to every block (cold or warm start; random with `seed=:random`, product states with `:product`). They are extra
   states: converged with the rest of the block (a guard still unconverged when `maxiter` runs
   out gives a warning), then discarded, and the lowest `m` pairs of the
   sorted block are returned. Guards make exact excited-state seeds and sector-confined seeds
   recoverable in practice; they are not a completeness guarantee. The guard shrinks so that the
-  block fits `N ≥ 3(m + guard) + 5`. On a stiff grid leaf the random guard columns set the
-  iteration count and emit the guard warning even on a warm start, because guards start random
-  either way; `guard=0` avoids this for warm leaf sweeps at the documented completeness cost.
+  block fits `N ≥ 3(m + guard) + 5`. On a stiff grid leaf the guard columns can set the
+  iteration count and emit the guard warning even on a warm start; `guard=0` avoids this for warm leaf sweeps at the documented completeness cost.
   A guard stopping rule is an open item (spec §20c execution notes).
-- `seed`: the cold start (no `X0`): `:product` starts the whole block of `m + guard` columns from
-  [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the separable part, unperturbed, no
-  random columns), `:random` from a random block. A previous solution's vectors (`X0`) win over either, and the
-  cold retry after a failed warm start is always random.
+- `seed`: `:product` starts the whole block of `m + guard` columns from
+  [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the separable part, no
+  random columns), `:random` from a random block. The product seed is perturbed like `X0` (below). A previous
+  solution's vectors (`X0`) win over either for the first `m` columns; with `:product` a warm start's guard
+  columns are the next `guard` product states by energy (random with `:random`). The cold retry after a failed
+  warm start is always random.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called with the solver's per-iteration `info` named tuple;
   its return value is ignored, and an exception it throws propagates unchanged.
@@ -56,8 +57,7 @@ iteration count: the guard columns converge from random on warm and cold starts 
 seeded columns lock, each remaining iteration applies `H` to only a few active columns.
 Warm-start columns are perturbed by a vector of norm `sqrt(eps)` times the column's norm (a
 fixed pseudo-random direction) so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which
-the eigensolver still fails is replaced once by a random block, with a warning. A product-state seed of a diagonal
-operator is an exact eigenblock the eigensolver rejects; it is replaced the same way, logged at debug level only.
+the eigensolver still fails is replaced once by a random block, with a warning. A failure on the (perturbed) product-state seed is retried the same way, logged at debug level only.
 """
 struct LOBPCG <: Solver
     tol::Float64

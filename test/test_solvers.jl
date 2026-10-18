@@ -247,8 +247,11 @@ end
     @test Ed ≈ [0.0, 0.0] atol=1e-12
     @test V * V' ≈ Vd * Vd' atol=1e-8
     check_eigenpairs(H, E, V; tol=1e-9)
-    # a product-state seed of a diagonal operator is exactly an eigenblock; the eigensolver fails on it and the solve recovers from a random block without a warning
-    E2, V2 = @test_logs solve(LOBPCG(tol=1e-10, guard=0), H, 2)
+    # the perturbed product seed of a diagonal operator takes the direct path: no retry is logged, even at debug level
+    (logs, (E2, V2)) = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+        solve(LOBPCG(tol=1e-10, guard=0), H, 2)
+    end
+    @test !any(r -> occursin("retrying", string(r.message)), logs)
     @test E2 ≈ [0.0, 0.0] atol=1e-8
     @test V2 * V2' ≈ Vd * Vd' atol=1e-8
     check_eigenpairs(H, E2, V2; tol=1e-9)
@@ -275,7 +278,7 @@ end
     Random.seed!(11)
     H = three_oscillators(6)
     Ed, Vd = solve(Dense(), H, 0)
-    E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9, seed=:random), H, 6)
+    E, V, cold = lobpcg_solve(LOBPCG(tol=1e-9), H, 6)
     Ew, Vw, warm = lobpcg_solve(LOBPCG(tol=1e-9), H, 6; X0=V)
     @test warm.n_matvec < cold.n_matvec
     check_eigenpairs(H, E, V; tol=1e-8)
