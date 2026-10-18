@@ -123,6 +123,55 @@ end
     check_eigenpairs(H, E, V; tol=1e-9)
 end
 
+@testset "ShiftInvert: the default certificate recovers degenerate levels by deflation" begin
+    Random.seed!(83)
+    @test ShiftInvert().certify                                        # certified by default (automatic shift)
+    @test !ShiftInvert(shift=1.0).certify                              # an explicit shift returns the states nearest it
+    # a 4-fold ground level: single-vector Lanczos resolves one copy per Krylov space, the inertia count sees all four
+    H4 = KronFreeCircuits.KronFreeOperator([45], [AxisTerm(1.0, [(1, DiagonalOp(Float64[0, 0, 0, 0, 1:41...]))])])
+    Ed, Vd = solve(Dense(), H4, 0)
+    @test Ed[1:6] ≈ [0, 0, 0, 0, 1, 2] atol=1e-12
+    for m in (5, 2, 4)                                                 # above, inside and at the top of the level
+        E, V = solve(ShiftInvert(), H4, m)
+        @test E ≈ Ed[1:m] atol=1e-8
+        check_eigenpairs(H4, E, V; tol=1e-8)
+        m != 2 && @test V * V' ≈ Vd[:, 1:m] * Vd[:, 1:m]' atol=1e-8     # m = 2 cuts the level: no unique projector
+    end
+    E, V = solve(ShiftInvert(block=2), H4, 5)
+    @test E ≈ Ed[1:5] atol=1e-8
+    check_eigenpairs(H4, E, V; tol=1e-8)
+    # The opt-out has no completeness check: single-vector Lanczos may undercount the 4-fold level and
+    # return a wrong spectrum silently, so only the absence of an error is asserted.
+    E0, V0 = solve(ShiftInvert(certify=false), H4, 5)
+    @test length(E0) == 5
+    # the 2-fold fixture of the LOBPCG "repeated eigenvalue" testset, with the default ShiftInvert
+    H2 = KronFreeCircuits.KronFreeOperator([12], [AxisTerm(1.0, [(1, DiagonalOp(ComplexF64[0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))])])
+    Ed2, Vd2 = solve(Dense(), H2, 3)
+    for m in (2, 3)
+        E2, V2 = solve(ShiftInvert(), H2, m)
+        @test E2 ≈ Ed2[1:m] atol=1e-8
+        @test V2 * V2' ≈ Vd2[:, 1:m] * Vd2[:, 1:m]' atol=1e-8
+        check_eigenpairs(H2, E2, V2; tol=1e-9)
+    end
+    # every level 3-fold, in complex arithmetic: an imaginary hopping coupling two modes, and a third axis
+    # of three degenerate states
+    d = 6
+    K = zeros(ComplexF64, d, d); for i in 1:d-1; K[i, i+1] = im; K[i+1, i] = -im; end
+    X = Matrix{ComplexF64}(I, d, d); for i in 1:d-1; X[i, i+1] = X[i+1, i] = 0.1; end
+    Hc = KronFreeCircuits.KronFreeOperator([d, d, 3], [AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:d-1)))]),
+                                                      AxisTerm(1.3, [(2, DiagonalOp(collect(0.0:d-1)))]),
+                                                      AxisTerm(0.3, [(1, DenseOp(K)), (2, DenseOp(X))]),
+                                                      AxisTerm(1.0, [(3, DiagonalOp(zeros(3)))])])
+    @test !KronFreeCircuits.isreal_assembled(Hc)
+    Edc, Vdc = solve(Dense(), Hc, 0)
+    for m in (6, 7)
+        E, V = solve(ShiftInvert(), Hc, m)
+        @test E ≈ Edc[1:m] atol=1e-8
+        check_eigenpairs(Hc, E, V; tol=1e-8)
+        m == 6 && @test V * V' ≈ Vdc[:, 1:6] * Vdc[:, 1:6]' atol=1e-8
+    end
+end
+
 @testset "ShiftInvert slicing equals the single-shift solve" begin
     Random.seed!(82)
     H = three_oscillators(7)                                   # 343 states

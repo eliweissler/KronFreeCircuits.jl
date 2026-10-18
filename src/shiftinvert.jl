@@ -275,33 +275,94 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     if s.shift === :auto && !ischol
         @warn "ShiftInvert: H − σI is not positive definite at the automatic shift σ = $σ (the estimate E_min = $Emin " *
               "is off by more than shift_margin = $(s.shift_margin)); factored by LU, so states below σ may be missed. " *
-              "Increase shift_margin or pass certify=true"
+              "Increase shift_margin (with certify=true, the default, a miss raises)"
     end
 
     # A certificate needs the (m+1)-th energy to place its cut between E_m and E_{m+1}.
     howmany = s.certify ? min(m + 1, n) : m
+    vals, vecs = _si_eigsolve(s, F, howmany, nothing, n, eltype(A))
+    Eall = σ .+ inv.(real.(vals))
+    p = sortperm(Eall)
+    Eall, Vall = Eall[p], reduce(hcat, vecs[p])
+    s.certify && ((Eall, Vall) = _certify(s, A, F, ischol, σ, Eall, Vall, m))
+
+    E = Vector{real(eltype(H))}(Eall[1:m])
+    V = Matrix{eltype(H)}(Vall[:, 1:m])
+    _check_residuals(s, H, E, V)
+    orth = norm(V' * V - I)
+    orth <= sqrt(eps(real(eltype(H)))) ||
+        error("ShiftInvert: the returned vectors are not orthonormal (‖V'V − I‖ = $orth)")
+    return E, V
+end
+
+# `howmany` eigenpairs of largest magnitude of (H − σI)⁻¹ = F⁻¹ by KrylovKit, restricted to the orthogonal
+# complement of the orthonormal columns of `D` (`nothing`: the whole space): there the deflated operator
+# P F⁻¹ P, P = I − D D', has the eigenpairs of F⁻¹ off span(D), and zero on it.
+function _si_eigsolve(s::ShiftInvert, F, howmany::Int, D, n::Int, T)
+    proj(x) = D === nothing ? x : x - D * (D' * x)
     krylovdim = max(2howmany + 10, s.krylovdim)
-    T = eltype(A)
-    x0 = s.block == 1 ? randn(T, n) : KrylovKit.Block([randn(T, n) for _ in 1:s.block])
-    vals, vecs, info = KrylovKit.eigsolve(x -> F \ x, x0, howmany, :LM; ishermitian=true, tol=s.inner_tol,
+    x0 = s.block == 1 ? proj(randn(T, n)) : KrylovKit.Block([proj(randn(T, n)) for _ in 1:s.block])
+    op = D === nothing ? (x -> F \ x) : (x -> proj(F \ proj(x)))
+    vals, vecs, info = KrylovKit.eigsolve(op, x0, howmany, :LM; ishermitian=true, tol=s.inner_tol,
                                           krylovdim=krylovdim, maxiter=s.maxiter, verbosity=0)
     length(vals) >= howmany && info.converged >= howmany ||
         error("ShiftInvert: only $(info.converged) of $howmany eigenpairs of the inverted operator converged " *
-              "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))")
-    Eall = σ .+ inv.(real.(vals[1:howmany]))
-    p = sortperm(Eall)
-    Eall = Eall[p]
-    E = Vector{real(eltype(H))}(Eall[1:m])
-    V = Matrix{eltype(H)}(reduce(hcat, vecs[p[1:m]]))
+              "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))" * (D === nothing ? "" : " in a deflated round"))
+    return vals[1:howmany], vecs[1:howmany]
+end
 
-    _check_residuals(s, H, E, V)
+# The number of deflated rounds the certificate may run to recover states the Lanczos solve missed.
+const _CERTIFY_ROUNDS = 3
 
-    if s.certify
-        # The cut halfway into the gap above E_m, and a retry a quarter of the gap further up.
-        gap = howmany > m ? Eall[m+1] - E[m] : 2s.tol
-        below, τ = _count_below(A, (E[m] + gap / 2, E[m] + 3gap / 4))
-        below == m || error("ShiftInvert: completeness certificate failed: the inertia of H − τI counts $below " *
-                            "eigenvalues below τ = $τ, but $m were computed")
+# The completeness certificate on the sorted computed pairs `(Eall, Vall)`, at least m + 1 of them
+# unless all n are. The cut τ lies in the first gap above E_m wider than 2·tol (computed energies closer
+# than that may be one level, each lying within tol of an eigenvalue), after the j-th computed energy; the
+# inertia of H − τI must count j eigenvalues below τ. A larger count means missed states (a degenerate
+# level holding more copies than single-vector Lanczos resolves). With σ below the spectrum (Cholesky),
+# the missing ones plus one are found by Lanczos on the inverse deflated against every computed vector,
+# merged by Rayleigh–Ritz on the joint orthonormal block, and the certificate repeats, up to
+# `_CERTIFY_ROUNDS` rounds. An interior σ (LU) targets the states nearest it, not the lowest: it raises.
+# Returns the pairs, sorted.
+function _certify(s::ShiftInvert, A::SparseMatrixCSC, F, ischol::Bool, σ::Real, Eall, Vall, m::Int)
+    n = size(A, 1)
+    rounds = 0
+    while true
+        k = length(Eall)
+        k == n && return Eall, Vall                          # every eigenpair computed: complete
+        i = findfirst(i -> Eall[i+1] - Eall[i] > 2s.tol, m:k-1)
+        if i === nothing                                     # the level at E_m runs past the computed states
+            below, j, τ = nothing, k, Eall[k]
+            want = 2
+        else
+            j = m + i - 1
+            # The cut halfway into the gap, and a retry a quarter of the gap further up.
+            gap = Eall[j+1] - Eall[j]
+            below, τ = _count_below(A, (Eall[j] + gap / 2, Eall[j] + 3gap / 4))
+            below == j && return Eall, Vall
+            msg = "ShiftInvert: completeness certificate failed: the inertia of H − τI counts $below " *
+                  "eigenvalues below τ = $τ, but $j were computed"
+            below > j || error(msg)
+            ischol || error(msg * " (the shift σ = $σ is not below the spectrum, so Lanczos on the inverse targets " *
+                            "the states nearest σ, not the lowest)")
+            want = below - j + 1
+        end
+        (rounds += 1) <= _CERTIFY_ROUNDS ||
+            error("ShiftInvert: completeness certificate failed after $_CERTIFY_ROUNDS deflated rounds: " *
+                  (below === nothing ? "the level at E_m = $(Eall[m]) extends past all $k computed states" :
+                   "the inertia of H − τI counts $below eigenvalues below τ = $τ, but $j were computed") *
+                  " (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter)) (a degenerate level may hold more copies " *
+                  "than Lanczos with block = $(s.block) can resolve; try block = 2)")
+        want = min(want, n - k)
+        @debug "ShiftInvert: certificate round $rounds: " *
+               (below === nothing ? "the level at E_m continues past the computed states" : "$below below τ = $τ, $j computed") *
+               "; finding $want more on the deflated inverse"
+        _, vecs = _si_eigsolve(s, F, want, Vall, n, eltype(A))
+        W = reduce(hcat, vecs)
+        for _ in 1:2
+            W .-= Vall * (Vall' * W)
+        end
+        Q = hcat(Vall, Matrix(qr(W).Q))
+        G = eigen(Hermitian(Q' * (A * Q)))
+        Eall, Vall = G.values, Q * G.vectors
     end
-    return E, V
 end

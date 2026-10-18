@@ -155,6 +155,10 @@ There were no guard warnings, no `ShiftInvert` LU-fallback warnings and no `Dens
   The real-arithmetic plan (spec §20e decision 1: about 2× everywhere) is the next lever for both the parent and the GPU leaf, whose spike measured 1.2 s in real arithmetic.
 - **On the A4500, host-side work after the device solves is a quarter of the tree**: root port formation 1.22 s and about 1.65 s of selection, phase fixing and peak amplitudes, all on one BLAS thread.
   Device-side port formation (plan 2's finding (c)) and moving the post-solve bookkeeping to the device or to more host threads would take most of it.
+- **The `ShiftInvert` times above were measured with the then-default `certify=false`.**
+  `ShiftInvert()` now certifies by default (after this benchmark, to catch degenerate levels single-vector Lanczos undercounts): one more Lanczos pair (`m + 1`) and one `LDLᵀ` factorization of the 9331-state leaf per solve (two if the first breaks down), plus a deflated Lanczos run and one or two factorizations per recovery round when the count is short.
+  Not re-measured (the certificate's `LDLᵀ` is simplicial, unlike the supernodal Cholesky of the shift, so its cost is not bounded by the 0.3 s of assembly and factorization above).
+  Likewise the `ChebyshevFilter` rows predate the perturbed product seed and the rule that every column is filtered once before it locks.
 
 ## Commands
 

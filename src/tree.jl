@@ -84,7 +84,7 @@ LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:
 
 """
     ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
-                block=1, slices=1, certify=false, maxnnz=10^8)
+                block=1, slices=1, certify=(shift === :auto), maxnnz=10^8)
 
 Leaf solver on the CPU (spec §20e decision 3): Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
 directly from the assembled sparse matrix `sparse(H; maxnnz)`.
@@ -116,9 +116,20 @@ part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex
   BLAS and UMFPACK threads are not pinned inside the threaded loop, so many slices on a many-thread
   machine can oversubscribe the cores. Each inertia count at a cut costs two `LDLᵀ` factorizations
   (at `τ ± 10·tol`, to keep every cut clear of an eigenvalue).
-- `certify`: count the eigenvalues below a cut `τ` between the `m`-th and `(m+1)`-th computed
-  energies by the inertia of an `LDLᵀ` factorization of `H − τI`, and raise unless the count is `m`
-  (a completeness certificate; it costs one more factorization). A sliced solve is always certified.
+- `certify`: count the eigenvalues below a cut `τ` in the first gap above the `m`-th computed energy
+  (wider than `2·tol`, so a degenerate level is never cut) by the inertia of an `LDLᵀ` factorization of
+  `H − τI`, and require it to equal the number of computed energies below `τ` (a completeness
+  certificate). On by default with the automatic shift, the path `Auto()` takes; off by default with an
+  explicit shift, which returns the states nearest `σ` rather than the lowest. Single-vector Lanczos
+  resolves one copy of an exactly degenerate level per Krylov space, so it can return a 4-fold ground
+  level as two copies, with passing residuals; the certificate detects the shortfall. With `σ` below
+  the spectrum (Cholesky), the missing states (plus one) are then found by Lanczos on the inverse
+  deflated against every computed vector, `x ↦ P (H − σI)⁻¹ P x` with `P = I − V V'`, merged with the
+  computed ones by Rayleigh–Ritz, and the count repeats, at most 3 rounds before an error; an interior
+  `σ` raises at once. The certificate costs one `LDLᵀ` factorization when it passes (two if the first
+  breaks down), and one more Lanczos run and one or two factorizations per recovery round.
+  `certify=false` runs no completeness check: a degenerate level may be undercounted, silently.
+  A sliced solve is always certified (its count mismatch raises; it does not deflate).
 - `maxnnz`: the nonzero cap of `sparse(H)`; a larger operator is refused before assembly.
 """
 struct ShiftInvert <: Solver
@@ -155,7 +166,7 @@ struct ShiftInvert <: Solver
     end
 end
 ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
-            block=1, slices=1, certify=false, maxnnz=10^8) =
+            block=1, slices=1, certify=(shift === :auto), maxnnz=10^8) =
     ShiftInvert(tol, shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices, certify, maxnnz)
 
 """
