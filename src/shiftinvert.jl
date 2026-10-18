@@ -275,16 +275,20 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     if s.shift === :auto && !ischol
         @warn "ShiftInvert: H − σI is not positive definite at the automatic shift σ = $σ (the estimate E_min = $Emin " *
               "is off by more than shift_margin = $(s.shift_margin)); factored by LU, so states below σ may be missed. " *
-              "Increase shift_margin (with certify=true, the default, a miss raises)"
+              "Increase shift_margin (the certificate, on by default, raises on a miss)"
     end
 
+    # `certify = :auto` certifies whenever the lowest m are sought: σ below the spectrum (Cholesky), or the
+    # automatic shift (also on its LU fallback, where a miss must raise). An explicit interior shift returns
+    # the states nearest it and is not certified unless certify = true.
+    cert = s.certify === :auto ? (ischol || s.shift === :auto) : s.certify
     # A certificate needs the (m+1)-th energy to place its cut between E_m and E_{m+1}.
-    howmany = s.certify ? min(m + 1, n) : m
+    howmany = cert ? min(m + 1, n) : m
     vals, vecs = _si_eigsolve(s, F, howmany, nothing, n, eltype(A))
     Eall = σ .+ inv.(real.(vals))
     p = sortperm(Eall)
     Eall, Vall = Eall[p], reduce(hcat, vecs[p])
-    s.certify && ((Eall, Vall) = _certify(s, A, F, ischol, σ, Eall, Vall, m))
+    cert && ((Eall, Vall) = _certify(s, A, F, ischol, σ, Eall, Vall, m))
 
     E = Vector{real(eltype(H))}(Eall[1:m])
     V = Matrix{eltype(H)}(Vall[:, 1:m])
@@ -307,7 +311,9 @@ function _si_eigsolve(s::ShiftInvert, F, howmany::Int, D, n::Int, T)
                                           krylovdim=krylovdim, maxiter=s.maxiter, verbosity=0)
     length(vals) >= howmany && info.converged >= howmany ||
         error("ShiftInvert: only $(info.converged) of $howmany eigenpairs of the inverted operator converged " *
-              "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))" * (D === nothing ? "" : " in a deflated round"))
+              "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))" *
+              (D === nothing ? "" : " in a deflated round of the certificate (a degenerate level may hold more copies " *
+                                    "than Lanczos with block = $(s.block) can resolve; try block = 2)"))
     return vals[1:howmany], vecs[1:howmany]
 end
 
@@ -321,8 +327,11 @@ const _CERTIFY_ROUNDS = 3
 # level holding more copies than single-vector Lanczos resolves). With σ below the spectrum (Cholesky),
 # the missing ones plus one are found by Lanczos on the inverse deflated against every computed vector,
 # merged by Rayleigh–Ritz on the joint orthonormal block, and the certificate repeats, up to
-# `_CERTIFY_ROUNDS` rounds. An interior σ (LU) targets the states nearest it, not the lowest: it raises.
-# Returns the pairs, sorted.
+# `_CERTIFY_ROUNDS` rounds. With σ not below the spectrum (LU) a larger count raises: Lanczos on the
+# inverse targets the states nearest σ, so deflation need not reach the missing ones. When no such gap
+# lies among the computed energies (the level at E_m runs past them), two more states are found by
+# deflation on either path; that only extends the computed set, and a return still requires a matching
+# count at a gap. Returns the pairs, sorted.
 function _certify(s::ShiftInvert, A::SparseMatrixCSC, F, ischol::Bool, σ::Real, Eall, Vall, m::Int)
     n = size(A, 1)
     rounds = 0
@@ -342,8 +351,10 @@ function _certify(s::ShiftInvert, A::SparseMatrixCSC, F, ischol::Bool, σ::Real,
             msg = "ShiftInvert: completeness certificate failed: the inertia of H − τI counts $below " *
                   "eigenvalues below τ = $τ, but $j were computed"
             below > j || error(msg)
-            ischol || error(msg * " (the shift σ = $σ is not below the spectrum, so Lanczos on the inverse targets " *
-                            "the states nearest σ, not the lowest)")
+            ischol || error(msg * ". The shift σ = $σ is not below the spectrum (factored by LU), so either Lanczos on " *
+                            "the inverse returned the states nearest σ rather than the lowest, or a degenerate level holds " *
+                            "more copies than Lanczos with block = $(s.block) resolved; deflated recovery runs only with σ " *
+                            "below the spectrum (use shift = :auto or a shift below E_min, or block = 2)")
             want = below - j + 1
         end
         (rounds += 1) <= _CERTIFY_ROUNDS ||

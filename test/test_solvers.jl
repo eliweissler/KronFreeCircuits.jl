@@ -125,8 +125,9 @@ end
 
 @testset "ShiftInvert: the default certificate recovers degenerate levels by deflation" begin
     Random.seed!(83)
-    @test ShiftInvert().certify                                        # certified by default (automatic shift)
-    @test !ShiftInvert(shift=1.0).certify                              # an explicit shift returns the states nearest it
+    @test ShiftInvert().certify === :auto                              # decided in solve: certified unless an explicit interior shift
+    @test ShiftInvert(shift=1.0).certify === :auto
+    @test_throws ArgumentError ShiftInvert(certify=:always)
     # a 4-fold ground level: single-vector Lanczos resolves one copy per Krylov space, the inertia count sees all four
     H4 = KronFreeCircuits.KronFreeOperator([45], [AxisTerm(1.0, [(1, DiagonalOp(Float64[0, 0, 0, 0, 1:41...]))])])
     Ed, Vd = solve(Dense(), H4, 0)
@@ -142,6 +143,27 @@ end
     check_eigenpairs(H4, E, V; tol=1e-8)
     # The opt-out has no completeness check: single-vector Lanczos may undercount the 4-fold level and
     # return a wrong spectrum silently, so only the absence of an error is asserted.
+    # an explicit shift below the spectrum (Cholesky) is certified and recovered by default too
+    for seed in 1:5
+        Random.seed!(seed)
+        E, V = solve(ShiftInvert(shift=-1.0), H4, 5)
+        @test E ≈ Ed[1:5] atol=1e-8
+        check_eigenpairs(H4, E, V; tol=1e-8)
+    end
+    # an explicit interior shift with certify = true: a short count raises, naming both possible causes
+    errs = Exception[]
+    for seed in 1:6
+        Random.seed!(seed)
+        try
+            E, V = solve(ShiftInvert(shift=0.4, certify=true), H4, 5)
+            @test E ≈ Ed[1:5] atol=1e-8                                # certified: then it is right
+        catch e
+            push!(errs, e)
+        end
+    end
+    @test !isempty(errs)
+    @test all(e -> e isa ErrorException && occursin("certificate", e.msg) && occursin("nearest σ", e.msg) &&
+                   occursin("degenerate level", e.msg), errs)
     E0, V0 = solve(ShiftInvert(certify=false), H4, 5)
     @test length(E0) == 5
     # the 2-fold fixture of the LOBPCG "repeated eigenvalue" testset, with the default ShiftInvert

@@ -157,7 +157,7 @@ There were no guard warnings, no `ShiftInvert` LU-fallback warnings and no `Dens
   Device-side port formation (plan 2's finding (c)) and moving the post-solve bookkeeping to the device or to more host threads would take most of it.
 - **The `ShiftInvert` times above were measured with the then-default `certify=false`.**
   `ShiftInvert()` now certifies by default (after this benchmark, to catch degenerate levels single-vector Lanczos undercounts): one more Lanczos pair (`m + 1`) and one `LDLᵀ` factorization of the 9331-state leaf per solve (two if the first breaks down), plus a deflated Lanczos run and one or two factorizations per recovery round when the count is short.
-  Not re-measured (the certificate's `LDLᵀ` is simplicial, unlike the supernodal Cholesky of the shift, so its cost is not bounded by the 0.3 s of assembly and factorization above).
+  Not re-measured here; a review measured the certificate's cost on the 9331-state leaf (`solve` alone, m = 300) at about +5 % (2.98–3.07 s with `certify=false`, 3.10–3.22 s with it).
   Likewise the `ChebyshevFilter` rows predate the product seed's `1e-2` random admixture, the guard columns of the stop rule and the rule that every column is filtered once before it locks (on the small test leaves the guards add about one iteration).
 
 ## Commands

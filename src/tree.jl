@@ -84,7 +84,7 @@ LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:
 
 """
     ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
-                block=1, slices=1, certify=(shift === :auto), maxnnz=10^8)
+                block=1, slices=1, certify=:auto, maxnnz=10^8)
 
 Leaf solver on the CPU (spec §20e decision 3): Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
 directly from the assembled sparse matrix `sparse(H; maxnnz)`.
@@ -119,15 +119,19 @@ part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex
 - `certify`: count the eigenvalues below a cut `τ` in the first gap above the `m`-th computed energy
   (wider than `2·tol`, so a degenerate level is never cut) by the inertia of an `LDLᵀ` factorization of
   `H − τI`, and require it to equal the number of computed energies below `τ` (a completeness
-  certificate). On by default with the automatic shift, the path `Auto()` takes; off by default with an
-  explicit shift, which returns the states nearest `σ` rather than the lowest. Single-vector Lanczos
-  resolves one copy of an exactly degenerate level per Krylov space, so it can return a 4-fold ground
-  level as two copies, with passing residuals; the certificate detects the shortfall. With `σ` below
-  the spectrum (Cholesky), the missing states (plus one) are then found by Lanczos on the inverse
-  deflated against every computed vector, `x ↦ P (H − σI)⁻¹ P x` with `P = I − V V'`, merged with the
-  computed ones by Rayleigh–Ritz, and the count repeats, at most 3 rounds before an error; an interior
-  `σ` raises at once. The certificate costs one `LDLᵀ` factorization when it passes (two if the first
-  breaks down), and one more Lanczos run and one or two factorizations per recovery round.
+  certificate). `:auto` (the default) certifies whenever the lowest `m` are sought: when `σ` lies below
+  the spectrum (Cholesky), automatic or explicit, and with the automatic shift (the path `Auto()` takes)
+  also on its LU fallback; an explicit interior shift returns the states nearest `σ` and is not certified.
+  `true` certifies always (an interior shift then raises unless the states nearest `σ` are the lowest).
+  Single-vector Lanczos resolves one copy of an exactly degenerate level per Krylov space, so it can
+  return a 4-fold ground level as two copies, with passing residuals; the certificate detects the
+  shortfall. With `σ` below the spectrum (Cholesky), the missing states (plus one) are then found by
+  Lanczos on the inverse deflated against every computed vector, `x ↦ P (H − σI)⁻¹ P x` with
+  `P = I − V V'`, merged with the computed ones by Rayleigh–Ritz, and the count repeats, at most 3
+  rounds before an error; with `σ` not below the spectrum (LU) a short count raises at once. The
+  certificate costs one `LDLᵀ` factorization and one more Lanczos pair when it passes (two
+  factorizations if the first breaks down; about +5 % on the 9331-state zero-pi leaf at m = 300), and
+  one more Lanczos run and one or two factorizations per recovery round.
   `certify=false` runs no completeness check: a degenerate level may be undercounted, silently.
   A sliced solve is always certified (its count mismatch raises; it does not deflate).
 - `maxnnz`: the nonzero cap of `sparse(H)`; a larger operator is refused before assembly.
@@ -141,10 +145,10 @@ struct ShiftInvert <: Solver
     maxiter::Int
     block::Int
     slices::Union{Int,Symbol}
-    certify::Bool
+    certify::Union{Bool,Symbol}
     maxnnz::Int
     function ShiftInvert(tol::Real, shift::Union{Symbol,Real}, shift_margin::Real, inner_tol::Real, krylovdim::Integer,
-                         maxiter::Integer, block::Integer, slices::Union{Integer,Symbol}, certify::Bool, maxnnz::Integer)
+                         maxiter::Integer, block::Integer, slices::Union{Integer,Symbol}, certify::Union{Bool,Symbol}, maxnnz::Integer)
         tol > 0 && isfinite(tol) || throw(ArgumentError("ShiftInvert: tol must be positive and finite, got $tol"))
         shift === :auto || (shift isa Real && isfinite(shift)) ||
             throw(ArgumentError("ShiftInvert: shift must be :auto or a finite number, got $(repr(shift))"))
@@ -160,13 +164,15 @@ struct ShiftInvert <: Solver
         slices isa Integer && slices > 1 && shift isa Real &&
             throw(ArgumentError("ShiftInvert: slicing finds the lowest m and places its own shifts; " *
                                 "slices = $slices requires shift = :auto, got shift = $shift"))
+        certify isa Bool || certify === :auto ||
+            throw(ArgumentError("ShiftInvert: certify must be :auto, true or false, got $(repr(certify))"))
         maxnnz >= 1 || throw(ArgumentError("ShiftInvert: maxnnz must be positive, got $maxnnz"))
         return new(tol, shift isa Real ? Float64(shift) : shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices,
                    certify, maxnnz)
     end
 end
 ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
-            block=1, slices=1, certify=(shift === :auto), maxnnz=10^8) =
+            block=1, slices=1, certify=:auto, maxnnz=10^8) =
     ShiftInvert(tol, shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices, certify, maxnnz)
 
 """
