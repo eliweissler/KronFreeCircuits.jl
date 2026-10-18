@@ -4,7 +4,8 @@
 #   BENCH_DEVICE=cpu|gpu BENCH_STAGES=leaf,tree,parts,f3,f9,f8 julia --project=... bench/end_to_end.jl
 #
 # Tree: leaves [theta_i => ChargeBasis(15), phi_i => PhaseGrid(-6π, 6π, 301; order=8)], each with
-# LOBPCG(:ritz) computing and keeping 300 states; the parent keeps BENCH_NEV states and forms the
+# the BENCH_LEAF_SOLVER solver computing and keeping 300 states; the parent (a counted LOBPCG(:ritz)
+# with the default seed=:product, the solver Auto() resolves to there) keeps BENCH_NEV states and forms the
 # charge ports of both leaves' theta modes in its kept basis (the ports an ancestor would need), so
 # port formation after the parent solve is measured too. BENCH_SMOKE=1: ncut 6, 101 points, 30
 # kept leaf states, 12 parent states. g = 0.05 (the stored audit parent's coupling).
@@ -28,8 +29,12 @@
 #
 # Further knobs (defaults are the brief's configuration):
 #   BENCH_LEAF_SOLVER   lobpcg (LOBPCG(:ritz) on BENCH_DEVICE) | lanczos (Lanczos() on the host,
-#                       the audit's leaf solver) | dense (Dense() on the host); the last two are
-#                       labelled substitutes
+#                       the audit's leaf solver) | dense (Dense() on the host) | shiftinvert
+#                       (ShiftInvert() on the host) | chebyshev (ChebyshevFilter(on=BENCH_DEVICE's
+#                       storage)) | auto (Auto(on=...), which resolves the 9331-state leaf to
+#                       ShiftInvert on cpu and ChebyshevFilter on gpu)
+#   BENCH_SLICES        with shiftinvert: ShiftInvert(slices=BENCH_SLICES) (spectrum slicing over
+#                       Julia threads, so run julia -t N; unset: one slice)
 #   BENCH_LEAF_MAXITER  LOBPCG maxiter at the leaves (default 1000, the solver default)
 #   BENCH_LEAVES        which leaves the `leaf` stage times (default "1,2")
 #   BENCH_WARMUP        1: one untimed full-size run before the samples of the leaf-dominated
@@ -45,7 +50,7 @@ include(joinpath(@__DIR__, "common.jl"))
 using Test                                    # test/helpers.jl defines @test-based helpers
 include(joinpath(@__DIR__, "..", "test", "helpers.jl"))
 using KronFreeCircuits: operator, materialized, MaterializedNode, _port_matrix, _childop, route,
-                        required_ports, axis_of, _node_operator, _edge_support, _on_storage
+                        required_ports, axis_of, _node_operator, _edge_support, _on_storage, _resolve_node_solver
 
 const G = 0.05
 const NCUT, NPTS, KEEP = SMOKE ? (6, 101, 30) : (15, 301, 300)
@@ -53,7 +58,10 @@ const NEV = parse(Int, get(ENV, "BENCH_NEV", SMOKE ? "12" : "120"))
 const STAGES = split(get(ENV, "BENCH_STAGES", "leaf,tree,parts,f3,f9,f8"), ",")
 const TOL = 1e-8
 const LEAF_SOLVER = get(ENV, "BENCH_LEAF_SOLVER", "lobpcg")
-LEAF_SOLVER in ("lobpcg", "lanczos", "dense") || error("BENCH_LEAF_SOLVER must be lobpcg, lanczos or dense")
+LEAF_SOLVER in ("lobpcg", "lanczos", "dense", "shiftinvert", "chebyshev", "auto") ||
+    error("BENCH_LEAF_SOLVER must be lobpcg, lanczos, dense, shiftinvert, chebyshev or auto")
+const SLICES = haskey(ENV, "BENCH_SLICES") ? parse(Int, ENV["BENCH_SLICES"]) : nothing
+SLICES === nothing || LEAF_SOLVER == "shiftinvert" || error("BENCH_SLICES needs BENCH_LEAF_SOLVER=shiftinvert")
 const LEAF_MAXITER = parse(Int, get(ENV, "BENCH_LEAF_MAXITER", "1000"))
 const LEAVES = parse.(Int, split(get(ENV, "BENCH_LEAVES", "1,2"), ","))
 const WARMUP = get(ENV, "BENCH_WARMUP", "1") == "1"
@@ -65,19 +73,41 @@ spec = load_spec(fixture("two_zero_pi.json"))
 allterms = circuit_terms(spec)
 modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
 
-# Each solver records its last iteration count and cumulative H columns through the callback.
+# Each solver records its work through its callback: LOBPCG its last iteration count and cumulative
+# H columns, ChebyshevFilter its iteration count and last filter degree (H columns not counted, -1);
+# solvers without a callback (Dense, Lanczos, ShiftInvert, Auto) record -1.
 mutable struct Counter
     n_iter::Int
     n_matvec::Int
+    degree::Int
+    kind::Symbol                     # :lobpcg, :chebyshev or :none
 end
-reset!(c::Counter) = (c.n_iter = 0; c.n_matvec = 0; c)
+Counter(kind::Symbol=:lobpcg) = reset!(Counter(0, 0, 0, kind))
+reset!(c::Counter) = (c.n_iter = c.kind === :none ? -1 : 0; c.n_matvec = c.kind === :lobpcg ? 0 : -1;
+                      c.degree = c.kind === :chebyshev ? 0 : -1; c)
 counted(c::Counter; kw...) = LOBPCG(; on=ON, callback=info -> (c.n_iter = info.n_iter; c.n_matvec = info.n_matvec; nothing), kw...)
-work(c::Counter) = Dict("iterations" => c.n_iter, "n_matvec" => c.n_matvec)
-leaf_solver(c::Counter) = LEAF_SOLVER == "lanczos" ? Lanczos() : LEAF_SOLVER == "dense" ? Dense() :
-                          counted(c; maxiter=LEAF_MAXITER)
+work(c::Counter) = c.kind === :chebyshev ? Dict("iterations" => c.n_iter, "n_matvec" => c.n_matvec, "degree" => c.degree) :
+                   Dict("iterations" => c.n_iter, "n_matvec" => c.n_matvec)
+const LEAF_KIND = LEAF_SOLVER == "lobpcg" ? :lobpcg : LEAF_SOLVER == "chebyshev" ? :chebyshev : :none
+function leaf_solver(c::Counter)
+    LEAF_SOLVER == "lanczos" && return Lanczos()
+    LEAF_SOLVER == "dense" && return Dense()
+    LEAF_SOLVER == "shiftinvert" && return SLICES === nothing ? ShiftInvert() : ShiftInvert(; slices=SLICES)
+    LEAF_SOLVER == "chebyshev" && return ChebyshevFilter(; on=ON, callback=info -> (c.n_iter = info.iteration; c.degree = info.degree; nothing))
+    LEAF_SOLVER == "auto" && return Auto(; on=ON)
+    return counted(c; maxiter=LEAF_MAXITER)
+end
+# The solver `materialize` ran at `node` (Auto() resolved by the node's shape), and whether the
+# leaf's assembled matrix is exactly real (ShiftInvert's arithmetic; recorded once per run, untimed).
+resolved(s::System, node) = _resolve_node_solver(node, materialized(s, node).children)
+function note_leaf_arithmetic!(s::System, node)
+    haskey(record, "leaf_assembled_real") && return
+    resolved(s, node) isa ShiftInvert || return
+    record["leaf_assembled_real"] = isreal_assembled(operator(s, node))
+end
 
 function build_tree(; grid=(-6π, 6π, NPTS))
-    cs = Dict("leaf1" => Counter(0, 0), "leaf2" => Counter(0, 0), "root" => Counter(0, 0))
+    cs = Dict("leaf1" => Counter(LEAF_KIND), "leaf2" => Counter(LEAF_KIND), "root" => Counter(:lobpcg))
     leaf(i) = Node([Symbol("theta$i") => ChargeBasis(NCUT), Symbol("phi$i") => PhaseGrid(grid...; order=8)];
                    solver=leaf_solver(cs["leaf$i"]), compute=KEEP, keep=lowest(KEEP))
     l1, l2 = leaf(1), leaf(2)
@@ -138,7 +168,8 @@ end
 
 record = Dict{String,Any}("part" => "B", "environment" => environment(), "g" => G, "ncut" => NCUT,
                           "points" => NPTS, "leaf_keep" => KEEP, "nev" => NEV, "tol" => TOL,
-                          "leaf_solver" => LEAF_SOLVER, "leaf_maxiter" => LEAF_MAXITER, "warmup" => WARMUP,
+                          "leaf_solver" => LEAF_SOLVER, "leaf_slices" => something(SLICES, 1),
+                          "leaf_maxiter" => LEAF_MAXITER, "warmup" => WARMUP,
                           "leaf_repeats" => LEAF_REPEATS, "stages" => Dict{String,Any}())
 stages = record["stages"]
 
@@ -146,8 +177,12 @@ stages = record["stages"]
 let
     tsmall = @elapsed begin
         s1 = LOBPCG(; on=ON)
+        # The small leaf (287 states) is below Auto's dense cutoff, so `auto` and sliced `shiftinvert`
+        # compile the unsliced leaf solver they run at full size here (slicing compiles in the full-size warm-up).
+        ls = LEAF_SOLVER == "lobpcg" ? s1 : LEAF_SOLVER == "auto" ? (ON === Array ? ShiftInvert() : ChebyshevFilter(; on=ON)) :
+             LEAF_SOLVER == "shiftinvert" ? ShiftInvert() : leaf_solver(Counter(LEAF_KIND))
         lf(i) = Node([Symbol("theta$i") => ChargeBasis(3), Symbol("phi$i") => PhaseGrid(-6π, 6π, 41; order=8)];
-                     solver=LEAF_SOLVER == "lobpcg" ? s1 : leaf_solver(Counter(0, 0)), compute=8, keep=lowest(8))
+                     solver=ls, compute=8, keep=lowest(8))
         r = Node([lf(1), lf(2)]; solver=s1, compute=6, keep=lowest(6), ports=[(:theta1, nport()), (:theta2, nport())])
         materialize(r, spec, θ)
     end
@@ -163,8 +198,10 @@ if "leaf" in STAGES
         node, c = getfield(T, Symbol(name)), T.counters[name]
         attempt("leaf_materialize_$name", Dict(name => c)) do
             samples = repeated(() -> (reset!(c); materialize_leaf(node, θ)),
-                               s -> Dict{String,Any}("work" => work(c), "validation" => check(s, node),
-                                                     "energies" => energies(s, node));
+                               s -> (note_leaf_arithmetic!(s, node);
+                                     Dict{String,Any}("work" => work(c), "validation" => check(s, node),
+                                                      "resolved_solver" => string(nameof(typeof(resolved(s, node)))),
+                                                      "energies" => energies(s, node)));
                                warmup=WARMUP, n=LEAF_REPEATS)
             stages["leaf_materialize_$name"] = samples
             report("leaf materialize ($name)", samples; extra="H columns $(samples[end]["work"]["n_matvec"]) iters $(samples[end]["work"]["iterations"])")
@@ -177,8 +214,10 @@ if "tree" in STAGES
         samples = repeated(() -> (foreach(reset!, values(T.counters)); materialize(T.root, spec, θ)),
                            function (s)
                                global sys = s
+                               note_leaf_arithmetic!(s, T.leaf1)
                                Dict{String,Any}("work" => Dict(k => work(c) for (k, c) in T.counters),
                                                 "validation" => Dict(k => check(s, n) for (k, n) in nodes(T)),
+                                                "resolved_solvers" => Dict(k => string(nameof(typeof(resolved(s, n)))) for (k, n) in nodes(T)),
                                                 "energies" => energies(s))
                            end; warmup=WARMUP, n=LEAF_REPEATS)
         stages["tree_materialize"] = samples
@@ -198,7 +237,8 @@ sys === nothing && any(in(STAGES), ("parts", "f3", "f8")) &&
     println("no materialized system: stages parts, f3 and f8 skipped")
 
 "parts" in STAGES && sys !== nothing && attempt("parts", T.counters) do
-    leafsolver, rootsolver = T.leaf1.solver, T.root.solver
+    leafsolver, rootsolver = resolved(sys, T.leaf1), T.root.solver     # Auto() as materialize resolved it
+    note_leaf_arithmetic!(sys, T.leaf1)
     # Operator construction on the solver's storage (includes the transfer of its data on the GPU).
     Hl = operator(sys, T.leaf1)
     s = repeated(() -> operator(sys, T.leaf1))
@@ -215,10 +255,15 @@ sys === nothing && any(in(STAGES), ("parts", "f3", "f8")) &&
         stages["parent_vectors_download"] = s; report("parent eigenvector download", s)
         Vd = nothing
     end
-    leafsolve() = leafsolver isa LOBPCG ? lobpcg_solve(leafsolver, Hl, KEEP) : (KronFreeCircuits.solve(leafsolver, Hl, KEEP)..., nothing)
+    # Every leaf solver but LOBPCG (whose result carries its work) goes through the solver contract.
+    # ChebyshevFilter reports its iterations through the leaf1 counter's callback.
+    cl = T.counters["leaf1"]
+    leafsolve() = leafsolver isa LOBPCG ? lobpcg_solve(leafsolver, Hl, KEEP) :
+                  (reset!(cl); (KronFreeCircuits.solve(leafsolver, Hl, KEEP)..., nothing))
     s = LEAF_REPEATS == 0 ? Any[] :
         repeated(leafsolve, ((E, V, res),) -> Dict{String,Any}("n_matvec" => res === nothing ? -1 : res.n_matvec,
-                                                              "iterations" => res === nothing ? -1 : iterations(res),
+                                                              "iterations" => res === nothing ? cl.n_iter : iterations(res),
+                                                              "solver" => string(nameof(typeof(leafsolver))),
                                                               "validation" => check(Hl, E, V));
                  warmup=WARMUP, n=LEAF_REPEATS)
     isempty(s) || (stages["leaf_solve"] = s; report("leaf solve alone (leaf1, cold)", s; extra="H columns $(s[end]["n_matvec"]) iters $(s[end]["iterations"])"))

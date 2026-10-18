@@ -1,0 +1,26 @@
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.061634242613340766 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8] have edge support up to 0.06163424261334121 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi1 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30] have edge support up to 0.2471064108374584 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:485
+compilation warm-up (small tree) 29.1 s
+leaf materialize (leaf1)           median 0.214 s (min 0.213, max 0.216, n=3) H columns -1 iters -1 ok
+leaf materialize (leaf2)           median 0.213 s (min 0.212, max 0.214, n=3) H columns -1 iters -1 ok
+full-tree materialize              median 0.522 s (min 0.518, max 0.522, n=3) H columns leaf1/leaf2/root -1/-1/80 ok
+wrote out/end_to_end-cpu-smoke-auto-leaf+tree.json
+summary: no failed stages or samples
