@@ -58,7 +58,7 @@ Each node has a solver; the default, `Auto()`, picks one when the node is materi
 An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node whose solver is, or resolves to, `Dense`.
 `ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in real arithmetic when the assembled matrix is exactly real; it offers spectrum slicing across threads and a completeness certificate by inertia counts.
 `ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part, with the filter's upper end from `gershgorin_bound(H)`.
-`Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
+Chosen explicitly, `Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
 `Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.
 `LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:product, on=Array, callback=nothing)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
 Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shifted Jacobi) or `:none`.
@@ -91,7 +91,8 @@ Define the method as `KronFreeCircuits.solve` (or after `import KronFreeCircuits
 Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.
 `previous` also feeds the `follow` rule and the `:follow` phase convention, which compare physical overlaps with the previous kept states.
 
-On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)`, `ChebyshevFilter(on=CuArray)` or `Auto(on=CuArray)` stores a node's operator and block on the device.
+On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` or `ChebyshevFilter(on=CuArray)` stores a node's operator and block on the device.
+`Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (2 500) states resolves to `Dense()` on the host.
 Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
 
 ## Periodic phase grid
@@ -113,6 +114,26 @@ KronFreeCircuits.charge_port(sys, :phi)              # the charge n in the kept 
 
 The basis serves no `:n` port, because the charge is assembled from the derivative pieces and the offset charge.
 So `ports=[(:phi, nport())]`, or a selection rule that needs `nport()`, on a `PeriodicGrid` mode throws; use `KronFreeCircuits.charge_port(sys, mode)` (not exported) for the physical charge matrix `V'(D₁)V + n_g I`.
+
+Above the leaf, request the three derivative pieces as ports and assemble the charge from them (here `ng` is the mode's offset charge):
+
+```julia
+ports = [(:phi, Port(:d1, 0)), (:phi, Port(:d1wrap, 1)), (:phi, Port(:d1wrap, -1))]   # on the ancestor node
+n = port(sys, :phi, Port(:d1, 0)) + cispi(2ng) * port(sys, :phi, Port(:d1wrap, 1)) +
+    cispi(-2ng) * port(sys, :phi, Port(:d1wrap, -1)) + ng * I
+```
+
+A hand-written coupling `g n ⊗ A` on a twisted mode becomes three terms, whose coefficients carry the twist factors from the exported `twist_factor(ng, ±1)` (with `ng` the offset charge as a `Coefficient`), plus the `n_g I` share folded into the remaining factors:
+
+```julia
+c = Coefficient(g); ngc = Coefficient("n_g", [:n_g]); A = Factor(:res, Port(:x, 0))
+coupling = [Term(c, [Factor(:phi, Port(:d1, 0)), A]),
+            Term(c * twist_factor(ngc, 1), [Factor(:phi, Port(:d1wrap, 1)), A]),
+            Term(c * twist_factor(ngc, -1), [Factor(:phi, Port(:d1wrap, -1)), A]),
+            Term(c * ngc, [A])]
+```
+
+The automatic expansion of `nport()` in `ports=` and `extra_terms` is a planned follow-up.
 The design is in spec §20d.
 
 ## Tests
@@ -146,7 +167,7 @@ BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --proj
 The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`.
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
-Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
+Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
 `Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Later plans:
