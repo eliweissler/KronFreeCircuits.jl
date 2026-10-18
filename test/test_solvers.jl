@@ -140,6 +140,28 @@ end
     check_eigenpairs(H, E5, V5; tol=1e-9)
 end
 
+@testset "ChebyshevFilter equals Dense; seeds; bound safety" begin
+    Random.seed!(91)
+    H = three_oscillators(6)
+    Ed, Vd = solve(Dense(), H, 0)
+    for (seed, deg) in ((:product, 50), (:random, 50), (:product, 200))
+        E, V = solve(ChebyshevFilter(tol=1e-9, degree=deg, extra=12, seed=seed), H, 8)
+        @test E ≈ Ed[1:8] atol=1e-7
+        check_eigenpairs(H, E, V; tol=1e-8)
+        @test V * V' ≈ Vd[:, 1:8] * Vd[:, 1:8]' atol=1e-6
+    end
+    θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
+    leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(8))
+    sd = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec_zp, θ)
+    sc = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(leaf.children; solver=ChebyshevFilter(tol=1e-9), compute=8, keep=lowest(8)), spec_zp, θ)
+    @test energies(sc) ≈ energies(sd) atol=1e-7
+    # a user bound below the true λ_max is detected, not silently wrong
+    λtrue = maximum(Ed)
+    err = try solve(ChebyshevFilter(tol=1e-9, degree=100, bound=0.5 * λtrue), H, 8); nothing catch e; e end
+    @test err isa ErrorException && occursin("bound", err.msg)
+    @test_throws ArgumentError ChebyshevFilter(degree=0)
+end
+
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
                          _perturbed_seed
 import LOBPCGEigensolver

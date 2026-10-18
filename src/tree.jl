@@ -152,6 +152,76 @@ ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdi
     ShiftInvert(tol, shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices, certify, maxnnz)
 
 """
+    ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, ortho=:svqb,
+                    bound=:gershgorin, seed=:product, on=Array, callback=nothing)
+
+Block leaf solver (spec §20e decision 3): Chebyshev-filtered subspace iteration (Zhou–Saad ChFSI) on
+the package operator, on the host or a device. Each iteration applies to the unlocked columns of a
+block of `nb = m + extra` columns (capped at the dimension) the degree-`degree` Chebyshev polynomial
+of the first kind on the unwanted interval `[λ_cut, λ_max]` mapped to `[−1, 1]`, which damps that
+interval and amplifies everything below it, then orthonormalizes and performs Rayleigh–Ritz.
+
+- `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
+  Hamiltonian's energy units, computed with the package operator. Columns lock (stop being filtered)
+  in order from the bottom of the block once below it; the iteration stops when the lowest `m` are
+  locked, and the returned pairs are checked again with a fresh application of the operator.
+- `degree ∈ 1:200`: the polynomial degree, i.e. block applies per iteration. An iteration lowers it
+  so that the filter amplifies the lowest Ritz value of the block at most `1/√eps` over `λ_cut`
+  (beyond that the upper columns of the block fall below the resolution of the Gram-based
+  orthogonalization); on a narrow spectrum this applies, on a grid leaf with a large bound it does not.
+- `extra ≥ 1`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states).
+- `maxiter`: the bound on filter iterations; running out raises an error naming the converged count.
+- `rescale_every`: every this many recurrence steps the pair `(T_{k−1}, T_k)` is divided column-wise
+  by the norm of `T_k` (the recurrence is linear, so only column scales change), preventing overflow.
+- `ortho`: `:svqb` (eigendecomposition of the unit-diagonal Gram matrix, two passes; directions
+  with eigenvalue below `1e-12` times the largest are dropped and refilled with random vectors) or
+  `:cholqr` (Cholesky-QR, two passes; a numerically rank-deficient block raises, advising `:svqb`).
+- `bound`: the upper end `λ_max` of the filtered interval: `:gershgorin` uses
+  [`gershgorin_bound`](@ref KronFreeCircuits.gershgorin_bound), a rigorous bound; a finite number is used as given. A
+  number below the true largest eigenvalue amplifies the top of the spectrum; it is detected (a
+  Ritz value above the bound, or a non-finite block) and raises an error naming the bound.
+- `seed`: `:product` starts from [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the
+  separable part), `:random` from a random block.
+- `on`: the array storage the block lives on (`Array`, or a device array type).
+- `callback`: `nothing` or a function called once per iteration, after locking, with the named
+  tuple `(; iteration, λ, residuals, n_locked, λ_cut, λ_max)` (host copies; `λ_cut` is `NaN`
+  before the first filter); its return value is ignored.
+
+`λ_cut` is the largest Ritz value `θ_nb` of the current block (initially of the seed's Rayleigh–Ritz):
+every block direction is amplified, the lowest `m` the most, so the extra columns set the rate.
+Results are host arrays.
+"""
+struct ChebyshevFilter <: Solver
+    tol::Float64
+    degree::Int
+    extra::Int
+    maxiter::Int
+    rescale_every::Int
+    ortho::Symbol
+    bound::Union{Symbol,Float64}
+    seed::Symbol
+    on::Any
+    callback::Any
+    function ChebyshevFilter(tol::Real, degree::Integer, extra::Integer, maxiter::Integer, rescale_every::Integer,
+                             ortho::Symbol, bound::Union{Symbol,Real}, seed::Symbol, on, callback)
+        tol > 0 && isfinite(tol) || throw(ArgumentError("ChebyshevFilter: tol must be positive and finite, got $tol"))
+        1 <= degree <= 200 || throw(ArgumentError("ChebyshevFilter: degree must lie in 1:200, got $degree"))
+        extra >= 1 || throw(ArgumentError("ChebyshevFilter: extra must be at least 1 (λ_cut is the largest Ritz value of " *
+                                          "the block, so the m-th state needs a column above it), got $extra"))
+        maxiter >= 1 || throw(ArgumentError("ChebyshevFilter: maxiter must be at least 1, got $maxiter"))
+        rescale_every >= 1 || throw(ArgumentError("ChebyshevFilter: rescale_every must be at least 1, got $rescale_every"))
+        ortho in (:svqb, :cholqr) || throw(ArgumentError("ChebyshevFilter: ortho must be :svqb or :cholqr, got $(repr(ortho))"))
+        bound === :gershgorin || (bound isa Real && isfinite(bound)) ||
+            throw(ArgumentError("ChebyshevFilter: bound must be :gershgorin or a finite number, got $(repr(bound))"))
+        seed in (:product, :random) || throw(ArgumentError("ChebyshevFilter: seed must be :product or :random, got $(repr(seed))"))
+        return new(tol, degree, extra, maxiter, rescale_every, ortho, bound isa Real ? Float64(bound) : bound, seed, on, callback)
+    end
+end
+ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, ortho=:svqb, bound=:gershgorin,
+                seed=:product, on=Array, callback=nothing) =
+    ChebyshevFilter(tol, degree, extra, maxiter, rescale_every, ortho, bound, seed, on, callback)
+
+"""
     SelectionRule
 
 A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `connected` or `follow`.
@@ -177,7 +247,7 @@ A hierarchical unit.
 Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
 subsystem); a node's product basis has one axis per child.
 
-- `solver`: `Dense()`, `Lanczos()`, `LOBPCG()` or `ShiftInvert()` (a leaf on the CPU). An `LOBPCG` node starts from the previous
+- `solver`: `Dense()`, `Lanczos()`, `LOBPCG()`, `ShiftInvert()` (a leaf on the CPU) or `ChebyshevFilter()`. An `LOBPCG` node starts from the previous
   solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
 - `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
   `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return

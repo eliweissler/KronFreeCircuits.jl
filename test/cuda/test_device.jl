@@ -1,6 +1,7 @@
 using Test, LinearAlgebra, Random, CUDA, cuTENSOR, KronFreeCircuits
 using KronFreeCircuits: LOBPCG, lobpcg_solve, RitzJacobi, _diagonal_expectation!
 using KronFreeCircuits: AxisTerm, solve, dense, solver_callback, with_block_capacity, constant_term, indices
+using KronFreeCircuits: _chebyshev_step!, _chebyshev_filter!
 import LOBPCGEigensolver
 
 # check_eigenpairs (../helpers.jl) on a device operator: each H * v runs on the device and is
@@ -72,6 +73,37 @@ end
     sd = materialize(Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(12)), spec, θ)
     sg = materialize(Node([leaf(1), leaf(2)]; solver=LOBPCG(tol=1e-10, on=CuArray), compute=12, keep=lowest(12)), spec, θ)
     @test energies(sg) ≈ energies(sd) atol=1e-7
+end
+
+@testset "ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing" begin
+    Random.seed!(64)
+    θ = zero_pi_params(); spec = load_spec(fixture("zero_pi.json"))
+    leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(8))
+    sd = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec, θ)
+    sc = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(leaf.children; solver=ChebyshevFilter(tol=1e-9, on=CuArray), compute=8, keep=lowest(8)), spec, θ)
+    @test energies(sc) ≈ energies(sd) atol=1e-7
+    H = KronFreeCircuits.operator(sd)                                       # the host operator, 1313 states
+    check_eigenpairs(H, energies(sc), eigenvectors(sc); tol=1e-8)
+    E, V = solve(ChebyshevFilter(tol=1e-9, on=CuArray), H, 8)
+    @test E ≈ energies(sd) atol=1e-7
+    @test E isa Vector{Float64} && V isa Matrix{ComplexF64}
+    check_eigenpairs(H, E, V; tol=1e-8)
+    # One filtered block apply (a step of the three-term recurrence), and a whole filter without
+    # rescaling, on the solver's block (nb = 8 + 40 columns, and a prefix of active columns) with the
+    # scratch reserved by with_block_capacity: no device allocation after warm-up.
+    nb = 48
+    Hd = with_block_capacity(to_device(H), nb)
+    A, B, C, X = (CuArray(randn(ComplexF64, size(H, 1), nb)) for _ in 1:4)
+    λcut, λmax = 40.0, gershgorin_bound(H)
+    c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
+    for (a, b, cc, x) in ((A, B, C, X), (view(A, :, 1:30), view(B, :, 1:30), view(C, :, 1:30), view(X, :, 19:48)))
+        _chebyshev_step!(cc, Hd, b, a, c, e); _chebyshev_step!(cc, Hd, b, a, c, e)
+        CUDA.synchronize()
+        @test (CUDA.@allocated _chebyshev_step!(cc, Hd, b, a, c, e)) == 0
+        _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)
+        CUDA.synchronize()
+        @test (CUDA.@allocated _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)) == 0
+    end
 end
 
 # ---- Pathological-test catalogue, Task 7 device repeats (ports of the CPU testsets) ----

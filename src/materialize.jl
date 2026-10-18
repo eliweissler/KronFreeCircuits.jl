@@ -273,6 +273,7 @@ end
 storage(::Solver) = Array
 storage(s::LOBPCG) = s.on
 storage(::ShiftInvert) = Array
+storage(s::ChebyshevFilter) = s.on
 
 # How many of the lowest eigenpairs the node's solver returns.
 _compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute
@@ -280,7 +281,7 @@ _compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute
 # (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
 # child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
 # Scratch is reserved for the solver's full block (LOBPCG: the computed pairs and its guard
-# columns), on the solver's storage.
+# columns; ChebyshevFilter: the computed pairs and its extra columns), on the solver's storage.
 function _node_operator(node::Node, children, terms::Vector{Term}, θ::NamedTuple, constant)
     dims = Int[_childdim(c) for c in children]
     axisterms = AxisTerm[]
@@ -297,7 +298,8 @@ function _node_operator(node::Node, children, terms::Vector{Term}, θ::NamedTupl
         c isa MaterializedNode && push!(axisterms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
     end
     m = _compute_count(node, dims)
-    capacity = node.solver isa LOBPCG ? m + node.solver.guard : 1
+    capacity = node.solver isa LOBPCG ? m + node.solver.guard :
+               node.solver isa ChebyshevFilter ? min(m + node.solver.extra, prod(dims)) : 1
     return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(node.solver))
 end
 
