@@ -245,13 +245,19 @@ end
 # The seed of nb = 43 columns is the unit vectors of energies 0..42, an exactly invariant span (zero
 # residuals) that contains none of the ground state.
 # `pairs` lists couplings `(i1, i2, j, c)`: strength c between the product states (i1, j) and (i2, j)
-# (axis-1 indices i1, i2 from 1, axis-2 level j from 0).
-function _invariant_seed_trap(pairs=[(1, 2, 5, 82.0)])
+# (axis-1 indices i1, i2 from 1, axis-2 level j from 0); `shifts` lists `(i, j, δ)`: δ added to the energy
+# of the product state (i, j) by a diagonal two-axis term.
+function _invariant_seed_trap(pairs=[(1, 2, 5, 82.0)]; shifts=[])
     terms = AxisTerm[AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:9)))]), AxisTerm(10.0, [(2, DiagonalOp(collect(0.0:9)))])]
     for (i1, i2, j, c) in pairs
         X = zeros(ComplexF64, 10, 10); X[i1, i2] = X[i2, i1] = 1
         P = zeros(ComplexF64, 10, 10); P[j+1, j+1] = 1
         push!(terms, AxisTerm(c, [(1, DenseOp(X)), (2, DenseOp(P))]))
+    end
+    for (i, j, δ) in shifts
+        Pi = zeros(ComplexF64, 10, 10); Pi[i, i] = 1
+        Pj = zeros(ComplexF64, 10, 10); Pj[j+1, j+1] = 1
+        push!(terms, AxisTerm(δ, [(1, DenseOp(Pi)), (2, DenseOp(Pj))]))
     end
     return KronFreeCircuits.KronFreeOperator([10, 10], terms)
 end
@@ -271,7 +277,7 @@ _trap_coupling(e) = sqrt(((101 - 2e)^2 - 1) / 4)
         @test Ed[1] < 0.75                                             # a state below the seeded energy 1, outside the seed span
         P = KronFreeCircuits.product_seed(H, 43)
         @test norm(H * P - P * (P' * (H * P))) == 0
-        for m in ms, tol in (1e-8, 1e-4), extra in (40, 1)          # extra = 1 has no guard column: the admixture alone
+        for m in ms, tol in (1e-8, 1e-4), extra in (40, 2, 1)       # extra = 1 has no guard column: the admixture alone
             E, V = solve(ChebyshevFilter(tol=tol, extra=extra), H, m)
             @testset "$name, m = $m, tol = $tol, extra = $extra" begin
                 @test E ≈ Ed[1:m] atol=10tol * max(1, maximum(abs, Ed[1:m]))
@@ -286,6 +292,30 @@ _trap_coupling(e) = sqrt(((101 - 2e)^2 - 1) / 4)
         E, V = solve(ChebyshevFilter(extra=extra), Hd, 5)
         @test E ≈ 0:4 atol=1e-8
         check_eigenpairs(Hd, E, V; tol=1e-8)
+    end
+end
+
+@testset "ChebyshevFilter: guard columns degenerate with the top column (it sets λ_cut) do not block the stop" begin
+    diagop(v) = KronFreeCircuits.KronFreeOperator([length(v)], [AxisTerm(1.0, [(1, DiagonalOp(Float64.(v)))])])
+    # the two-transmon charge-basis leaf with identical transmons: every excited level is 2-fold
+    spec = KronFreeCircuits.load_spec(fixture("two_transmons.json"))
+    θt = (E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=30.0, E_C2=1.2, n_g2=0.25, g=0.0)
+    tt = KronFreeCircuits.materialize(KronFreeCircuits.Node([:varphi_1 => KronFreeCircuits.ChargeBasis(8), :varphi_2 => KronFreeCircuits.ChargeBasis(8)];
+                                                            solver=Dense(), keep=KronFreeCircuits.lowest(4)), spec, θt)
+    cases = [("two transmons, ChargeBasis(8), m = 1", KronFreeCircuits.operator(tt), 1, 2),
+             ("two transmons, ChargeBasis(8), m = 3", KronFreeCircuits.operator(tt), 3, 2),
+             ("diag(0..4, 5, 5 + 1e-7, ...), m = 3", diagop([0, 1, 2, 3, 4, 5, 5 + 1e-7, 6:40...]), 3, 4),
+             ("diag(0, 1, 1 + 1e-7, ...), m = 1", diagop([0, 1, 1 + 1e-7, 2:40...]), 1, 2),
+             # a seeded pair at 2 and 2 + 10 tol, and a state at 0.5 missing from the seed span
+             ("trap: pair at 2, 2 + 1e-7 and a missing state at 0.5, m = 3",
+              _invariant_seed_trap([(1, 2, 5, _trap_coupling(0.5))]; shifts=[(4, 0, -1 + 1e-7)]), 3, 2)]
+    for (name, H, m, extra) in cases
+        Ed, _ = solve(Dense(), H, 0)
+        @testset "$name, extra = $extra" begin
+            E, V = solve(ChebyshevFilter(extra=extra), H, m)
+            @test E ≈ Ed[1:m] atol=1e-7
+            check_eigenpairs(H, E, V; tol=2e-8)
+        end
     end
 end
 
@@ -347,6 +377,10 @@ using KronFreeCircuits: _svqb!, _not_done_reason
     @test err isa ErrorException && occursin("maxiter = 1", err.msg) && occursin("amplification cap", err.msg)
     # the maxiter reason when the lowest m are locked but a lower unlocked Ritz value is pending
     @test occursin("below the 3-th locked energy", _not_done_reason([1.0, 2.0, 3.0, 0.5], [0, 0, 0, 1e-3], 3, 3, 1e-9))
+    # the reason when the wanted columns are locked but a counted guard is not: raise extra or maxiter
+    r = _not_done_reason([1.0, 2.0, 3.0, 4.0, 5.0], [0, 0, 0, 1e-3, 1e-3], 3, 3, 1e-9; need=4)
+    @test occursin("guard", r) && occursin("raise extra", r) && occursin("maxiter", r)
+    @test !occursin("raise extra", _not_done_reason([1.0, 2.0, 3.0, 4.0], [0, 0, 1e-3, 1e-3], 2, 3, 1e-9; need=4))
 end
 
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,

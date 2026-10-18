@@ -201,6 +201,33 @@ const _SEED_ADMIXTURE = 1e-2
 const _CHEBYSHEV_GUARDS = 4
 _chebyshev_guards(extra::Int) = min(extra - 1, _CHEBYSHEV_GUARDS)
 
+# A guard column counts only while the last filter amplified its Ritz value at least this much over
+# λ_cut. A column's unwanted components lie at or above the cut, where |T| ≤ 1, so its residual falls by
+# about 1 / |T_deg(x(θ_j))| per iteration: a guard (near-)degenerate with the top column, which sets the
+# cut, gains ≈ 1 and would never lock (a 2-fold level at the top of the block, or a pair 1e-7 apart). At
+# 1e3 a counted guard gains three decades per iteration and locks from an O(1) residual within about
+# log10(1/tol) / 3 ≈ 3 iterations at tol = 1e-8, about as soon as the wanted columns, which gain more. A
+# threshold of 10 counted slow guards near the cut that set the iteration count at small `extra`
+# (three oscillators, m = 8, extra = 5: 7 iterations, against 3 at 1e3 and 2 with no guards); 100 left
+# the small zero-pi leaf at extra = 5 at 6 iterations, against 4 at 1e3.
+const _GUARD_MIN_GAIN = 1e3
+
+# The number of leading guard columns m+1 : m+g that the last filter (cut λcut, degree deg) amplified at
+# least `_GUARD_MIN_GAIN` over the cut; θ ascends over them, so the counted ones are a prefix. All g
+# before the first filter (no cut yet; the loop cannot stop then anyway).
+function _counted_guards(θ::AbstractVector, m::Int, g::Int, λcut::Real, λmax::Real, deg::Int)
+    (deg > 0 && isfinite(λcut)) || return g
+    c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
+    lim = acosh(_GUARD_MIN_GAIN) / deg
+    k = 0
+    for j in m+1:m+g
+        x = abs((θ[j] - c) / e)
+        x > 1 && acosh(x) >= lim || break
+        k += 1
+    end
+    return k
+end
+
 # The product seed `P` plus, column by column, a random vector of norm `_SEED_ADMIXTURE` times the
 # column's (a fixed generator, so the seed is reproducible).
 function _admixed_seed(T, P)
@@ -217,7 +244,9 @@ end
 # Why the iteration has not stopped, for the maxiter error; `need` is m plus the guard columns.
 function _not_done_reason(θ::AbstractVector, res::AbstractVector, nlock::Int, m::Int, tol::Real; need::Int=m)
     nlock < need && return "only $nlock of $need eigenpairs converged ($m wanted and $(need - m) guard columns; largest " *
-                           "unconverged residual $(maximum(view(res, nlock+1:length(θ)))) > tol = $tol)"
+                           "unconverged residual $(maximum(view(res, nlock+1:length(θ)))) > tol = $tol)" *
+                           (nlock >= m ? "; the unconverged columns are guards: raise extra (so the guards lie further " *
+                                         "below λ_cut) or maxiter" : "")
     return "the lowest $need columns are locked, but the unlocked Ritz value $(θ[nlock+1]) (residual $(res[nlock+1]) > " *
            "tol = $tol) lies below the $m-th locked energy $(partialsort(θ[1:nlock], m)), a lower state not yet converged"
 end
@@ -253,7 +282,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     # Host data either way. The product seed gets a random admixture (`_SEED_ADMIXTURE`): its span can be
     # exactly invariant under H and miss a low state entirely, which no filter could then amplify.
     X0 = s.seed === :product ? _admixed_seed(T, product_seed(H, nb)) : randn(rng, T, N, nb)
-    need = min(m + _chebyshev_guards(s.extra), nb)                              # m plus the guard columns
+    g = max(min(_chebyshev_guards(s.extra), nb - 1 - m), 0)                      # guards stay below the top column
     H = _on_storage(H, s.on; capacity=max(nb, _block_capacity(H)))             # the operator lives with the block
     _block_capacity(H) < nb && (H = with_block_capacity(H, nb))
 
@@ -289,6 +318,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
         end
         s.callback === nothing ||
             s.callback((; iteration=it, λ=copy(θ), residuals=copy(res), n_locked=nlock, λ_cut=λcut, λ_max=λmax, degree=deg))
+        need = m + _counted_guards(θ, m, g, λcut, λmax, deg)                     # m plus the counted guards
         _chebyshev_done(θ, nlock, m, need) && break
         it >= s.maxiter &&
             error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol; need=need) *
