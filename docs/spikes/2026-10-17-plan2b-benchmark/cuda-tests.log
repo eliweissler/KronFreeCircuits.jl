@@ -18,14 +18,14 @@
 [ Info: S3, H = 0.0 I cold start on the device: rejected
 [ Info: S3, H = 2.5 I cold start on the device: converged
 Test Summary:                                                                                    | Pass  Total     Time
-CUDA device                                                                                      |  332    332  1m45.8s
-  operator on the device equals host; no device allocation after warm-up                         |    4      4    15.8s
+CUDA device                                                                                      |  332    332  1m46.4s
+  operator on the device equals host; no device allocation after warm-up                         |    4      4    15.9s
   fused diagonal expectation                                                                     |    6      6     2.2s
-  LOBPCG on the device equals Dense on the host                                                  |   25     25    56.9s
-  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing           |   29     29     8.9s
+  LOBPCG on the device equals Dense on the host                                                  |   25     25    57.3s
+  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing           |   29     29     8.7s
   O1: axis identity, equal sizes, and complex factor order (ITensor dense path)                  |   27     27     1.9s
   O2: shrinking/growing blocks, views, and stale scratch (ITensor dense path)                    |   38     38     0.6s
-  O4: fused diagonal and cancellation                                                            |   13     13     1.2s
+  O4: fused diagonal and cancellation                                                            |   13     13     1.4s
   S1: exact and wrong-subspace seeds; bounded recovery                                           |   29     29     2.6s
   S3: H = 0, H = cI, tight clusters and a cutoff inside a cluster                                |   44     44     3.6s
   S5: no locking, several locks at once, one active column, complete locking                     |   52     52     2.4s
