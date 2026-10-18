@@ -157,6 +157,9 @@ Adding a basis is adding one such type; nothing above the mode changes.
 | `ChargeBasis(ncut)` | compact | diagonal | diagonal | not available | shift by $k$ (integer), truncated at the edge | diagonal phase |
 | `PhaseGrid(a, b, N; order)` | extended | banded, antisymmetric first-derivative stencil | banded, second-derivative stencil | diagonal | diagonal | shift by $2\pi k/\Delta\varphi$ points, requires that to be an integer |
 | `FockBasis(N; phi_zpf)` | harmonic (and extended if chosen) | banded, two off-diagonals | banded | diagonal / banded | dense displacement matrix | dense |
+| `PeriodicGrid(N; order, sectors)` | compact (chosen by the user) | not served: term construction assembles it from `d1`, `d1wrap(±1)` and the offset charge | not served: assembled from `d2`, `d2wrap(±1)` | `phi`, `phi2` not available (φ is multivalued on the circle) | diagonal, integer $k$ | not available |
+
+`PeriodicGrid` (added 2026-10-17) is specified in Section 20d.
 
 Defaults per mode type: charge for compact, grid for extended, Fock for harmonic.
 Every mode's basis is overridable by the user.
@@ -223,14 +226,19 @@ Fusion of all structured terms of a leaf into one kernel pass is a recognized la
 
 ## 9. Diagonalization (decided)
 
-One internal interface: given a node's apply and preconditioner, return the lowest $m$ eigenpairs.
-Three implementations, all available at every node, chosen per node by setting or by heuristic:
+Amended by §20e (2026-10-17): the solver set and the default rule below supersede the first version's three-solver table.
 
-| Solver | When (default heuristic) | Implementation |
+One internal interface: given a node's apply and preconditioner, return the lowest $m$ eigenpairs.
+Six solvers, all available at every node, chosen per node by setting or by `Auto()`:
+
+| Solver | When | Implementation |
 |---|---|---|
-| `Dense()` | product dimension $\le$ threshold (default 10 000 **(my call)**) | build the explicit matrix by applying $H$ to basis vectors or by direct Kronecker assembly of the small factors; `LinearAlgebra.eigen` (LAPACK) on CPU, cuSOLVER through the CUDA extension on GPU; returns *all* eigenpairs |
-| `Lanczos()` | fewer than about 50 states wanted **(my call)** and dimension above threshold | KrylovKit `eigsolve` with `Lanczos`, vector-at-a-time |
-| `LOBPCG(; chunk)` | otherwise | LOBPCGEigensolver.jl (JuliaMolSim, extracted from DFTK, GPU-capable, MIT), block preconditioned, with locking |
+| `Auto(; dense_cutoff=2500, on=Array)` | the default of every node; an explicit solver always wins | resolves at materialization by node kind, product dimension and storage: `Dense()` at most `dense_cutoff` product states (a placeholder, to be benchmarked); above it, at a leaf `ShiftInvert()` on `Array` storage and `ChebyshevFilter(on=on)` on device storage, and at a branch `LOBPCG(preconditioner=:ritz, seed=:product, on=on)`; `compute = 0` is valid only where it resolves to `Dense` |
+| `Dense()` | product dimension at most `dense_cutoff`, and whenever every eigenpair is wanted (`compute = 0`); warns above 10 000 states | the explicit matrix, `LinearAlgebra.eigen` (LAPACK) on the host; returns the lowest `compute` pairs (all when `compute = 0`) |
+| `Lanczos()` | chosen explicitly, for a few states of a large node | KrylovKit `eigsolve` with `Lanczos`, vector-at-a-time, on the host; no warm start, and exactly repeated eigenvalues are not resolved |
+| `LOBPCG(; preconditioner=:ritz, seed=:product, guard=4, on)` | a branch above the cutoff; a leaf only with a warm start | LOBPCGEigensolver.jl (JuliaMolSim, extracted from DFTK, GPU-capable, MIT), block, with locking; adaptive per-Ritz Jacobi from the fused diagonal; a cold block seeded from `product_seed`, a warm start from the previous materialization's kept vectors |
+| `ShiftInvert()` | a leaf above the cutoff on `Array` storage | KrylovKit Lanczos on $(H - \sigma I)^{-1}$, with $H - \sigma I$ factored by sparse Cholesky from `sparse(H)` and $\sigma$ below the lowest eigenvalue (LU fallback); real arithmetic when the assembled matrix is exactly real; a mandatory true-residual check; optional spectrum slicing across threads, block size 2, and an inertia-count completeness certificate |
+| `ChebyshevFilter(; on)` | a leaf above the cutoff on device storage (it also runs on the host) | Chebyshev-filtered block subspace iteration started from `product_seed`, with $\lambda_{\max}$ from `gershgorin_bound`, degree capped near 100, a rescaled recurrence, SVQB re-orthogonalization with drop-and-refill, and true-residual locking |
 
 Preconditioner: Jacobi, $(\operatorname{diag}H - \sigma)^{-1}$.
 The diagonal of a sum of products is the sum of products of the local diagonals, so it is available at every node from the operator representation.

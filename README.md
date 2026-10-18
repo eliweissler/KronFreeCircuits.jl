@@ -18,7 +18,7 @@ spec = load_spec("two_transmons.json")
 # for a harmonic mode FockBasis(20; phi_zpf=0.5)
 leaf(i) = Node([Symbol("varphi_$i") => ChargeBasis(30)]; solver=Dense(), keep=lowest(8))
 top = Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(20), ports=[(:varphi_1, nport())])
-# larger leaves can use solver=Lanczos(), compute=10, and keep=connected(...) to follow a port
+# larger leaves can keep the default solver Auto() with compute=10, and keep=connected(...) to follow a port
 
 sys = materialize(top, spec, θ)
 energies(sys)                          # kept eigenvalues of the top node
@@ -60,16 +60,17 @@ An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node 
 `ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part, with the filter's upper end from `gershgorin_bound(H)`.
 `Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
 `Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.
-`LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
+`LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:product, on=Array, callback=nothing)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
 Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shifted Jacobi) or `:none`.
 `eta` regularizes `:ritz` and is in the Hamiltonian's energy units (GHz for these specs), so it must be set again for another energy scale.
 `callback` is called with each iteration's `info` named tuple, and its return value is ignored.
-`guard` extra random columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
-On a stiff grid leaf the random guard columns set the iteration count and emit the guard warning even on a warm start, because guards start random either way.
+`guard` extra columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
+With `seed=:product` (the default), a cold block and a warm start's guard columns are the lowest product states of the separable part (`product_seed`: by summed 1D energy at a leaf, by the children's energies at a branch), perturbed by `sqrt(eps)`; `seed=:random` keeps plan 2's random block and random guards.
+On a stiff grid leaf the guard columns can set the iteration count and emit the guard warning even on a warm start.
 `guard=0` avoids this for warm leaf sweeps at the documented completeness cost; a guard stopping rule is an open item (spec §20c execution notes).
 Both preconditioners use only the diagonal of `H`.
-They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, plausibly (this is untested) because the kinetic stencil dominates there: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
-When choosing explicitly, use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start), and `ShiftInvert` or `ChebyshevFilter` (or `Lanczos` for a few states) at a large, stiff leaf.
+They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil puts the same large constant on every diagonal entry (spec §20e): in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
+When choosing explicitly, use `ShiftInvert` (CPU) or `ChebyshevFilter` (device) at a large, stiff leaf, `LOBPCG` for branches (and for leaves only with a warm start), `Dense` for nodes up to about 10 000 states, and `Lanczos` for a few states when neither leaf solver fits.
 
 A user-defined solver subtypes `Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors as host arrays, with true residuals below its tolerance.
 The `Solver` docstring states the full contract and what `H` provides (`mul!` on blocks, `diagonal`, `sparse`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`).
@@ -86,12 +87,33 @@ leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=MySolver(), compute=6, keep=l
 
 Define the method as `KronFreeCircuits.solve` (or after `import KronFreeCircuits: solve`): an unqualified `function solve(...)` after `using KronFreeCircuits` creates a new function instead of adding a method.
 
-`materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
+`materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node (including an `Auto()` branch) from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
 Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.
 `previous` also feeds the `follow` rule and the `:follow` phase convention, which compare physical overlaps with the previous kept states.
 
-On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` stores a node's operator and block on the device.
+On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)`, `ChebyshevFilter(on=CuArray)` or `Auto(on=CuArray)` stores a node's operator and block on the device.
 Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
+
+## Periodic phase grid
+
+`PeriodicGrid(N; order=8, sectors=1)` is a phase grid for a compact mode, on `[-π, π)` without the endpoint, with central stencils of order 2 to 8 that wrap around the circle.
+Use it for non-standard compact modes: a cos 2φ element, higher harmonics, or a numerically supplied 2π-periodic potential given to the spec as a Fourier series of cosines.
+The charge basis stays the default, and the better choice, for a single cos φ.
+The basis is parameter-free: the offset charge enters only through the coefficients `e^{±2πi n_g}` that term construction puts on the stencil's two wrap-corner pieces (the twisted boundary `ψ(φ + 2π) = e^{-2πi n_g} ψ(φ)`).
+`N` must be divisible by every integer harmonic of a cosine on the mode and by `sectors`, so that translations by `2π/ω` map the grid to itself and the charge-parity sectors are exact; a non-integer harmonic on a compact mode is rejected when the spec is loaded.
+The operators are complex except at `n_g ∈ {0, ½}`, where the twist phase is ±1.
+
+```julia
+spec = load_spec("cos2phi.json")                     # 4 E_C (n - n_g)^2 - E_2 cos 2φ - E_1 cos φ, mode phi
+θ = (E_C=1.0, n_g=0.3, E_1=0.5, E_2=10.0)
+sys = materialize(Node([:phi => PeriodicGrid(128)]; keep=lowest(8)), spec, θ)
+energies(sys)
+KronFreeCircuits.charge_port(sys, :phi)              # the charge n in the kept eigenbasis (8 × 8, complex)
+```
+
+The basis serves no `:n` port, because the charge is assembled from the derivative pieces and the offset charge.
+So `ports=[(:phi, nport())]`, or a selection rule that needs `nport()`, on a `PeriodicGrid` mode throws; use `KronFreeCircuits.charge_port(sys, mode)` (not exported) for the physical charge matrix `V'(D₁)V + n_g I`.
+The design is in spec §20d.
 
 ## Tests
 
@@ -111,7 +133,7 @@ julia --project=test/cuda test/cuda/runtests.jl
 
 Two benchmark scripts take their settings from environment variables, documented at the top of each file.
 `bench/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
-Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`.
+Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`, and the rerun with the plan-2b leaf solvers (`BENCH_LEAF_SOLVER=shiftinvert`, `chebyshev` or `auto`) is in `docs/spikes/2026-10-17-plan2b-benchmark/results.md`.
 
 ```bash
 BENCH_SMOKE=1 julia --project=. -t 1 bench/end_to_end.jl                                  # reduced sizes, CPU
@@ -124,6 +146,8 @@ BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --proj
 The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`.
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
+Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
+`Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Later plans:
 
