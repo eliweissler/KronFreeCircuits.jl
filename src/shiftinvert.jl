@@ -239,9 +239,7 @@ end
 
 # Acceptance: the true residual of every returned pair, with the package operator.
 function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix)
-    R = H * V .- V .* transpose(E)
-    res = [norm(view(R, :, j)) for j in axes(R, 2)]
-    worst, jw = findmax(res)
+    worst, jw = _worst_true_residual(H, E, V)
     worst <= s.tol ||
         error("ShiftInvert: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) " *
               "(inner_tol = $(s.inner_tol) on the inverted operator); tighten inner_tol")

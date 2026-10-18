@@ -162,6 +162,41 @@ end
     @test_throws ArgumentError ChebyshevFilter(degree=0)
 end
 
+using KronFreeCircuits: _svqb!, _not_done_reason
+
+@testset "ChebyshevFilter: SVQB drop and refill against locked columns; Cholesky-QR; applied degree" begin
+    rng = MersenneTwister(92)
+    N = 30
+    L = Matrix(qr(randn(rng, ComplexF64, N, 4)).Q)                     # 4 locked orthonormal columns
+    Z = randn(rng, ComplexF64, N, 10)
+    Z[:, 4] = Z[:, 2]; Z[:, 7] = 2 .* Z[:, 2]; Z[:, 9] = Z[:, 1] .+ Z[:, 3]   # rank 7: three directions dropped and refilled
+    P = Z - L * (L' * Z)
+    W = _svqb!(similar(Z), copy(Z), L, similar(Z), rng)
+    @test size(W, 2) == 10
+    @test norm(W' * W - I) < 1e-12
+    @test norm(L' * W) < 1e-12
+    @test norm(P - W * (W' * P)) < 1e-10 * norm(P)                      # the kept directions span Z ⟂ L
+    # A block wider than the space beside the locked columns (27 > N − 4): the refill finds no room
+    # (each random column is dropped, the empty-pass path) and raises. solve cannot build this case,
+    # since its active and locked columns together number nb ≤ N.
+    Zw = randn(rng, ComplexF64, N, N - 3)
+    err = try _svqb!(similar(Zw), Zw, L, similar(Zw), rng); nothing catch e; e end
+    @test err isa ErrorException && occursin("refill", err.msg)
+    # Cholesky-QR end to end; the narrow three-oscillator spectrum lowers the applied degree (the cap).
+    H = three_oscillators(6)
+    Ed, Vd = solve(Dense(), H, 0)
+    degs = Int[]
+    E, V = solve(ChebyshevFilter(tol=1e-9, ortho=:cholqr, callback=info -> push!(degs, info.degree)), H, 8)
+    @test E ≈ Ed[1:8] atol=1e-7
+    check_eigenpairs(H, E, V; tol=1e-8)
+    @test V * V' ≈ Vd[:, 1:8] * Vd[:, 1:8]' atol=1e-6
+    @test degs[1] == 0 && all(d -> 1 <= d < 100, degs[2:end])
+    err = try solve(ChebyshevFilter(tol=1e-9, maxiter=1), H, 8); nothing catch e; e end
+    @test err isa ErrorException && occursin("maxiter = 1", err.msg) && occursin("amplification cap", err.msg)
+    # the maxiter reason when the lowest m are locked but a lower unlocked Ritz value is pending
+    @test occursin("below the 3-th locked energy", _not_done_reason([1.0, 2.0, 3.0, 0.5], [0, 0, 0, 1e-3], 3, 3, 1e-9))
+end
+
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
                          _perturbed_seed
 import LOBPCGEigensolver

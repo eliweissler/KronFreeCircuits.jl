@@ -7,12 +7,6 @@
 # Relative eigenvalue cutoff of the unit-diagonal Gram matrix in SVQB.
 const _SVQB_CUTOFF = 1e-12
 
-# The column norms of `A`, as a real 1 × size(A, 2) array on `A`'s storage.
-_colnorms(A::AbstractMatrix) = sqrt.(sum(abs2, A; dims=1))
-
-# A small host matrix `M` (any wrapper: view, reshape, triangular) copied densely onto the storage of `like`.
-_to_storage(like::AbstractArray, M::AbstractArray) = copyto!(similar(like, eltype(M), size(M)), Array(M))
-
 # The Hermitian part of a small matrix, on the host.
 _host_hermitian(G::AbstractMatrix) = (Gh = Array(G); Hermitian((Gh + Gh') / 2))
 
@@ -83,8 +77,10 @@ function _svqb_pass!(W::AbstractMatrix, Z::AbstractMatrix)
 end
 
 # SVQB of Z against the locked columns L into W (same width as Z): two passes; dropped directions are
-# refilled with random vectors (host `randn` copied to the storage) orthogonalized the same way. Z and S
-# are consumed as scratch.
+# refilled with random vectors (host `randn` copied to the storage) orthogonalized the same way. A random
+# column that loses all but a √eps fraction of its norm to the projections against L and the kept columns
+# has no room left and is zeroed (dropped); after 10 refill rounds short of the width, an error. A final
+# projection against L removes round-off the 1/√λ scaling amplified along it. Z and S are consumed as scratch.
 function _svqb!(W::AbstractMatrix, Z::AbstractMatrix, L::AbstractMatrix, S::AbstractMatrix, rng)
     N, na = size(Z)
     _project_out!(Z, L)
@@ -98,8 +94,12 @@ function _svqb!(W::AbstractMatrix, Z::AbstractMatrix, L::AbstractMatrix, S::Abst
         r = na - k
         Rr = view(Z, :, 1:r)
         copyto!(Rr, randn(rng, eltype(Z), N, r))
+        before = vec(Array(_colnorms(Rr)))
         _project_out!(Rr, L)
         _project_out!(Rr, view(W, :, 1:k))
+        after = vec(Array(_colnorms(Rr)))
+        room = after .> sqrt(eps(real(eltype(Z)))) .* before
+        all(room) || (Rr .*= _to_storage(Rr, reshape(eltype(Z).(room), 1, :)))
         _normalize_columns!(Rr)
         j1 = _svqb_pass!(S, Rr)
         j1 == 0 && continue
@@ -107,6 +107,7 @@ function _svqb!(W::AbstractMatrix, Z::AbstractMatrix, L::AbstractMatrix, S::Abst
         _project_out!(Sv, view(W, :, 1:k))
         k += _svqb_pass!(view(W, :, k+1:na), Sv)
     end
+    _project_out!(W, L)
     return W
 end
 
@@ -121,6 +122,7 @@ function _cholqr!(W::AbstractMatrix, Z::AbstractMatrix, L::AbstractMatrix, S::Ab
         mul!(dst, src, _to_storage(src, inv(F.U)))
         src = dst
     end
+    _project_out!(W, L)                     # round-off the U⁻¹ scaling amplified along L
     return W
 end
 
@@ -151,13 +153,15 @@ end
 _chebyshev_cut(θ::AbstractVector, m::Int, λmax::Real) = θ[end]
 
 # The degree applied in one iteration: `degree`, lowered so that the filter amplifies the lowest Ritz
-# value θ_1 of the block at most 1/√eps over the cut, |T_d(x(θ_1))| = cosh(d acosh|x(θ_1)|) ≤ 1/√eps.
+# value θ_1 (minimum over the block, locked columns included) at most 1/√eps over the cut, |T_d(x(θ_1))| = cosh(d acosh|x(θ_1)|) ≤ 1/√eps.
 # Past that, a column whose own Ritz value sits near the cut is swamped by its (round-off or
 # not-yet-converged) components along the lowest states: the filtered block's condition number exceeds
 # 1/√eps, Cholesky-QR breaks down and SVQB's truncation mixes the dropped differences into the leading
 # directions, which stalls the lowest residuals near √eps ‖H‖. On a narrow spectrum (the three-oscillator
 # test: λ_max ≈ 17 against a ground state at 0.46) the unlowered degree-100 filter amplifies θ_1 by
-# about 1e91; on a grid leaf with a large Gershgorin bound the full degree is used.
+# about 1e91 and the cap binds hard (degree 14 of 100); on a grid leaf with a large Gershgorin bound it
+# binds moderately (the small zero-pi leaf runs at degree 65–81 of 100, lower in a random seed's first
+# iterations, so a requested degree above about 80 buys nothing there).
 function _chebyshev_degree(degree::Int, θ1::Real, λcut::Real, λmax::Real)
     x = abs((θ1 - (λmax + λcut) / 2) / ((λmax - λcut) / 2))
     x > 1 || return degree
@@ -175,6 +179,14 @@ function _check_bound(s::ChebyshevFilter, θ::AbstractVector, λmax::Real)
         error("ChebyshevFilter: a Ritz value $top exceeds the upper end λ_max = $λmax of the filter interval " *
               "($(_bound_name(s))), so the bound is below the true largest eigenvalue; use bound=:gershgorin")
     return nothing
+end
+
+# Why the iteration has not stopped, for the maxiter error.
+function _not_done_reason(θ::AbstractVector, res::AbstractVector, nlock::Int, m::Int, tol::Real)
+    nlock < m && return "only $nlock of $m eigenpairs converged (largest unconverged residual " *
+                        "$(maximum(view(res, nlock+1:length(θ)))) > tol = $tol)"
+    return "the lowest $m columns are locked, but the unlocked Ritz value $(θ[nlock+1]) (residual $(res[nlock+1]) > " *
+           "tol = $tol) lies below the $m-th locked energy $(partialsort(θ[1:nlock], m)), a lower state not yet converged"
 end
 
 # Stop once the lowest m columns are locked and no unlocked Ritz value lies below the m-th locked energy.
@@ -227,6 +239,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     nlock = 0
     it = 0
     λcut = R(NaN)
+    deg = 0
     while true
         act = nlock+1:nb
         res[act] .= _residual_norms!(view(bufs[1], :, 1:length(act)), view(X, :, act), view(HX, :, act), view(θ, act))
@@ -234,11 +247,12 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
             nlock += 1
         end
         s.callback === nothing ||
-            s.callback((; iteration=it, λ=copy(θ), residuals=copy(res), n_locked=nlock, λ_cut=λcut, λ_max=λmax))
+            s.callback((; iteration=it, λ=copy(θ), residuals=copy(res), n_locked=nlock, λ_cut=λcut, λ_max=λmax, degree=deg))
         _chebyshev_done(θ, nlock, m) && break
         it >= s.maxiter &&
-            error("ChebyshevFilter: only $(min(nlock, m)) of $m eigenpairs converged within maxiter = $(s.maxiter) " *
-                  "iterations (largest unconverged residual $(maximum(view(res, nlock+1:nb))) > tol = $(s.tol))")
+            error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol) *
+                  (0 < deg < s.degree ? "; the last filter ran at degree $deg of $(s.degree), lowered by the amplification " *
+                                        "cap 1/√eps (a narrow spectrum), so more iterations may be needed" : ""))
         it += 1
         act = nlock+1:nb
         na = length(act)
@@ -247,7 +261,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
                              "of the filter interval ($(_bound_name(s))); the block spans the top of the spectrum " *
                              "(nb = $nb of N = $N), use Dense()")
         A, B, C = (view(b, :, 1:na) for b in bufs)
-        deg = _chebyshev_degree(s.degree, θ[1], λcut, λmax)
+        deg = _chebyshev_degree(s.degree, minimum(θ), λcut, λmax)
         Z = _chebyshev_filter!(A, B, C, H, view(X, :, act), λcut, λmax, deg, s.rescale_every)
         all(isfinite, Z) ||
             error("ChebyshevFilter: the filtered block is not finite: the upper end λ_max = $λmax of the filter interval " *
@@ -265,9 +279,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     idx = sortperm(view(θ, 1:nlock))[1:m]
     E = θ[idx]
     Vs = X[:, idx]
-    HV = mul!(view(bufs[1], :, 1:m), H, Vs)
-    rv = _residual_norms!(view(bufs[2], :, 1:m), Vs, HV, E)
-    worst, jw = findmax(rv)
+    worst, jw = _worst_true_residual(H, E, Vs)
     worst <= s.tol ||
         error("ChebyshevFilter: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) on return")
     return Vector{R}(E), Matrix{T}(Array(Vs))

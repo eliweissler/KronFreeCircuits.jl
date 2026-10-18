@@ -17,6 +17,25 @@ function solve(::Dense, H::KronFreeOperator, m::Int)
     return Vector{Float64}(F.values), Matrix{ComplexF64}(F.vectors)
 end
 
+# The column norms of `A`, as a real 1 × size(A, 2) array on `A`'s storage.
+_colnorms(A::AbstractMatrix) = sqrt.(sum(abs2, A; dims=1))
+
+# A small host array `M` (any wrapper: view, reshape, triangular) copied densely onto the storage of `like`.
+_to_storage(like::AbstractArray, M::AbstractArray) = copyto!(similar(like, eltype(M), size(M)), Array(M))
+
+"""
+    _worst_true_residual(H, E, V) -> (worst, j)
+
+The largest true residual norm `‖H v_j − E_j v_j‖` over the columns of `V` and its column, with a
+fresh application of the package operator `H`; `V` lives on `H`'s storage, `E` is a host vector.
+Shared acceptance check of the iterative solvers (each raises its own error).
+"""
+function _worst_true_residual(H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix)
+    R = H * V
+    R .-= V .* _to_storage(V, reshape(E, 1, :))
+    return findmax(vec(Array(_colnorms(R))))
+end
+
 # Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); LOBPCG is advised at a branch, Lanczos or a warm-started LOBPCG at a stiff leaf.
 const _DENSE_WARN_DIM = 10_000
 _dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM

@@ -168,7 +168,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
 - `degree ∈ 1:200`: the polynomial degree, i.e. block applies per iteration. An iteration lowers it
   so that the filter amplifies the lowest Ritz value of the block at most `1/√eps` over `λ_cut`
   (beyond that the upper columns of the block fall below the resolution of the Gram-based
-  orthogonalization); on a narrow spectrum this applies, on a grid leaf with a large bound it does not.
+  orthogonalization). On a narrow spectrum the cap binds hard (the three-oscillator test runs at
+  degree 14 of 100); on a grid leaf with a large bound it binds moderately (the small zero-pi leaf
+  runs at degree 65–81 of 100). The applied degree is reported to `callback` and in the `maxiter` error.
 - `extra ≥ 1`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states).
 - `maxiter`: the bound on filter iterations; running out raises an error naming the converged count.
 - `rescale_every`: every this many recurrence steps the pair `(T_{k−1}, T_k)` is divided column-wise
@@ -184,12 +186,17 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   separable part), `:random` from a random block.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called once per iteration, after locking, with the named
-  tuple `(; iteration, λ, residuals, n_locked, λ_cut, λ_max)` (host copies; `λ_cut` is `NaN`
-  before the first filter); its return value is ignored.
+  tuple `(; iteration, λ, residuals, n_locked, λ_cut, λ_max, degree)` (host copies; `λ_cut` and
+  `degree` are those of the last filter, `NaN` and `0` before the first); its return value is ignored.
 
 `λ_cut` is the largest Ritz value `θ_nb` of the current block (initially of the seed's Rayleigh–Ritz):
 every block direction is amplified, the lowest `m` the most, so the extra columns set the rate.
 Results are host arrays.
+
+Locking from the bottom of the block cannot certify completeness: a state absent from the seed's span
+(or reached only after the lowest `m` locked) can be missed, which the `extra` columns and the stop
+rule (no unlocked Ritz value below the `m`-th locked energy) make unlikely but do not exclude.
+`ShiftInvert(certify=true)` certifies the count by inertia.
 """
 struct ChebyshevFilter <: Solver
     tol::Float64
