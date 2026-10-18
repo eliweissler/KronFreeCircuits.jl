@@ -173,6 +173,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   in order from the bottom of the block once their Rayleigh–Ritz residual is below `tol / 2`; the
   iteration stops when the lowest `m` are locked, and the returned pairs are accepted at `tol` with a
   fresh residual from a new application of the operator.
+  No column locks, and the iteration does not stop, before the first filter application (unless the
+  block spans the whole space, `nb = N`): the seed's own Rayleigh–Ritz is never accepted, since a seed
+  spanning an invariant subspace has zero residuals there however far it lies from the lowest states.
 - `degree ∈ 1:200`: the polynomial degree, i.e. block applies per iteration. An iteration lowers it
   so that the filter amplifies the lowest Ritz value of the block at most `1/√eps` over `λ_cut`
   (beyond that the upper columns of the block fall below the resolution of the Gram-based
@@ -191,7 +194,11 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   number below the true largest eigenvalue amplifies the top of the spectrum; it is detected (a
   Ritz value above the bound, or a non-finite block) and raises an error naming the bound.
 - `seed`: `:product` starts from [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the
-  separable part), `:random` from a random block.
+  separable part) with a fixed random perturbation of relative size `√eps` per column (as `LOBPCG`'s),
+  `:random` from a random block. The perturbation matters when the product states span an exactly
+  invariant subspace that misses a lower state (a coupling acting only among higher product states):
+  its small component along that state is amplified by the first filter application far below
+  `λ_cut`, and the stop rule then keeps iterating until the state converges.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called once per iteration, after locking, with the named
   tuple `(; iteration, λ, residuals, n_locked, λ_cut, λ_max, degree)` (host copies; `λ_cut` and

@@ -219,7 +219,9 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     R = real(T)
     rng = Random.default_rng()
     λmax = R(s.bound === :gershgorin ? gershgorin_bound(H) : s.bound)
-    X0 = s.seed === :product ? product_seed(H, nb) : randn(rng, T, N, nb)      # host data either way
+    # Host data either way. The product seed is perturbed (√eps relative, as LOBPCG's): its span can be
+    # exactly invariant under H and miss a low state entirely, which no filter could then amplify.
+    X0 = s.seed === :product ? _perturbed_seed(T, product_seed(H, nb)) : randn(rng, T, N, nb)
     H = _on_storage(H, s.on; capacity=max(nb, _block_capacity(H)))             # the operator lives with the block
     _block_capacity(H) < nb && (H = with_block_capacity(H, nb))
 
@@ -246,7 +248,11 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     while true
         act = nlock+1:nb
         res[act] .= _residual_norms!(view(bufs[1], :, 1:length(act)), view(X, :, act), view(HX, :, act), view(θ, act))
-        while nlock < nb && res[nlock+1] <= _LOCK_FRACTION * s.tol
+        # The seed's Rayleigh–Ritz is never trusted: every column is filtered at least once before it can
+        # lock, so a small component along a state outside the seed's span is amplified first. A block
+        # spanning the whole space (nb = N) is exact as it stands.
+        filtered = it >= 1 || nb == N
+        while filtered && nlock < nb && res[nlock+1] <= _LOCK_FRACTION * s.tol
             nlock += 1
         end
         s.callback === nothing ||

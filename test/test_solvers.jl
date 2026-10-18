@@ -168,6 +168,44 @@ end
     @test_throws ArgumentError ChebyshevFilter(degree=0)
 end
 
+# An exactly invariant product seed that excludes the ground state: product states of energy i + 10j on a
+# 10 × 10 grid (unit vectors, since the single-axis terms are diagonal) and a two-axis coupling 82 between
+# the product states of energy 50 and 51, whose block [50 82; 82 51] has eigenvalues ≈ −31.5 and 132.5.
+# The seed of nb = 43 columns is the unit vectors of energies 0..42, an exactly invariant span (zero
+# residuals) that contains none of the ground state.
+function _invariant_seed_trap()
+    X = zeros(ComplexF64, 10, 10); X[1, 2] = X[2, 1] = 1
+    P5 = zeros(ComplexF64, 10, 10); P5[6, 6] = 1
+    return KronFreeCircuits.KronFreeOperator([10, 10], [AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:9)))]),
+                                       AxisTerm(10.0, [(2, DiagonalOp(collect(0.0:9)))]),
+                                       AxisTerm(82.0, [(1, DenseOp(X)), (2, DenseOp(P5))])])
+end
+
+@testset "ChebyshevFilter: an exactly invariant product seed that excludes the ground state" begin
+    H = _invariant_seed_trap()
+    Ed, Vd = solve(Dense(), H, 0)
+    @test Ed[1:3] ≈ [(101 - sqrt(1 + 4 * 82^2)) / 2, 0, 1] atol=1e-10
+    P = KronFreeCircuits.product_seed(H, 43)
+    @test norm(H * P - P * (P' * (H * P))) == 0                        # the seed span is exactly invariant
+    @test norm(P' * Vd[:, 1]) == 0                                     # and excludes the ground state
+    for seed in (:product, :random)
+        Random.seed!(93)
+        its = Int[]
+        E, V = solve(ChebyshevFilter(seed=seed, callback=info -> push!(its, info.iteration)), H, 3)
+        @test E ≈ Ed[1:3] atol=1e-8
+        check_eigenpairs(H, E, V; tol=1e-8)
+        @test V * V' ≈ Vd[:, 1:3] * Vd[:, 1:3]' atol=1e-6
+        @test last(its) >= 1                                           # at least one filter application
+    end
+    # No return at iteration 0, even from an exact eigenblock seed (a diagonal operator) with nb < N.
+    Hdiag = KronFreeCircuits.KronFreeOperator([100], [AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:99)))])])
+    its = Int[]
+    E, V = solve(ChebyshevFilter(extra=10, callback=info -> push!(its, info.iteration)), Hdiag, 3)
+    @test E ≈ [0, 1, 2] atol=1e-8
+    check_eigenpairs(Hdiag, E, V; tol=1e-8)
+    @test last(its) >= 1
+end
+
 using KronFreeCircuits: _svqb!, _not_done_reason
 
 @testset "ChebyshevFilter: SVQB drop and refill against locked columns; Cholesky-QR; applied degree" begin
