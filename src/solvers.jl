@@ -5,7 +5,7 @@ using KrylovKit: KrylovKit
 
 Eigenpairs of the Hermitian operator `H`, ascending.
 `Dense` returns the lowest `m` pairs, or all when `m == 0` or `m >= size(H, 1)`;
-`Lanczos` and `LOBPCG` return the lowest `m`.
+`Lanczos`, `LOBPCG` and `ShiftInvert` return the lowest `m` (`ShiftInvert` with an interior `shift`: the `m` nearest it).
 """
 function solve end
 

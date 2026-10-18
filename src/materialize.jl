@@ -272,6 +272,7 @@ end
 # The array storage a solver's block lives on.
 storage(::Solver) = Array
 storage(s::LOBPCG) = s.on
+storage(::ShiftInvert) = Array
 
 # How many of the lowest eigenpairs the node's solver returns.
 _compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute

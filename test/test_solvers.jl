@@ -45,6 +45,31 @@ end
     @test_throws ArgumentError solve(Lanczos(), H, 0)
 end
 
+@testset "ShiftInvert equals Dense; real path; residual check; certificate" begin
+    Random.seed!(81)
+    H = three_oscillators(6)                                   # complex coefficients? check: if real, the real path runs
+    Ed, Vd = solve(Dense(), H, 0)
+    E, V = solve(ShiftInvert(tol=1e-9), H, 12)
+    @test E ≈ Ed[1:12] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
+    @test V * V' ≈ Vd[:, 1:12] * Vd[:, 1:12]' atol=1e-7
+    E2, V2 = solve(ShiftInvert(tol=1e-9, block=2), H, 12); @test E2 ≈ Ed[1:12] atol=1e-8; check_eigenpairs(H, E2, V2; tol=1e-9)
+    E3, _ = solve(ShiftInvert(tol=1e-9, certify=true), H, 12); @test E3 ≈ Ed[1:12] atol=1e-8
+    # the zero-pi leaf on the small grid (1313 states) against Dense, real arithmetic expected
+    θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
+    leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(8))
+    sd = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec_zp, θ)
+    si = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(leaf.children; solver=ShiftInvert(tol=1e-10), compute=8, keep=lowest(8)), spec_zp, θ)
+    @test energies(si) ≈ energies(sd) atol=1e-8
+    @test KronFreeCircuits.isreal_assembled(KronFreeCircuits.operator(si))        # the symmetric zero-pi leaf takes the real path
+    check_eigenpairs(KronFreeCircuits.operator(si), energies(si), eigenvectors(si); tol=1e-9)
+    # a loose inner tolerance must raise, not return
+    err = try solve(ShiftInvert(tol=1e-10, inner_tol=1e-4), H, 12); nothing catch e; e end
+    @test err isa ErrorException && occursin("residual", err.msg)
+    @test_throws ArgumentError ShiftInvert(block=4)
+    @test_throws ArgumentError solve(ShiftInvert(slices=2), H, 4)
+end
+
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
                          _perturbed_seed
 import LOBPCGEigensolver

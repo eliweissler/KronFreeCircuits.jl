@@ -76,6 +76,68 @@ LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Arr
     LOBPCG(tol, maxiter, preconditioner, eta, guard, on, callback)
 
 """
+    ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
+                block=1, slices=1, certify=false, maxnnz=10^8)
+
+Leaf solver on the CPU (spec §20e decision 3): Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
+directly from the assembled sparse matrix `sparse(H; maxnnz)`.
+Arithmetic is real when the assembled matrix and the fused diagonal have exactly zero imaginary
+part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex otherwise.
+
+- `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
+  Hamiltonian's energy units, computed with the package operator. A pair above it raises an error
+  naming the worst residual; pairs are never returned unvalidated.
+- `shift`: `:auto` puts `σ = E_min − shift_margin` below a short Lanczos estimate `E_min` of the
+  lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky (with an
+  LU fallback, and a warning, if it is not). A number is used as `σ` itself; a shift at or above the
+  estimate is interior, `H − σI` is factored by LU, and the `m` eigenvalues nearest `σ` are returned.
+- `shift_margin`: the distance of the automatic shift below the estimate, in the Hamiltonian's
+  energy units. The default is taken from the zero-pi fixtures (GHz) and must be set for other
+  energy scales.
+- `inner_tol`, `krylovdim`, `maxiter`: KrylovKit's tolerance on the inverted operator (not the
+  acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
+- `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated
+  eigenvalues). Block size 4 reported false convergence in KrylovKit 0.10.4 and is not offered.
+- `slices`: spectrum slicing across threads; only `1` is available yet.
+- `certify`: count the eigenvalues below a cut `τ` between the `m`-th and `(m+1)`-th computed
+  energies by the inertia of an `LDLᵀ` factorization of `H − τI`, and raise unless the count is `m`
+  (a completeness certificate; it costs one more factorization).
+- `maxnnz`: the nonzero cap of `sparse(H)`; a larger operator is refused before assembly.
+"""
+struct ShiftInvert <: Solver
+    tol::Float64
+    shift::Union{Symbol,Float64}
+    shift_margin::Float64
+    inner_tol::Float64
+    krylovdim::Int
+    maxiter::Int
+    block::Int
+    slices::Int
+    certify::Bool
+    maxnnz::Int
+    function ShiftInvert(tol::Real, shift::Union{Symbol,Real}, shift_margin::Real, inner_tol::Real, krylovdim::Integer,
+                         maxiter::Integer, block::Integer, slices::Integer, certify::Bool, maxnnz::Integer)
+        tol > 0 && isfinite(tol) || throw(ArgumentError("ShiftInvert: tol must be positive and finite, got $tol"))
+        shift === :auto || (shift isa Real && isfinite(shift)) ||
+            throw(ArgumentError("ShiftInvert: shift must be :auto or a finite number, got $(repr(shift))"))
+        shift_margin > 0 && isfinite(shift_margin) ||
+            throw(ArgumentError("ShiftInvert: shift_margin must be positive and finite, got $shift_margin"))
+        inner_tol > 0 && isfinite(inner_tol) ||
+            throw(ArgumentError("ShiftInvert: inner_tol must be positive and finite, got $inner_tol"))
+        krylovdim >= 0 || throw(ArgumentError("ShiftInvert: krylovdim must be nonnegative, got $krylovdim"))
+        maxiter >= 1 || throw(ArgumentError("ShiftInvert: maxiter must be at least 1, got $maxiter"))
+        block in (1, 2) || throw(ArgumentError("ShiftInvert: block must be 1 or 2 (block size 4 is not offered), got $block"))
+        slices >= 1 || throw(ArgumentError("ShiftInvert: slices must be at least 1, got $slices"))
+        maxnnz >= 1 || throw(ArgumentError("ShiftInvert: maxnnz must be positive, got $maxnnz"))
+        return new(tol, shift isa Real ? Float64(shift) : shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices,
+                   certify, maxnnz)
+    end
+end
+ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
+            block=1, slices=1, certify=false, maxnnz=10^8) =
+    ShiftInvert(tol, shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices, certify, maxnnz)
+
+"""
     SelectionRule
 
 A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `connected` or `follow`.
@@ -101,7 +163,7 @@ A hierarchical unit.
 Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
 subsystem); a node's product basis has one axis per child.
 
-- `solver`: `Dense()`, `Lanczos()` or `LOBPCG()`. An `LOBPCG` node starts from the previous
+- `solver`: `Dense()`, `Lanczos()`, `LOBPCG()` or `ShiftInvert()` (a leaf on the CPU). An `LOBPCG` node starts from the previous
   solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
 - `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
   `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
