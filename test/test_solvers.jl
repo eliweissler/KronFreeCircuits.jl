@@ -141,8 +141,6 @@ end
     E, V = solve(ShiftInvert(block=2), H4, 5)
     @test E ≈ Ed[1:5] atol=1e-8
     check_eigenpairs(H4, E, V; tol=1e-8)
-    # The opt-out has no completeness check: single-vector Lanczos may undercount the 4-fold level and
-    # return a wrong spectrum silently, so only the absence of an error is asserted.
     # an explicit shift below the spectrum (Cholesky) is certified and recovered by default too
     for seed in 1:5
         Random.seed!(seed)
@@ -163,7 +161,18 @@ end
     end
     @test !isempty(errs)
     @test all(e -> e isa ErrorException && occursin("certificate", e.msg) && occursin("nearest σ", e.msg) &&
-                   occursin("degenerate level", e.msg), errs)
+                   occursin("degenerate level", e.msg) && occursin("try block = 2", e.msg), errs)
+    errs2 = Exception[]
+    for seed in 1:6
+        Random.seed!(seed)
+        try solve(ShiftInvert(shift=0.4, certify=true, block=2), H4, 5) catch e; push!(errs2, e) end
+    end
+    @test all(e -> e isa ErrorException && !occursin("try block = 2", e.msg), errs2)      # no hint to use what is in use
+    # an explicit shift exactly on an eigenvalue: H − σI is singular, refused naming the shift
+    err = try solve(ShiftInvert(shift=0.0), H4, 5); nothing catch e; e end
+    @test err isa ArgumentError && occursin("singular", err.msg) && occursin("σ = 0.0", err.msg)
+    # The opt-out has no completeness check: single-vector Lanczos may undercount the 4-fold level and
+    # return a wrong spectrum silently, so only the absence of an error is asserted.
     E0, V0 = solve(ShiftInvert(certify=false), H4, 5)
     @test length(E0) == 5
     # the 2-fold fixture of the LOBPCG "repeated eigenvalue" testset, with the default ShiftInvert

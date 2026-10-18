@@ -36,7 +36,13 @@ function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
             err isa PosDefException || rethrow()
         end
     end
-    return lu(A - σ * I), false
+    try
+        return lu(A - σ * I), false
+    catch err
+        err isa SingularException || rethrow()
+        throw(ArgumentError("ShiftInvert: H − σI is singular at the shift σ = $σ (σ is an eigenvalue of H, to working " *
+                            "precision); move the shift off the eigenvalue, or use shift = :auto"))
+    end
 end
 
 # The number of eigenvalues of A below τ: the negative entries of D in the LDLᵀ factorization of
@@ -229,13 +235,17 @@ function _solve_sliced(s::ShiftInvert, A::SparseMatrixCSC, Emin::Real, m::Int, k
         got = count(e -> cuts[i] <= e < cuts[i+1], Eall)
         got == want[i] || error("ShiftInvert: slice $i of $nsl, [$(cuts[i]), $(cuts[i+1])), returned $got eigenpairs, " *
                                 "but its inertia count is $(want[i]) (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter)) " *
-                                "(a degenerate level may hold more copies than Lanczos with block = $(s.block) can resolve; " *
-                                "try block = 2 or a single shift with certify = true)")
+                                "($(_degeneracy_hint(s)); or a single shift, whose certificate recovers missed copies)")
     end
     Q = Matrix(qr(reduce(hcat, Vall[1:m])).Q)
     G = eigen(Hermitian(Q' * (A * Q)))
     return G.values, Q * G.vectors
 end
+
+# The degeneracy hint of the count-mismatch errors; block = 2 is suggested only when it is not already in use.
+_degeneracy_hint(s::ShiftInvert) =
+    s.block == 1 ? "a degenerate level may hold more copies than single-vector Lanczos (block = 1) can resolve; try block = 2" :
+                   "a degenerate level may hold more copies than block Lanczos with block = 2 can resolve; raise maxiter or use Dense()"
 
 # Acceptance: the true residual of every returned pair, with the package operator.
 function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix)
@@ -312,8 +322,7 @@ function _si_eigsolve(s::ShiftInvert, F, howmany::Int, D, n::Int, T)
     length(vals) >= howmany && info.converged >= howmany ||
         error("ShiftInvert: only $(info.converged) of $howmany eigenpairs of the inverted operator converged " *
               "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))" *
-              (D === nothing ? "" : " in a deflated round of the certificate (a degenerate level may hold more copies " *
-                                    "than Lanczos with block = $(s.block) can resolve; try block = 2)"))
+              (D === nothing ? "" : " in a deflated round of the certificate ($(_degeneracy_hint(s)))"))
     return vals[1:howmany], vecs[1:howmany]
 end
 
@@ -352,17 +361,15 @@ function _certify(s::ShiftInvert, A::SparseMatrixCSC, F, ischol::Bool, σ::Real,
                   "eigenvalues below τ = $τ, but $j were computed"
             below > j || error(msg)
             ischol || error(msg * ". The shift σ = $σ is not below the spectrum (factored by LU), so either Lanczos on " *
-                            "the inverse returned the states nearest σ rather than the lowest, or a degenerate level holds " *
-                            "more copies than Lanczos with block = $(s.block) resolved; deflated recovery runs only with σ " *
-                            "below the spectrum (use shift = :auto or a shift below E_min, or block = 2)")
+                            "the inverse returned the states nearest σ rather than the lowest, or $(_degeneracy_hint(s)); " *
+                            "deflated recovery runs only with σ below the spectrum (use shift = :auto or a shift below E_min)")
             want = below - j + 1
         end
         (rounds += 1) <= _CERTIFY_ROUNDS ||
             error("ShiftInvert: completeness certificate failed after $_CERTIFY_ROUNDS deflated rounds: " *
                   (below === nothing ? "the level at E_m = $(Eall[m]) extends past all $k computed states" :
                    "the inertia of H − τI counts $below eigenvalues below τ = $τ, but $j were computed") *
-                  " (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter)) (a degenerate level may hold more copies " *
-                  "than Lanczos with block = $(s.block) can resolve; try block = 2)")
+                  " (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter)) ($(_degeneracy_hint(s)))")
         want = min(want, n - k)
         @debug "ShiftInvert: certificate round $rounds: " *
                (below === nothing ? "the level at E_m continues past the computed states" : "$below below τ = $τ, $j computed") *
