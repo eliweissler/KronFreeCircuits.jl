@@ -59,10 +59,12 @@ const _HYBRID_RATIO = 0.5
 Diagonalize every node of the tree under `root` at parameters `θ`, children first.
 The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref) given the
 tree's `mode => basis` children (so a compact mode on a [`PeriodicGrid`](@ref) gets its twisted
-derivative pieces), checks every `PeriodicGrid` against the integer harmonics of the cosines on its
-mode ([`check_sectors`](@ref)), appends `extra_terms` (terms not in the circuit spec, such as couplings to a
+derivative pieces), appends `extra_terms` (terms not in the circuit spec, such as couplings to a
 [`GivenSystem`](@ref)), and delegates to the second, which takes a user-built (filtered,
 transformed) term list and a scalar `constant`.
+The second checks every `PeriodicGrid` against the harmonics `k` of every `expiphi(k)` factor on its
+mode in the term list (the spec's cosines and `extra_terms` alike): `k` must be an integer and
+divide the grid size ([`check_sectors`](@ref)).
 
 The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
@@ -94,6 +96,7 @@ function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::
                      previous::Union{Nothing,System}=nothing,
                      modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}())
     _check_bases(root, modetypes)
+    _check_periodic_harmonics(root, terms)
     routed = route(root, terms)
     _check_composite(routed)
     needed = required_ports(root, routed)
@@ -108,15 +111,29 @@ function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Not
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     _check_bases(root, modetypes)
     bases = _tree_bases(root)
-    for (mode, b) in bases
-        b isa PeriodicGrid || continue
-        idx = findfirst(m -> m.name === mode, spec.modes)
-        idx === nothing && continue
-        check_sectors(b, Int[round(Int, c.omega[idx]) for c in spec.cosines if c.omega[idx] != 0], mode)
-    end
     sys = materialize(root, vcat(circuit_terms(spec, bases), extra_terms), θ; constant=constant_term(spec, bases),
                       previous=previous, modetypes=modetypes)
     return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
+end
+
+# Every `PeriodicGrid` child against the harmonics `k` of every `expiphi(k)` factor on its mode, over the
+# whole term list (the spec's cosines and any extra terms alike): each `k` must be an integer and divide
+# the grid size ([`check_sectors`](@ref)).
+function _check_periodic_harmonics(root::Node, terms::Vector{Term})
+    for (mode, b) in _tree_bases(root)
+        b isa PeriodicGrid || continue
+        harmonics = Int[]
+        for t in terms, f in t.factors
+            f.mode === mode && f.port.kind === :expiphi || continue
+            k = f.port.k
+            abs(k - round(k)) <= 1e-12 ||
+                throw(ArgumentError("mode :$mode: a term has the factor expiphi($k), but a PeriodicGrid needs an " *
+                                    "integer harmonic k (the grid is 2π-periodic)"))
+            push!(harmonics, round(Int, k))
+        end
+        check_sectors(b, unique!(harmonics), mode)
+    end
+    return nothing
 end
 
 # Every `mode => basis` child in the tree.

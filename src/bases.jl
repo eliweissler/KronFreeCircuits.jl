@@ -274,7 +274,7 @@ function check_sectors(b::PeriodicGrid, harmonics::AbstractVector{<:Integer}, mo
     for ω in harmonics
         iszero(ω) && continue
         b.N % ω == 0 || throw(ArgumentError("mode :$mode: PeriodicGrid N = $(b.N) is not divisible by the harmonic " *
-                                            "ω = $ω of a cosine on this mode; choose N a multiple of $(abs(ω))"))
+                                            "ω = $ω of a cosine (an expiphi(ω) factor) on this mode; choose N a multiple of $(abs(ω))"))
     end
     b.N % b.sectors == 0 ||
         throw(ArgumentError("mode :$mode: PeriodicGrid N = $(b.N) is not divisible by sectors = $(b.sectors)"))

@@ -58,6 +58,25 @@ end
     @test norm(T * (Vm * Vm') - (Vm * Vm') * T) > 1e-3
 end
 
+@testset "every expiphi harmonic on a PeriodicGrid is checked: extra_terms and the term-list form" begin
+    spec = load_spec(fixture("transmon.json")); θ = (E_J=0.0, E_C=1.0, n_g=0.2)
+    cos2 = [Term(Coefficient(-7.5), [Factor(:varphi_1, expiphi(s))]) for s in (2, -2)]     # −15 cos 2φ, not in the spec
+    leaf(N) = Node([:varphi_1 => PeriodicGrid(N; order=8)]; solver=Dense(), keep=lowest(6))
+    err = try materialize(leaf(63), spec, θ; extra_terms=cos2); nothing catch e; e end
+    @test err isa ArgumentError && occursin("divisible", err.msg) && occursin("ω = 2", err.msg)
+    sp = materialize(leaf(64), spec, θ; extra_terms=cos2)
+    sc = materialize(Node([:varphi_1 => ChargeBasis(20)]; solver=Dense(), keep=lowest(6)), spec, θ; extra_terms=cos2)
+    @test energies(sp) ≈ energies(sc) atol=1e-4                       # N = 64, order 8: the stencil error, not the check
+    # the term-list form checks too
+    terms = vcat(circuit_terms(spec, Dict{Symbol,Basis}(:varphi_1 => PeriodicGrid(63; order=8))), cos2)
+    @test_throws ArgumentError materialize(leaf(63), terms, θ; modetypes=Dict(:varphi_1 => :c))
+    @test_throws ArgumentError materialize(leaf(63), terms, θ)                              # with no mode types at all
+    # a non-integer harmonic on a periodic grid is refused before assembly, naming the mode and k
+    half = [Term(Coefficient(-1.0), [Factor(:varphi_1, expiphi(s))]) for s in (0.5, -0.5)]
+    err = try materialize(leaf(64), spec, θ; extra_terms=half); nothing catch e; e end
+    @test err isa ArgumentError && occursin(":varphi_1", err.msg) && occursin("0.5", err.msg)
+end
+
 @testset "a twisted mode coupled through its charge: two transmons" begin
     spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(; g=0.1)
     tc = Node([Node([:varphi_1 => ChargeBasis(10)]; solver=Dense(), keep=lowest(8)), Node([:varphi_2 => ChargeBasis(10)]; solver=Dense(), keep=lowest(8))]; solver=Dense(), keep=lowest(10))
