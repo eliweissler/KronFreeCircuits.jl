@@ -176,6 +176,19 @@ function _perturbed_seed(T, X0)
     return X
 end
 
+# The first m columns and the guard columns (`nothing`: random) of the initial block. `P` is the
+# unperturbed `product_seed(H, m + g)` or `nothing` (`seed=:random`). A warm start (`X0`) perturbs X0 and
+# takes its guards from the product columns m+1:end; a cold start takes the whole block from `P`.
+function _seed_columns(T, N, m, X0, P, rng)
+    if X0 !== nothing
+        return _perturbed_seed(T, X0), P === nothing ? nothing : _perturbed_seed(T, view(P, :, m+1:size(P, 2)))
+    elseif P !== nothing
+        Q = _perturbed_seed(T, P)
+        return view(Q, :, 1:m), view(Q, :, m+1:size(Q, 2))
+    end
+    return randn(rng, T, N, m), nothing
+end
+
 # Thrown inside the `catch` of the eigensolver's own error, which stays attached ("caused by").
 _lobpcg_failed(err) =
     error("LOBPCG: the eigensolver failed ($(sprint(showerror, err))). An exactly zero residual block " *
@@ -188,8 +201,9 @@ _lobpcg_failed(err) =
 The lowest `m` eigenpairs of `H` (`E` ascending, host arrays) and `lobpcg`'s result for the
 full block (`λ, X, residual_norms, residual_history, n_matvec, …`).
 An operator not stored as `s.on` is copied there (data and scratch) for the solve.
-`X0` is an `N × m` initial block (finite, no zero column) or `nothing` (random). `s.guard`
-random columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`). The eigensolver is asked to
+`X0` is an `N × m` initial block (finite, no zero column) or `nothing` (a cold start from the
+solver's `seed`). `s.guard` guard columns are appended (shrunk to fit `N ≥ 3(m + g) + 5`): with
+`seed=:product` the next product states by energy, with `seed=:random` random vectors. The eigensolver is asked to
 converge every column of the block, guards included (`n_conv_check = m + g`), and the lowest `m`
 of the sorted block are returned. If `maxiter` runs out with the lowest `m` converged but some
 guard columns not, the pairs are returned with a warning that a lower state may have been missed.
@@ -223,7 +237,7 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     w = m + g
     # The product seed is built on the host from the operator as given, before it moves to `s.on`.
     # It supplies the whole cold block, or the guard columns of a warm start (the next product states by energy).
-    pseed = s.seed === :product ? _perturbed_seed(T, product_seed(H, w)) : nothing
+    pseed = s.seed === :product ? product_seed(H, w) : nothing
     H = _on_storage(H, s.on; capacity=max(w, _block_capacity(H)))   # the operator lives with the block
     _block_capacity(H) < w && (H = with_block_capacity(H, w))
     D = adapt(s.on, _full_diagonal(H))
@@ -249,13 +263,7 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
     end
 
     res = try
-        if X0 !== nothing
-            attempt(_perturbed_seed(T, X0), pseed === nothing ? nothing : view(pseed, :, m+1:w))
-        elseif pseed !== nothing
-            attempt(view(pseed, :, 1:m), view(pseed, :, m+1:w))
-        else
-            attempt(randn(rng, T, N, m), nothing)
-        end
+        attempt(_seed_columns(T, N, m, X0, pseed, rng)...)
     catch err
         (err isa InterruptException || user_threw[]) && rethrow()
         X0 === nothing && s.seed !== :product && _lobpcg_failed(err)

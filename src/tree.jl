@@ -53,7 +53,7 @@ through its public interface only.
 
 The operator dimension must satisfy `N ≥ 3m + 5`; smaller problems call for `Dense()`.
 With guards, a warm start reduces the work in `H` columns (`n_matvec`) rather than necessarily the
-iteration count: the guard columns converge from random on warm and cold starts alike, but once the
+iteration count: the guard columns converge alongside the seeded columns, but once the
 seeded columns lock, each remaining iteration applies `H` to only a few active columns.
 Warm-start columns are perturbed by a vector of norm `sqrt(eps)` times the column's norm (a
 fixed pseudo-random direction) so exact eigenvector seeds do not present an exactly zero residual; a warm-start block on which

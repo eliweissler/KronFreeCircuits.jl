@@ -257,6 +257,37 @@ end
     check_eigenpairs(H, E2, V2; tol=1e-9)
 end
 
+@testset "product-seeded failure: retry is logged once at debug level; warm start composition" begin
+    # H = cI has exactly zero residuals for every block, so the product-seeded attempt and the random retry both fail:
+    # one debug-level retry record, then the informative error.
+    Random.seed!(43)                                 # the random retry's block (and so its failure) is then deterministic, as in S3
+    Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5)
+    ret = Ref{Any}(nothing)
+    logs, _ = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+        ret[] = try solve(LOBPCG(), Hc, 3); nothing catch e; e end
+    end
+    @test count(r -> r.level == Base.CoreLogging.Debug && occursin("retrying", string(r.message)), logs) == 1
+    @test ret[] isa ErrorException && occursin("Dense", ret[].msg)
+    # the initial block of a warm start: X0 first, then the next product states by energy as guards
+    Random.seed!(77)
+    H = three_oscillators(4); N = size(H, 1); m, g = 3, 4; T = eltype(H)
+    P = product_seed(H, m + g)
+    X0 = Matrix(qr(randn(T, N, m)).Q)
+    first, guards = KronFreeCircuits._seed_columns(T, N, m, X0, P, Random.default_rng())
+    @test isapprox(first, X0; atol=1e-6) && first != X0
+    @test isapprox(guards, P[:, m+1:end]; atol=1e-6) && guards != P[:, m+1:end]
+    first, guards = KronFreeCircuits._seed_columns(T, N, m, nothing, P, Random.default_rng())      # cold product block
+    @test isapprox(first, P[:, 1:m]; atol=1e-6) && isapprox(guards, P[:, m+1:end]; atol=1e-6)
+    first, guards = KronFreeCircuits._seed_columns(T, N, m, X0, nothing, Random.default_rng())     # seed=:random: random guards
+    @test isapprox(first, X0; atol=1e-6) && guards === nothing
+    first, guards = KronFreeCircuits._seed_columns(T, N, m, nothing, nothing, Random.default_rng())
+    @test size(first) == (N, m) && guards === nothing
+    # end to end: the warm start with product guards still returns the lowest m
+    E, V = solve(LOBPCG(tol=1e-9), H, m; X0=X0)
+    @test E ≈ solve(Dense(), H, m)[1] atol=1e-7
+    check_eigenpairs(H, E, V; tol=1e-8)
+end
+
 @testset "user callbacks of any return type run with the original info" begin
     Random.seed!(9)
     H = three_oscillators(6)
