@@ -53,7 +53,11 @@ If the given system is built from a materialized `System`, subtract it: `energie
 
 A term whose factors all lie on the given mode (a drive or a Stark shift) is applied at its parent through the given operators.
 
-Each node has one of three solvers.
+Each node has a solver; the default, `Auto()`, picks one when the node is materialized.
+`Auto(; dense_cutoff=2500, on=Array)` resolves to `Dense()` for a node of at most 2 500 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
+An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node whose solver is, or resolves to, `Dense`.
+`ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in real arithmetic when the assembled matrix is exactly real; it offers spectrum slicing across threads and a completeness certificate by inertia counts.
+`ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part, with the filter's upper end from `gershgorin_bound(H)`.
 `Dense()` diagonalizes the full product-space matrix: use it for nodes up to about 10 000 states (it warns above that) and whenever every eigenpair is wanted (`compute = 0`).
 `Lanczos()` is KrylovKit's single-vector Krylov solver on the host: it needs no tuning, but it has no warm start and does not resolve exactly degenerate eigenvalues.
 `LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)` is a block solver: it resolves degenerate clusters, takes a warm start, and runs on a GPU with `on=CuArray`.
@@ -65,7 +69,20 @@ On a stiff grid leaf the random guard columns set the iteration count and emit t
 `guard=0` avoids this for warm leaf sweeps at the documented completeness cost; a guard stopping rule is an open item (spec §20c execution notes).
 Both preconditioners use only the diagonal of `H`.
 They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, plausibly (this is untested) because the kinetic stencil dominates there: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
-Use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start or a future grid-aware preconditioner), and `Lanczos` for a few states of a large, stiff leaf.
+When choosing explicitly, use `Dense` for nodes up to about 10 000 states, `LOBPCG` for branches (and for leaves only with a warm start), and `ShiftInvert` or `ChebyshevFilter` (or `Lanczos` for a few states) at a large, stiff leaf.
+
+A user-defined solver subtypes `KronFreeCircuits.Solver` and needs one method, `KronFreeCircuits.solve(s, H, m; X0=nothing)`, returning the lowest `m` energies in ascending order and orthonormal eigenvectors as host arrays, with true residuals below its tolerance.
+The `Solver` docstring states the full contract and what `H` provides (`mul!` on blocks, `diagonal`, `sparse`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`).
+
+```julia
+using LinearAlgebra
+struct MySolver <: KronFreeCircuits.Solver end
+function KronFreeCircuits.solve(::MySolver, H, m; X0=nothing)
+    F = eigen(Hermitian(Matrix(H)), 1:m)                      # exact, so the residuals are at round-off
+    return F.values, F.vectors
+end
+leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=MySolver(), compute=6, keep=lowest(6))
+```
 
 `materialize(root, spec, θ; previous=sys)` warm-starts every `LOBPCG` node from the node at the same tree position in `sys`: its previous kept vectors become the initial block (a node whose product dimensions changed starts cold).
 Only kept vectors are stored, so a node with `compute > keep` fills its other `compute − keep` columns randomly and is only partially warm.

@@ -274,15 +274,46 @@ storage(::Solver) = Array
 storage(s::LOBPCG) = s.on
 storage(::ShiftInvert) = Array
 storage(s::ChebyshevFilter) = s.on
+storage(a::Auto) = a.on
 
 # How many of the lowest eigenpairs the node's solver returns.
 _compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute
 
+"""
+    resolve(solver, info) -> Solver
+
+The solver that diagonalizes a node, given its `solver` field and `info = (; isleaf, dims, m)`:
+whether all its children are bases, its product dimensions, and the number of eigenpairs requested.
+Every solver resolves to itself; [`Auto`](@ref) resolves by the node's shape (see its docstring).
+`materialize` resolves each node once, before building its operator, and builds the operator's
+storage and scratch from the resolved solver.
+"""
+resolve(s::Solver, info) = s
+function resolve(a::Auto, info)
+    prod(info.dims) <= a.dense_cutoff && return Dense()
+    info.isleaf && return a.on === Array ? ShiftInvert() : ChebyshevFilter(on=a.on)
+    return LOBPCG(preconditioner=:ritz, seed=:product, on=a.on)
+end
+
+# The resolved solver of `node` over its materialized `children` (bases or `MaterializedNode`s);
+# `materialize` and `operator` both go through here, so they build the same operator.
+function _resolve_node_solver(node::Node, children)
+    dims = Int[_childdim(c) for c in children]
+    s = resolve(node.solver, (; isleaf=all(c -> c isa Basis, children), dims, m=_compute_count(node, dims)))
+    if node.compute == 0 && !(s isa Dense)
+        how = s === node.solver ? "got $(nameof(typeof(s)))" :
+              "$(nameof(typeof(node.solver)))() resolved to $(nameof(typeof(s))) for this node of dimension $(prod(dims))"
+        throw(ArgumentError("compute == 0 (all eigenpairs) requires the Dense solver; $how (modes $(modes(node))); " *
+                            "set compute to the number of eigenpairs needed"))
+    end
+    return s
+end
+
 # (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
 # child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
-# Scratch is reserved for the solver's full block (LOBPCG: the computed pairs and its guard
+# Scratch is reserved for the resolved `solver`'s full block (LOBPCG: the computed pairs and its guard
 # columns; ChebyshevFilter: the computed pairs and its extra columns), on the solver's storage.
-function _node_operator(node::Node, children, terms::Vector{Term}, θ::NamedTuple, constant)
+function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term}, θ::NamedTuple, constant)
     dims = Int[_childdim(c) for c in children]
     axisterms = AxisTerm[]
     for t in terms
@@ -298,9 +329,9 @@ function _node_operator(node::Node, children, terms::Vector{Term}, θ::NamedTupl
         c isa MaterializedNode && push!(axisterms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
     end
     m = _compute_count(node, dims)
-    capacity = node.solver isa LOBPCG ? m + node.solver.guard :
-               node.solver isa ChebyshevFilter ? min(m + node.solver.extra, prod(dims)) : 1
-    return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(node.solver))
+    capacity = solver isa LOBPCG ? m + solver.guard :
+               solver isa ChebyshevFilter ? min(m + solver.extra, prod(dims)) : 1
+    return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(solver))
 end
 
 # The initial block of an LOBPCG node: `nothing` without a previous solution of the same `dims`,
@@ -341,17 +372,18 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # basis children, here and below, are unchanged).  The LOBPCG initial block stays raw.
     reference = prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
 
-    # (2)-(3) The node's operator.
-    H = _node_operator(node, children, routed[node], θ, constant)
+    # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
+    solver = _resolve_node_solver(node, children)
+    H = _node_operator(node, solver, children, routed[node], θ, constant)
 
     # (4) Diagonalize.
-    _dense_too_large(node.solver, prod(dims)) &&
+    _dense_too_large(solver, prod(dims)) &&
         @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
               (all(c -> c isa Basis, children) ?
                    "this is a leaf: Lanczos for a few states, or LOBPCG only with a warm start; see README" :
                    "this is a branch: LOBPCG is advised"), _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
     m = _compute_count(node, dims)
-    E, V = _solve(node.solver, H, m, prev, dims)
+    E, V = _solve(solver, H, m, prev, dims)
 
     # (5)-(7) Ports the selection rule inspects, on all computed vectors; select; slice.
     # Selection rules see only moduli (port elements, overlaps), so phases are fixed on the kept
@@ -457,13 +489,13 @@ end
 
 The Hamiltonian of `node` in its product basis at `sys.θ`, rebuilt from the materialized children
 exactly as `materialize` built it (the root's includes the constant; its scratch and storage follow
-the node's solver).
+the node's solver, as resolved by `materialize`).
 """
 function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
     mn = materialized(sys, node)
     routed = route(sys.root.node, sys.terms)
     c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
-    return _node_operator(node, mn.children, routed[node], sys.θ, c)
+    return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c)
 end
 
 "Kept energies of `node` (default: the root), absolute, GHz."

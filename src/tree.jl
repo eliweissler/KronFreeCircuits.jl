@@ -236,6 +236,33 @@ ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, 
     ChebyshevFilter(tol, degree, extra, maxiter, rescale_every, ortho, bound, seed, on, callback)
 
 """
+    Auto(; dense_cutoff=2500, on=Array)
+
+The default solver of every [`Node`](@ref): it picks a solver for the node at materialization, from
+the node's kind, product dimension and storage (spec §20e decision 5).
+
+- `Dense()` when the product dimension is at most `dense_cutoff`;
+- otherwise, at a leaf (all children bases), `ShiftInvert()` when `on === Array` and
+  `ChebyshevFilter(on=on)` on any other storage;
+- otherwise, at a branch, `LOBPCG(preconditioner=:ritz, seed=:product, on=on)`.
+
+The resolved solvers take their default settings; for other settings, pass the solver explicitly
+(an explicit solver always wins). `compute == 0` (all eigenpairs) is valid only for a node that
+resolves to `Dense`; otherwise `materialize` raises an `ArgumentError` naming the resolved solver.
+`dense_cutoff` is a placeholder (to be benchmarked); the warning for a large `Dense` node
+(above 10 000 states) applies only to an explicit `Dense()`.
+"""
+struct Auto <: Solver
+    dense_cutoff::Int
+    on::Any
+    function Auto(dense_cutoff::Integer, on)
+        dense_cutoff >= 0 || throw(ArgumentError("Auto: dense_cutoff must be nonnegative, got $dense_cutoff"))
+        return new(dense_cutoff, on)
+    end
+end
+Auto(; dense_cutoff=2500, on=Array) = Auto(dense_cutoff, on)
+
+"""
     SelectionRule
 
 A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `connected` or `follow`.
@@ -255,16 +282,19 @@ lowest(k::Int) = Lowest(k)
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 
 """
-    Node(children; solver=Dense(), compute=0, keep=lowest(0), phase, ports=[])
+    Node(children; solver=Auto(), compute=0, keep=lowest(0), phase, ports=[])
 
 A hierarchical unit.
 Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
 subsystem); a node's product basis has one axis per child.
 
-- `solver`: `Dense()`, `Lanczos()`, `LOBPCG()`, `ShiftInvert()` (a leaf on the CPU) or `ChebyshevFilter()`. An `LOBPCG` node starts from the previous
+- `solver`: `Auto()` (the default), `Dense()`, `Lanczos()`, `LOBPCG()`, `ShiftInvert()` (a leaf on the CPU) or `ChebyshevFilter()`.
+  [`Auto`](@ref) resolves at materialization: `Dense()` up to 2 500 product states; above that,
+  `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage,
+  and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch. An `LOBPCG` node starts from the previous
   solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
 - `compute`: how many of the lowest eigenpairs the solver returns; `0` means all (only valid with
-  `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
+  `Dense`, or with `Auto()` on a node that resolves to `Dense`). `Dense` builds the full matrix whatever `compute` is, and uses it only to return
   the lowest `compute` pairs.
 - `keep`: the [`SelectionRule`](@ref) choosing the kept states among the computed ones.
 - `phase`: the global-phase convention of the kept eigenvectors, `:positive_sector` or `:follow`.
@@ -286,7 +316,7 @@ mutable struct Node
     phase::Symbol
     ports::Vector{Tuple{Symbol,Port}}
 
-    function Node(children::AbstractVector; solver::Solver=Dense(), compute::Int=0,
+    function Node(children::AbstractVector; solver::Solver=Auto(), compute::Int=0,
                   keep::SelectionRule=lowest(0), phase::Union{Nothing,Symbol}=nothing,
                   ports=Tuple{Symbol,Port}[])
         isempty(children) && throw(ArgumentError("a Node needs at least one child"))
@@ -298,7 +328,8 @@ mutable struct Node
         phase in (:positive_sector, :follow) ||
             throw(ArgumentError("phase must be :positive_sector or :follow, got :$phase"))
         compute >= 0 || throw(ArgumentError("compute must be nonnegative"))
-        compute == 0 && !(solver isa Dense) &&
+        # Auto() is checked at materialization, once it has resolved (see `_resolve_node_solver`).
+        compute == 0 && !(solver isa Dense || solver isa Auto) &&
             throw(ArgumentError("compute == 0 (all eigenpairs) requires the Dense solver"))
         node = new(Any[ch for ch in children], solver, compute, keep, phase,
                    Tuple{Symbol,Port}[(m, p) for (m, p) in ports])

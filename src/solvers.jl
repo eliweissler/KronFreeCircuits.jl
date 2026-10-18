@@ -1,11 +1,39 @@
 using KrylovKit: KrylovKit
 
 """
+    Solver
+
+The abstract type of node eigensolvers: [`Auto`](@ref) (the default), `Dense`, `Lanczos`, `LOBPCG`,
+`ShiftInvert` and `ChebyshevFilter`. The contract below (spec §20e decision 6) is what a user-defined
+solver implements; a user solver needs only `solve`.
+
+- `KronFreeCircuits.solve(s, H, m; X0=nothing) -> (E, V)`: the lowest `m` eigenpairs of the Hermitian
+  operator `H::KronFreeOperator`, with `E::Vector{Float64}` ascending and `V::Matrix` on the host
+  (`size(H, 1) × m`, orthonormal columns, `V[:, j]` the eigenvector of `E[j]`). Every true residual
+  `‖H V[:, j] − E[j] V[:, j]‖` must be below the solver's tolerance, checked with `H` itself before
+  returning (an inner Krylov tolerance is not an acceptance criterion). `X0` is `nothing` or an initial
+  block of `m` columns; `materialize` supplies it only to `LOBPCG` (from `previous`) and calls every
+  other solver as `solve(s, H, m)`, so the keyword must default to `nothing`.
+- `KronFreeCircuits.storage(s)` (optional, default `Array`): the array type `materialize` builds `H`
+  on; a device solver returns its device array type, and still returns `E` and `V` on the host.
+- `KronFreeCircuits.resolve(s, info)` (optional, default `s`): the solver that actually runs, given
+  `info = (; isleaf, dims, m)`; this is how [`Auto`](@ref) picks a solver by node shape.
+
+What `H` provides: `mul!(Y, H, X)` and `H * X` on vectors and blocks of any width on `storage(s)`;
+`size(H)` and `eltype(H)`; and, on the host, computed when asked for and memoized on the operator,
+`diagonal(H)`, `sparse(H; maxnnz)` (from SparseArrays), `gershgorin_bound(H)`,
+`separable_eigenbases(H)` and `product_seed(H, k)`. On `Array` storage `Matrix(H)` forms the dense matrix.
+A node with `compute == 0` (all eigenpairs) accepts only `Dense`.
+"""
+Solver
+
+"""
     solve(solver, H, m) -> (vals::Vector{Float64}, vecs::Matrix{ComplexF64})
 
 Eigenpairs of the Hermitian operator `H`, ascending.
 `Dense` returns the lowest `m` pairs, or all when `m == 0` or `m >= size(H, 1)`;
 `Lanczos`, `LOBPCG` and `ShiftInvert` return the lowest `m` (`ShiftInvert` with an interior `shift`: the `m` nearest it).
+See [`Solver`](@ref) for the contract a user-defined solver implements.
 """
 function solve end
 

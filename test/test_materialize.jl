@@ -1,5 +1,5 @@
 using Random
-using KronFreeCircuits: Node, Dense, Lanczos, LOBPCG, lowest, nport, PhaseGrid, ChargeBasis, load_spec,
+using KronFreeCircuits: Node, Auto, Dense, Lanczos, LOBPCG, lowest, nport, PhaseGrid, ChargeBasis, load_spec,
                         materialize, energies, port, eigenvectors, materialized, MaterializedNode
 
 @testset "fluxonium leaf vs scqubits" begin
@@ -743,4 +743,25 @@ end
             @test P[p, j] ≈ s.root.peak_amplitudes[j, j] atol=1e-12
         end
     end
+end
+
+@testset "Auto: the default tree resolves to Dense and gives the same numbers" begin
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    t_auto = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(6))]; keep=lowest(6))
+    t_dense = Node([Node([:varphi_1 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6)), Node([:varphi_2 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6))]; solver=Dense(), keep=lowest(6))
+    @test energies(materialize(t_auto, spec, θ)) == energies(materialize(t_dense, spec, θ))
+    @test_throws ArgumentError materialize(Node([:theta => ChargeBasis(15), :phi => PhaseGrid(-6π, 6π, 301; order=8)]; compute=0, keep=lowest(10)), load_spec(fixture("zero_pi.json")), zero_pi_params())   # Auto → ShiftInvert needs compute > 0
+end
+
+@testset "Auto above the cutoff: a branch resolves to LOBPCG, and operator(sys) is built for it" begin
+    using KronFreeCircuits: operator, _block_capacity
+    θ = two_transmons_params(; g=0.1); spec = load_spec(fixture("two_transmons.json"))
+    leaves(s) = [Node([:varphi_1 => ChargeBasis(8)]; solver=s), Node([:varphi_2 => ChargeBasis(8)]; solver=s)]   # 17 each, all kept
+    a = Auto(dense_cutoff=100)                                                            # leaves 17 ≤ 100: Dense; branch 289: LOBPCG
+    s_auto = materialize(Node(leaves(a); solver=a, compute=6, keep=lowest(6)), spec, θ)
+    s_dense = materialize(Node(leaves(Dense()); solver=Dense(), compute=6, keep=lowest(6)), spec, θ)
+    @test energies(s_auto) ≈ energies(s_dense) atol=1e-7
+    H = operator(s_auto)
+    @test _block_capacity(H) == 6 + LOBPCG().guard                                        # the resolved solver's block, as materialize built it
+    check_eigenpairs(H, energies(s_auto), eigenvectors(s_auto); tol=1e-7)
 end
