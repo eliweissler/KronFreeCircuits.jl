@@ -145,6 +145,16 @@ KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'
 
 Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute.
 
+The [science reference catalogue](docs/science/README.md) maps package capabilities to
+versioned literature sources and reproduction targets. The default suite includes
+saved scqubits spectra and matrix elements for CPB/transmon, fluxonium, and three
+seeded circuits with irrotational flux assignments. Python is only needed to
+regenerate those fixtures. The [Appendix B BO reference](docs/science/born-oppenheimer.md)
+is prepared for a later implementation phase.
+The [KITE references](docs/science/kite.md) prepare both the inductively shunted
+experiment and the capacitively shunted protected circuit for future spectra and
+matrix-element benchmarks alongside the four-mode fluxonium coupler.
+
 The device tests have their own environment and need a CUDA device:
 
 ```bash

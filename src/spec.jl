@@ -114,7 +114,7 @@ function parse_spec(json::AbstractString)
 
     (d[:parameters] isa AbstractVector && all(p -> p isa AbstractString, d[:parameters])) ||
         _spec_error("parameters must be an array of strings")
-    params = Symbol.(collect(d[:parameters]))
+    params = Symbol[Symbol(p) for p in d[:parameters]]
     allunique(params) || _spec_error("parameters must be unique")
     try
         check_parameter_names(params)
