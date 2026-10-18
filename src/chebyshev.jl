@@ -203,16 +203,22 @@ _chebyshev_guards(extra::Int) = min(extra - 1, _CHEBYSHEV_GUARDS)
 
 # A guard column counts only while the last filter's log-gain at its Ritz value, deg · acosh|x(θ_j)| with x
 # the affine map of the filter interval [λ_cut, λ_max] onto [−1, 1], is at least this fraction of the
-# log-gain at the bottom of the block (the lowest Ritz value θ_1). A column's unwanted components lie at or
-# above the cut, where |T| ≤ 1, so its residual falls by about exp(−log-gain) per iteration relative to them.
-# A guard (near-)degenerate with the top column, which sets the cut, has log-gain ≈ 0 and would never lock
-# (a 2-fold level at the top of the block, or a pair 1e-7 apart): its ratio is ≈ 0 and it is waived. When
+# log-gain at the m-th lowest Ritz value θ_m (the highest wanted state). A column's unwanted components lie
+# at or above the cut, where |T| ≤ 1, so its residual falls by about exp(−log-gain) per iteration relative
+# to them. A guard (near-)degenerate with the top column, which sets the cut, has log-gain ≈ 0 and would
+# never lock (a 2-fold level at the top of the block, or a pair 1e-7 apart): its ratio is ≈ 0 and it is
+# waived. When
 # the filter is weak everywhere (a spectral bound far above the block, so every column gains little per
 # iteration) the ratios stay near 1 and the guards are kept: a test on the absolute gain (round 2 counted
 # a guard only above a gain of 1e3) waived them all there and accepted a block that had not yet surfaced a
-# missing low state. The ratio compares a guard with the bottom column's own rate, so a counted guard needs
-# at most about 1 / 0.1 = 10 times its iterations, usually far fewer; near the cut that is the price of the
-# guards at small `extra` (three oscillators, m = 8, extra = 5: 7 iterations, against 2 with no guards). A
+# missing low state. The reference is θ_m, not the bottom Ritz value θ_1 (round 3's choice): a ground state
+# far below the rest (θ_1 = −1e4, the other states near 0) gains so much more than every guard that their
+# ratios were ≈ 0.03, every guard was waived from the first iteration, and with extra = 2–5 and tol = 1e-3
+# a state at −0.5 outside the seed span was missed with passing residuals. Against θ_m a deep ground state
+# cannot waive the guards protecting the states above it. The ratio compares a guard with the m-th wanted
+# column's own rate, so a counted guard needs at most about 1 / 0.1 = 10 times its iterations, usually far
+# fewer; near the cut that is the price of the guards at small `extra` (three oscillators, m = 8,
+# extra = 5: 7 iterations, against 2 with no guards). A
 # larger fraction is not safe: at 0.5 a weak-filter solve with extra = 2 waived its guard while the column
 # carrying the missing state descended through the guard's energy (ratio briefly ≈ 0) and returned a
 # wrong ground state; at 0.1 that window is narrow and the solve raises the maxiter error instead.
@@ -225,12 +231,12 @@ function _log_gain(t::Real, λcut::Real, λmax::Real)
 end
 
 # The number of leading guard columns m+1 : m+g whose log-gain under the last filter (cut λcut, degree deg)
-# is at least `_GUARD_GAIN_FRACTION` times that of the lowest Ritz value; θ ascends over them, so the
+# is at least `_GUARD_GAIN_FRACTION` times that of the m-th lowest Ritz value; θ ascends over them, so the
 # counted ones are a prefix. All g before the first filter (no cut yet; the loop cannot stop then anyway),
-# and when the lowest Ritz value itself gains nothing (no reference rate to compare with).
+# and when the m-th lowest Ritz value itself gains nothing (no reference rate to compare with).
 function _counted_guards(θ::AbstractVector, m::Int, g::Int, λcut::Real, λmax::Real, deg::Int)
     (deg > 0 && isfinite(λcut)) || return g
-    ref = _log_gain(minimum(θ), λcut, λmax)
+    ref = _log_gain(partialsort(θ, m), λcut, λmax)
     ref > 0 || return g
     k = 0
     for j in m+1:m+g

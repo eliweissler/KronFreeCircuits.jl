@@ -367,6 +367,49 @@ end
     check_eigenpairs(H, E, V; tol=2e-4)
 end
 
+@testset "ChebyshevFilter: a deep ground state does not waive the guards protecting the states above it" begin
+    # Axis 1 has energies [−D, 0, 1, …, 8], axis 2 [0, D + 2000, …]: the product ground state lies at −D, far
+    # below the rest, and every seeded state above it at 0..7. A two-axis coupling between the product states
+    # (2, 2) and (3, 2) (energies D + 2000 and D + 2001, outside the seed span) pushes their lower eigenvalue
+    # to −0.5, below the seeded 0. Measured against the bottom Ritz value −D every guard's log-gain ratio was
+    # ≈ 0.03, so every guard was waived from the first iteration and, with tol = 1e-3 and extra = 2 or 5, the
+    # block [−D, 0] was accepted with passing residuals (the state at −0.5 missed). Each case must match Dense
+    # or raise the maxiter error; never a wrong spectrum.
+    D, miss = 1e4, -0.5
+    ax1 = [-D; 0.0:8...]
+    ax2 = [0.0; (D + 2000.0) .+ (0:8)]
+    e1, e2 = ax1[2] + ax2[2], ax1[3] + ax2[2]
+    c = sqrt(((e1 + e2) / 2 - miss)^2 - ((e2 - e1) / 2)^2)
+    X = zeros(ComplexF64, 10, 10); X[2, 3] = X[3, 2] = 1
+    Pj = zeros(ComplexF64, 10, 10); Pj[2, 2] = 1
+    H = KronFreeCircuits.KronFreeOperator([10, 10], AxisTerm[AxisTerm(1.0, [(1, DiagonalOp(ax1))]),
+                                                             AxisTerm(1.0, [(2, DiagonalOp(ax2))]),
+                                                             AxisTerm(c, [(1, DenseOp(X)), (2, DenseOp(Pj))])])
+    Ed, _ = solve(Dense(), H, 0)
+    @test Ed[1:3] ≈ [-D, miss, 0] atol=1e-8
+    tol = 1e-3
+    converged = 0
+    for extra in (2, 5)
+        r = try solve(ChebyshevFilter(tol=tol, extra=extra, maxiter=400), H, 2) catch e; e end
+        @testset "D = $D, miss = $miss, m = 2, tol = $tol, extra = $extra" begin
+            if r isa Exception
+                @test r isa ErrorException && occursin("maxiter = 400", r.msg) && occursin("extra", r.msg)
+            else
+                E, V = r
+                @test E ≈ Ed[1:2] atol=10tol
+                check_eigenpairs(H, E, V; tol=2tol)
+                converged += 1
+            end
+        end
+    end
+    @test converged == 2                                               # both converge within maxiter = 400 (337 and 245 iterations)
+    # at the default maxiter = 50 the guards have not converged: a loud error advising a larger extra, not [−D, 0]
+    for extra in (2, 5)
+        err = try solve(ChebyshevFilter(tol=tol, extra=extra), H, 2); nothing catch e; e end
+        @test err isa ErrorException && occursin("maxiter = 50", err.msg) && occursin("raise extra", err.msg)
+    end
+end
+
 @testset "ChebyshevFilter: an exactly invariant product seed that excludes the ground state" begin
     H = _invariant_seed_trap()
     Ed, Vd = solve(Dense(), H, 0)

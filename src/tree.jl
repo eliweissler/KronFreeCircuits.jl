@@ -207,8 +207,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   cut, where the filter does not converge it (hence `extra ≥ 2`: with `extra = 1` there is no guard, and
   a lower state outside the seed span can be missed with passing residuals). A guard is waived only
   while the last filter's log-gain at its Ritz value (`degree · acosh|x|`, `x` its image on the filter
-  interval mapped to `[−1, 1]`) is below `0.1` times the log-gain at the lowest Ritz value: one
-  (near-)degenerate with the top column gains about nothing and would never lock, while under a filter
+  interval mapped to `[−1, 1]`) is below `0.1` times the log-gain at the `m`-th lowest Ritz value, the
+  highest wanted state (so a deep ground state cannot waive the guards protecting the states above it):
+  one (near-)degenerate with the top column gains about nothing and would never lock, while under a filter
   that is weak everywhere (a spectral bound far above the block) every guard keeps a ratio near 1 and
   is waited for. Guards near the cut converge slowly, so a small `extra` can take many more
   iterations; when guards are what remains unconverged at `maxiter`, the error advises raising
@@ -244,6 +245,14 @@ initial block is so small (below about `1e-2 · G^(−k)`, with `G ≈ 1/√eps`
 and `k` the iterations the lowest `m + g` columns take to lock) that it has not surfaced in a column
 by then, and the stop rule then accepts the lowest states found. `ShiftInvert()` (inertia certificate,
 on by default with the automatic shift) is the certified path.
+
+The defaults (`seed=:product, extra=40, degree=100, tol=1e-8`) were tested against invariant-seed traps,
+weak filters, crossing sweeps, degenerate blocks and deep references without a wrong result, but this is
+tested, not proven. The stop is residual-based, so a state outside the product-seed span is found only if
+the filter lifts its admixture of about `1e-2/√N` to `O(1)` before the `m` wanted and up to 4 guard
+columns lock. This can fail silently with a weak filter (a low `degree`, or a spectral bound far above the
+block) combined with a loose `tol`, or at a small `extra`. Use `tol ≤ 1e-6` and the default or a larger
+`extra`, and `ShiftInvert()` (certified) or `Dense()` when completeness matters.
 """
 struct ChebyshevFilter <: Solver
     tol::Float64
