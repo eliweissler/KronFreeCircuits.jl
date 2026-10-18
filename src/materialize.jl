@@ -119,9 +119,9 @@ function _check_bases(root::Node, modetypes::Dict{Symbol,Symbol})
         m, b = ch.first, ch.second
         t = get(modetypes, m, nothing)
         t === nothing && continue
-        ok = t === :c ? b isa ChargeBasis : t in (:e, :h) && (b isa PhaseGrid || b isa FockBasis)
+        ok = t === :c ? (b isa ChargeBasis || b isa PeriodicGrid) : t in (:e, :h) && (b isa PhaseGrid || b isa FockBasis)
         ok && continue
-        want = t === :c ? "a ChargeBasis" : t in (:e, :h) ? "a PhaseGrid or FockBasis" : "a known mode type (c, e or h)"
+        want = t === :c ? "a ChargeBasis or PeriodicGrid" : t in (:e, :h) ? "a PhaseGrid or FockBasis" : "a known mode type (c, e or h)"
         throw(ArgumentError("mode :$m has type :$t ($(get(_MODE_TYPE_NAMES, t, "unknown"))), which needs " *
                             "$want, but is given $(repr(b))"))
     end

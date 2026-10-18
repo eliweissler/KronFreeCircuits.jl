@@ -24,6 +24,9 @@ end
     @test port_of_kind(:exp2pin, -1) == exp2pin(-1)
     @test_throws ArgumentError port_of_kind(:n, 1.0)
     @test_throws ArgumentError port_of_kind(:cos)
+    @test port_of_kind(:d2) == Port(:d2, 0) && port_of_kind(:d1wrap, -1) == Port(:d1wrap, -1)
+    @test_throws ArgumentError port_of_kind(:d2wrap, 0)
+    @test_throws ArgumentError port_of_kind(:d1, 1)
 end
 
 @testset "circuit_terms branches" begin

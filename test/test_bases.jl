@@ -74,3 +74,34 @@ end
     V = zeros(11, 2); V[1, 1] = 3; V[11, 1] = 4; V[6, 2] = 1
     @test edge_support(g, V, 2) ≈ [5.0, 0.0]
 end
+
+@testset "PeriodicGrid: twisted stencil equals the thesis construction; sectors" begin
+    using KronFreeCircuits: check_sectors
+    for order in (2, 4, 6, 8), N in (16, 24)
+        b = PeriodicGrid(N; order=order)
+        Δ = 2π / N; w = KronFreeCircuits.fd_weights(order, 2); h = order ÷ 2
+        for ng in (0.0, 0.25, 0.5)
+            # thesis listing: roll-based shifts with phases on the wrapped block, D2 = Σ_j w_j (S_j + S_-j) + w_0 I, divided by Δ²
+            shift(j) = (S = circshift(Matrix{ComplexF64}(I, N, N), (j, 0)); j > 0 ? (S[1:j, :] .*= cis(2π * ng); S) : j < 0 ? (S[end+j+1:end, :] .*= cis(-2π * ng); S) : S)
+            D2 = -(w[h+1] * I + sum(w[j+h+1] * (shift(j) + shift(-j)) for j in 1:h)) / Δ^2
+            ours = dense(localop(b, Port(:d2, 0))) + cis(2π * ng) * dense(localop(b, Port(:d2wrap, 1))) + cis(-2π * ng) * dense(localop(b, Port(:d2wrap, -1)))
+            @test ours ≈ D2
+            @test ours ≈ ours'
+            d1 = dense(localop(b, Port(:d1, 0))) + cis(2π * ng) * dense(localop(b, Port(:d1wrap, 1))) + cis(-2π * ng) * dense(localop(b, Port(:d1wrap, -1)))
+            @test d1 ≈ d1'
+            if ng == 0.5    # twist phase -1: the operator is real (exact -1 here, since cis(π) carries a 1e-16 imaginary part)
+                real_half = dense(localop(b, Port(:d2, 0))) - dense(localop(b, Port(:d2wrap, 1))) - dense(localop(b, Port(:d2wrap, -1)))
+                @test maximum(abs, imag(real_half)) == 0
+                @test real_half ≈ D2
+            end
+        end
+        @test dense(localop(b, expiphi(2))) ≈ Diagonal(cis.(2 .* coordinates(b)))
+    end
+    @test sparse(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1))) ≈ dense(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1)))
+    @test_throws ArgumentError localop(PeriodicGrid(16), phiport())
+    @test_throws ArgumentError localop(PeriodicGrid(16), expiphi(0.5))
+    @test_throws ArgumentError check_sectors(PeriodicGrid(15), [2], :phi)
+    @test check_sectors(PeriodicGrid(16; sectors=4), [2, 4], :phi) === nothing
+    @test_throws ArgumentError PeriodicGrid(15; sectors=2)
+    @test KronFreeCircuits.modetype(PeriodicGrid(16)) === :c && KronFreeCircuits.spacing(PeriodicGrid(16)) ≈ 2π / 16
+end

@@ -2,8 +2,11 @@
     Port(kind, k)
 
 A named single-mode operator: `:n` (charge), `:n2` (charge squared), `:phi`, `:phi2`,
-`:expiphi` (`exp(i k φ)`) or `:exp2pin` (`exp(2π i k n)`).
-`k` is the exponent coefficient (zero for the polynomial ports).
+`:expiphi` (`exp(i k φ)`) or `:exp2pin` (`exp(2π i k n)`), or a derivative piece of a
+`PeriodicGrid`: `:d1`, `:d2` (interior bands of `-i ∂_φ`, `-∂_φ²`) and `:d1wrap`, `:d2wrap`
+(their wrap corners).
+`k` is the exponent coefficient (zero for the polynomial ports and `:d1`, `:d2`), or the corner
+`±1` of the wrap ports.
 """
 struct Port
     kind::Symbol
@@ -26,8 +29,9 @@ const _POLY_PORTS = (n=nport, n2=n2port, phi=phiport, phi2=phi2port)
 """
     port_of_kind(kind::Symbol, k=0.0) -> Port
 
-The `Port` named by `kind` (`:n, :n2, :phi, :phi2, :expiphi, :exp2pin`); `k` is the exponent
-coefficient of the exponential ports and must be zero for the polynomial ones.
+The `Port` named by `kind` (`:n, :n2, :phi, :phi2, :expiphi, :exp2pin, :d1, :d1wrap, :d2, :d2wrap`);
+`k` is the exponent coefficient of the exponential ports, the corner `±1` of the wrap ports
+`:d1wrap, :d2wrap`, and must be zero for the others.
 """
 function port_of_kind(kind::Symbol, k::Real=0.0)
     if haskey(_POLY_PORTS, kind)
@@ -36,7 +40,16 @@ function port_of_kind(kind::Symbol, k::Real=0.0)
     end
     kind === :expiphi && return expiphi(k)
     kind === :exp2pin && return exp2pin(k)
-    throw(ArgumentError("unknown port kind :$kind; expected :n, :n2, :phi, :phi2, :expiphi or :exp2pin"))
+    if kind in (:d1, :d2)
+        iszero(k) || throw(ArgumentError("port kind :$kind takes no exponent, got k = $k"))
+        return Port(kind, 0)
+    end
+    if kind in (:d1wrap, :d2wrap)
+        k in (1, -1) || throw(ArgumentError("port kind :$kind needs the corner k = +1 or -1, got k = $k"))
+        return Port(kind, k)
+    end
+    throw(ArgumentError("unknown port kind :$kind; expected :n, :n2, :phi, :phi2, :expiphi, :exp2pin, " *
+                        ":d1, :d1wrap, :d2 or :d2wrap"))
 end
 
 """

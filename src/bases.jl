@@ -36,6 +36,51 @@ end
 PhaseGrid(a::Real, b::Real, N::Integer; order::Integer=8) = PhaseGrid(a, b, N, order)
 
 """
+    PeriodicGrid(N; order=8, sectors=1)
+
+Compact-mode phase grid on `[-π, π)` without the endpoint, `φ_i = -π + 2π i/N` for
+`i = 0..N-1`, spacing `Δ = 2π/N`, with central finite-difference stencils of the given `order`
+(2, 4, 6 or 8) that wrap around the circle.
+The basis carries no offset charge, so its operators are parameter-free.
+A wrapped stencil is split into an interior band and two wrap corners; the twisted boundary
+`ψ(φ + 2π) = e^{-2πi n_g} ψ(φ)` enters through the coefficients `e^{±2πi n_g}` that term
+construction puts on the corners.
+`sectors` adds the requirement that `N` be divisible by it, beyond the harmonics declared on the
+mode (see `check_sectors`).
+
+Ports:
+
+| port | operator |
+|:-----|:---------|
+| `Port(:d1, 0)` | interior band of `-i ∂_φ` (stencil entries that stay inside `1:N`) |
+| `Port(:d1wrap, +1)` | upper corner of `-i ∂_φ`: entries `(i, i - j + N)`, rows `i ≤ j`, coefficient `e^{+2πi n_g}` |
+| `Port(:d1wrap, -1)` | lower corner of `-i ∂_φ`: entries `(i, i + j - N)`, rows `i > N - j`, coefficient `e^{-2πi n_g}` |
+| `Port(:d2, 0)`, `Port(:d2wrap, ±1)` | the same split of `-∂_φ²` |
+| `expiphi(k)`, integer `k` | diagonal `e^{ikφ}` |
+
+The twisted operators are `d + e^{2πi n_g} d₊ + e^{-2πi n_g} d₋`, Hermitian for real `n_g` since
+`d₋ = d₊'`; they are real at `n_g ∈ {0, ½}`.
+The ports `:n` and `:n2` are not served: term construction assembles the charge from the
+derivative pieces and the offset charge.
+`:phi` and `:phi2` are not served because `φ` is multivalued on a circle, and `:exp2pin` is a
+later item.
+"""
+struct PeriodicGrid <: Basis
+    N::Int
+    order::Int
+    sectors::Int
+    function PeriodicGrid(N::Integer, order::Integer, sectors::Integer)
+        order in (2, 4, 6, 8) || throw(ArgumentError("PeriodicGrid order must be 2, 4, 6 or 8, got $order"))
+        N >= order + 1 || throw(ArgumentError("PeriodicGrid requires N >= order + 1 = $(order + 1), got N = $N"))
+        sectors >= 1 || throw(ArgumentError("PeriodicGrid requires sectors >= 1, got $sectors"))
+        N % sectors == 0 ||
+            throw(ArgumentError("PeriodicGrid requires N divisible by sectors = $sectors, got N = $N"))
+        return new(N, order, sectors)
+    end
+end
+PeriodicGrid(N::Integer; order::Integer=8, sectors::Integer=1) = PeriodicGrid(N, order, sectors)
+
+"""
     FockBasis(N; phi_zpf)
 
 Harmonic-oscillator basis truncated to `N` levels with `φ̂ = φ_zpf (a + a†)` and
@@ -54,20 +99,24 @@ FockBasis(N::Integer; phi_zpf::Real) = FockBasis(N, phi_zpf)
 
 dimension(b::ChargeBasis) = 2b.ncut + 1
 dimension(b::PhaseGrid) = b.N
+dimension(b::PeriodicGrid) = b.N
 dimension(b::FockBasis) = b.N
 
 modetype(::ChargeBasis) = :c
 modetype(::PhaseGrid) = :e
+modetype(::PeriodicGrid) = :c
 modetype(::FockBasis) = :h
 
 coordinates(b::ChargeBasis) = collect(Float64, -b.ncut:b.ncut)
 coordinates(b::PhaseGrid) = collect(range(b.a, b.b; length=b.N))
+coordinates(b::PeriodicGrid) = collect(-π .+ 2π .* (0:b.N-1) ./ b.N)
 coordinates(b::FockBasis) = collect(0.0:b.N-1)
 
-positive_mask(b::Union{ChargeBasis,PhaseGrid}) = coordinates(b) .>= 0
+positive_mask(b::Union{ChargeBasis,PhaseGrid,PeriodicGrid}) = coordinates(b) .>= 0
 positive_mask(b::FockBasis) = fill(true, b.N)
 
 spacing(b::PhaseGrid) = (b.b - b.a) / (b.N - 1)
+spacing(b::PeriodicGrid) = 2π / b.N
 
 const _FD1 = Dict(
     2 => [-1 // 2, 0, 1 // 2],
@@ -95,7 +144,11 @@ function fd_weights(order::Int, derivative::Int)
     throw(ArgumentError("fd_weights: derivative must be 1 or 2, got $derivative"))
 end
 
-_portname(p::Port) = p.kind in (:expiphi, :exp2pin) ? "$(p.kind)($(p.k))" : string(p.kind)
+function _portname(p::Port)
+    p.kind in (:expiphi, :exp2pin) && return "$(p.kind)($(p.k))"
+    p.kind in (:d1wrap, :d2wrap) && return "$(p.kind)($(isinteger(p.k) ? Int(p.k) : p.k))"
+    return string(p.kind)
+end
 _unavailable(b::Basis, p::Port) =
     ArgumentError("$(nameof(typeof(b))): port $(_portname(p)) is not available")
 
@@ -145,6 +198,66 @@ function localop(b::PhaseGrid, p::Port)
         return ShiftOp(N, -round(Int, s), 1.0)
     end
     throw(_unavailable(b, p))
+end
+
+const _PERIODIC_UNAVAILABLE = Dict(
+    :n => "the charge is assembled by term construction from the derivative ports :d1, :d1wrap and the offset charge",
+    :n2 => "the charge squared is assembled by term construction from the derivative ports :d2, :d2wrap and the offset charge",
+    :phi => "φ is multivalued on a circle; use expiphi(k) with integer k",
+    :phi2 => "φ is multivalued on a circle; use expiphi(k) with integer k",
+    :exp2pin => "exp2pin on a periodic grid is not implemented yet",
+)
+
+# Interior band (corner = 0) or one wrap corner of the wrapped central stencil
+# `Y[i] = Σ_j c[j+h+1] X[mod1(i + j, N)]`, `j = -h..h`. The upper corner (corner = +1) holds the
+# entries with `i + j < 1` (rows `i ≤ -j`, column `i + j + N`), the lower corner (corner = -1)
+# those with `i + j > N` (rows `i > N - j`, column `i + j - N`).
+function _periodic_stencil(N::Int, h::Int, c::Vector{T}, corner::Int) where {T}
+    js = [j for j in -h:h if !iszero(c[j+h+1])]
+    corner == 1 && filter!(<(0), js)
+    corner == -1 && filter!(>(0), js)
+    offs = [j + (corner == 1 ? N : corner == -1 ? -N : 0) for j in js]
+    ws = [T[1 <= i + o <= N ? c[j+h+1] : zero(T) for i in 1:N] for (j, o) in zip(js, offs)]
+    return BandedOp(N, offs, ws)
+end
+
+function localop(b::PeriodicGrid, p::Port)
+    N, Δ, h = b.N, spacing(b), b.order ÷ 2
+    if p.kind in (:d1, :d2, :d1wrap, :d2wrap)
+        wrap = p.kind in (:d1wrap, :d2wrap)
+        if wrap
+            p.k in (1, -1) || throw(ArgumentError("PeriodicGrid: port $(_portname(p)) needs k = +1 or -1 (the corner)"))
+        else
+            iszero(p.k) || throw(ArgumentError("PeriodicGrid: port $(p.kind) takes k = 0, got k = $(p.k)"))
+        end
+        c = p.kind in (:d1, :d1wrap) ? ComplexF64.(-im .* fd_weights(b.order, 1) ./ Δ) :   # -i ∂_φ
+                                       -fd_weights(b.order, 2) ./ Δ^2                       # -∂_φ²
+        return _periodic_stencil(N, h, c, wrap ? Int(p.k) : 0)
+    elseif p.kind === :expiphi
+        abs(p.k - round(p.k)) <= 1e-12 ||
+            throw(ArgumentError("PeriodicGrid: port expiphi($(p.k)) needs an integer k on a 2π-periodic grid"))
+        return DiagonalOp(exp.(im * round(Int, p.k) .* coordinates(b)))
+    elseif haskey(_PERIODIC_UNAVAILABLE, p.kind)
+        throw(ArgumentError("PeriodicGrid: port $(_portname(p)) is not available: $(_PERIODIC_UNAVAILABLE[p.kind])"))
+    end
+    throw(_unavailable(b, p))
+end
+
+"""
+    check_sectors(b::PeriodicGrid, harmonics, mode) -> nothing
+
+Require `N` divisible by every integer harmonic `ω` of a cosine on `mode` and by `b.sectors`,
+so the translation by `2π/ω` maps the grid to itself and the charge-parity sectors are exact.
+"""
+function check_sectors(b::PeriodicGrid, harmonics::AbstractVector{<:Integer}, mode::Symbol)
+    for ω in harmonics
+        iszero(ω) && continue
+        b.N % ω == 0 || throw(ArgumentError("mode :$mode: PeriodicGrid N = $(b.N) is not divisible by the harmonic " *
+                                            "ω = $ω of a cosine on this mode; choose N a multiple of $(abs(ω))"))
+    end
+    b.N % b.sectors == 0 ||
+        throw(ArgumentError("mode :$mode: PeriodicGrid N = $(b.N) is not divisible by sectors = $(b.sectors)"))
+    return nothing
 end
 
 function localop(b::FockBasis, p::Port)
