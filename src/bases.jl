@@ -53,13 +53,21 @@ Ports:
 | port | operator |
 |:-----|:---------|
 | `Port(:d1, 0)` | interior band of `-i ∂_φ` (stencil entries that stay inside `1:N`) |
-| `Port(:d1wrap, +1)` | upper corner of `-i ∂_φ`: entries `(i, i - j + N)`, rows `i ≤ j`, coefficient `e^{+2πi n_g}` |
-| `Port(:d1wrap, -1)` | lower corner of `-i ∂_φ`: entries `(i, i + j - N)`, rows `i > N - j`, coefficient `e^{-2πi n_g}` |
+| `Port(:d1wrap, ±1)` | wrap corners of `-i ∂_φ` (convention below) |
 | `Port(:d2, 0)`, `Port(:d2wrap, ±1)` | the same split of `-∂_φ²` |
 | `expiphi(k)`, integer `k` | diagonal `e^{ikφ}` |
 
-The twisted operators are `d + e^{2πi n_g} d₊ + e^{-2πi n_g} d₋`, Hermitian for real `n_g` since
-`d₋ = d₊'`; they are real at `n_g ∈ {0, ½}`.
+Corner convention, for each stencil reach `j = 1..order/2`:
+`Port(:d·wrap, +1)` is the upper-right corner, rows `i ≤ j`, column `i - j + N` (`BandedOp`
+offset `N - j`), and carries `e^{+2πi n_g}`, since `ψ(φ - 2π) = e^{+2πi n_g} ψ(φ)`;
+`Port(:d·wrap, -1)` is the lower-left corner, rows `i > N - j`, column `i + j - N` (offset
+`j - N`), the exact adjoint of `+1`, and carries `e^{-2πi n_g}`.
+
+The twisted operators `d + e^{2πi n_g} d₊ + e^{-2πi n_g} d₋` are Hermitian for real `n_g` since
+`d₋ = d₊'`.
+The twisted second derivative `d2 + e^{2πi n_g} d2wrap₊ + e^{-2πi n_g} d2wrap₋` is real when the
+twist phase is ±1, i.e. `n_g ∈ {0, ½}`, so a single uncoupled mode's Hamiltonian is real there.
+The `d1` pieces are imaginary-antisymmetric like `PhaseGrid`'s `:n`.
 The ports `:n` and `:n2` are not served: term construction assembles the charge from the
 derivative pieces and the offset charge.
 `:phi` and `:phi2` are not served because `φ` is multivalued on a circle, and `:exp2pin` is a
@@ -216,6 +224,7 @@ function _periodic_stencil(N::Int, h::Int, c::Vector{T}, corner::Int) where {T}
     js = [j for j in -h:h if !iszero(c[j+h+1])]
     corner == 1 && filter!(<(0), js)
     corner == -1 && filter!(>(0), js)
+    # a wrapped neighbour i + j outside 1:N is column mod1(i + j, N): offset j + N below 1, j - N above N
     offs = [j + (corner == 1 ? N : corner == -1 ? -N : 0) for j in js]
     ws = [T[1 <= i + o <= N ? c[j+h+1] : zero(T) for i in 1:N] for (j, o) in zip(js, offs)]
     return BandedOp(N, offs, ws)

@@ -96,7 +96,15 @@ end
             end
         end
         @test dense(localop(b, expiphi(2))) ≈ Diagonal(cis.(2 .* coordinates(b)))
+        @test dense(localop(b, Port(:d2wrap, -1))) == dense(localop(b, Port(:d2wrap, 1)))'
+        @test dense(localop(b, Port(:d1wrap, -1))) == dense(localop(b, Port(:d1wrap, 1)))'
+        @test_throws ArgumentError localop(b, Port(:d2wrap, 0))
+        @test_throws ArgumentError localop(b, Port(:d1, 1))
+        @test_throws ArgumentError localop(b, nport())
+        @test_throws ArgumentError localop(b, Port(:exp2pin, 1))
     end
+    @test KronFreeCircuits._check_bases(Node([:phi => PeriodicGrid(16)]), Dict(:phi => :c)) === nothing
+    @test_throws ArgumentError KronFreeCircuits._check_bases(Node([:phi => PeriodicGrid(16)]), Dict(:phi => :e))
     @test sparse(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1))) ≈ dense(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1)))
     @test_throws ArgumentError localop(PeriodicGrid(16), phiport())
     @test_throws ArgumentError localop(PeriodicGrid(16), expiphi(0.5))
