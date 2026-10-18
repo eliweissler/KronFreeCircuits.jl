@@ -158,7 +158,7 @@ There were no guard warnings, no `ShiftInvert` LU-fallback warnings and no `Dens
 - **The `ShiftInvert` times above were measured with the then-default `certify=false`.**
   `ShiftInvert()` now certifies by default (after this benchmark, to catch degenerate levels single-vector Lanczos undercounts): one more Lanczos pair (`m + 1`) and one `LDLᵀ` factorization of the 9331-state leaf per solve (two if the first breaks down), plus a deflated Lanczos run and one or two factorizations per recovery round when the count is short.
   Not re-measured (the certificate's `LDLᵀ` is simplicial, unlike the supernodal Cholesky of the shift, so its cost is not bounded by the 0.3 s of assembly and factorization above).
-  Likewise the `ChebyshevFilter` rows predate the perturbed product seed and the rule that every column is filtered once before it locks.
+  Likewise the `ChebyshevFilter` rows predate the product seed's `1e-2` random admixture, the guard columns of the stop rule and the rule that every column is filtered once before it locks (on the small test leaves the guards add about one iteration).
 
 ## Commands
 

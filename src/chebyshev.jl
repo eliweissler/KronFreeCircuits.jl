@@ -184,17 +184,48 @@ function _check_bound(s::ChebyshevFilter, θ::AbstractVector, λmax::Real)
     return nothing
 end
 
-# Why the iteration has not stopped, for the maxiter error.
-function _not_done_reason(θ::AbstractVector, res::AbstractVector, nlock::Int, m::Int, tol::Real)
-    nlock < m && return "only $nlock of $m eigenpairs converged (largest unconverged residual " *
-                        "$(maximum(view(res, nlock+1:length(θ)))) > tol = $tol)"
-    return "the lowest $m columns are locked, but the unlocked Ritz value $(θ[nlock+1]) (residual $(res[nlock+1]) > " *
+# The relative size of the random block added to the product seed. A filter step's gain is capped at
+# about 1/√eps ≈ 7e7 over λ_cut (`_chebyshev_degree`), so a component of relative size δ along a low
+# state the product states miss (their span can be exactly invariant under H) reaches O(1) only after
+# about log(1/δ) / log(7e7) filter steps beyond the first. At δ = √eps (LOBPCG's seed perturbation) the
+# component is still ≈ 1e-8 after one step, below the lowest columns, which are then exact and lock at
+# once; at δ = 1e-2 it dominates a column within the first iteration or two. The cost is a seed 1e-2
+# off the product states, which the first filter step removes.
+const _SEED_ADMIXTURE = 1e-2
+
+# The guard columns beyond m that must also lock before the iteration stops, as LOBPCG's
+# `n_conv_check = m + g`: up to `_CHEBYSHEV_GUARDS`, and always one extra column fewer than `extra`. The
+# top column of the block sets λ_cut = θ_nb, so its own Ritz value sits at the cut, where the filter
+# separates nothing: a guard there would never converge (measured: extra = 1 with one guard ran out of
+# maxiter on every probe).
+const _CHEBYSHEV_GUARDS = 4
+_chebyshev_guards(extra::Int) = min(extra - 1, _CHEBYSHEV_GUARDS)
+
+# The product seed `P` plus, column by column, a random vector of norm `_SEED_ADMIXTURE` times the
+# column's (a fixed generator, so the seed is reproducible).
+function _admixed_seed(T, P)
+    X = Matrix{T}(Array(P))
+    rng = Random.MersenneTwister(0x4346)
+    for j in axes(X, 2)
+        c = view(X, :, j)
+        r = randn(rng, T, length(c))
+        c .+= (_SEED_ADMIXTURE * norm(c) / norm(r)) .* r
+    end
+    return X
+end
+
+# Why the iteration has not stopped, for the maxiter error; `need` is m plus the guard columns.
+function _not_done_reason(θ::AbstractVector, res::AbstractVector, nlock::Int, m::Int, tol::Real; need::Int=m)
+    nlock < need && return "only $nlock of $need eigenpairs converged ($m wanted and $(need - m) guard columns; largest " *
+                           "unconverged residual $(maximum(view(res, nlock+1:length(θ)))) > tol = $tol)"
+    return "the lowest $need columns are locked, but the unlocked Ritz value $(θ[nlock+1]) (residual $(res[nlock+1]) > " *
            "tol = $tol) lies below the $m-th locked energy $(partialsort(θ[1:nlock], m)), a lower state not yet converged"
 end
 
-# Stop once the lowest m columns are locked and no unlocked Ritz value lies below the m-th locked energy.
-function _chebyshev_done(θ::AbstractVector, nlock::Int, m::Int)
-    nlock >= m || return false
+# Stop once the lowest `need` (m plus guards) columns are locked and no unlocked Ritz value lies below the
+# m-th locked energy.
+function _chebyshev_done(θ::AbstractVector, nlock::Int, m::Int, need::Int=m)
+    nlock >= need || return false
     nlock == length(θ) && return true
     return θ[nlock+1] >= partialsort(θ[1:nlock], m)
 end
@@ -219,9 +250,10 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     R = real(T)
     rng = Random.default_rng()
     λmax = R(s.bound === :gershgorin ? gershgorin_bound(H) : s.bound)
-    # Host data either way. The product seed is perturbed (√eps relative, as LOBPCG's): its span can be
+    # Host data either way. The product seed gets a random admixture (`_SEED_ADMIXTURE`): its span can be
     # exactly invariant under H and miss a low state entirely, which no filter could then amplify.
-    X0 = s.seed === :product ? _perturbed_seed(T, product_seed(H, nb)) : randn(rng, T, N, nb)
+    X0 = s.seed === :product ? _admixed_seed(T, product_seed(H, nb)) : randn(rng, T, N, nb)
+    need = min(m + _chebyshev_guards(s.extra), nb)                              # m plus the guard columns
     H = _on_storage(H, s.on; capacity=max(nb, _block_capacity(H)))             # the operator lives with the block
     _block_capacity(H) < nb && (H = with_block_capacity(H, nb))
 
@@ -257,9 +289,9 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
         end
         s.callback === nothing ||
             s.callback((; iteration=it, λ=copy(θ), residuals=copy(res), n_locked=nlock, λ_cut=λcut, λ_max=λmax, degree=deg))
-        _chebyshev_done(θ, nlock, m) && break
+        _chebyshev_done(θ, nlock, m, need) && break
         it >= s.maxiter &&
-            error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol) *
+            error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol; need=need) *
                   (0 < deg < s.degree ? "; the last filter ran at degree $deg of $(s.degree), lowered by the amplification " *
                                         "cap 1/√eps (a narrow spectrum), so more iterations may be needed" : ""))
         it += 1

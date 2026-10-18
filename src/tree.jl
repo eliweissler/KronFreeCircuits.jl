@@ -182,8 +182,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. Columns lock (stop being filtered)
   in order from the bottom of the block once their Rayleigh–Ritz residual is below `tol / 2`; the
-  iteration stops when the lowest `m` are locked, and the returned pairs are accepted at `tol` with a
-  fresh residual from a new application of the operator.
+  iteration stops when the lowest `m + g` are locked (`g = min(extra − 1, 4)` guard columns) and no
+  unlocked Ritz value lies below the `m`-th locked energy. The returned pairs are the lowest `m` of all
+  locked columns, accepted at `tol` with a fresh residual from a new application of the operator.
   No column locks, and the iteration does not stop, before the first filter application (unless the
   block spans the whole space, `nb = N`): the seed's own Rayleigh–Ritz is never accepted, since a seed
   spanning an invariant subspace has zero residuals there however far it lies from the lowest states.
@@ -194,6 +195,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   degree 14 of 100); on a grid leaf with a large bound it binds moderately (the small zero-pi leaf
   runs at degree 65–81 of 100). The applied degree is reported to `callback` and in the `maxiter` error.
 - `extra ≥ 1`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states).
+  Up to four of them double as guards that must converge before the iteration stops, as `LOBPCG`'s:
+  `g = min(extra − 1, 4)`, one fewer than `extra` because the top column sets `λ_cut` and sits at the
+  cut, where the filter does not converge it (so `extra = 1` has no guard).
 - `maxiter`: the bound on filter iterations; running out raises an error naming the converged count.
 - `rescale_every`: every this many recurrence steps the pair `(T_{k−1}, T_k)` is divided column-wise
   by the norm of `T_k` (the recurrence is linear, so only column scales change), preventing overflow.
@@ -205,11 +209,11 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   number below the true largest eigenvalue amplifies the top of the spectrum; it is detected (a
   Ritz value above the bound, or a non-finite block) and raises an error naming the bound.
 - `seed`: `:product` starts from [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the
-  separable part) with a fixed random perturbation of relative size `√eps` per column (as `LOBPCG`'s),
-  `:random` from a random block. The perturbation matters when the product states span an exactly
-  invariant subspace that misses a lower state (a coupling acting only among higher product states):
-  its small component along that state is amplified by the first filter application far below
-  `λ_cut`, and the stop rule then keeps iterating until the state converges.
+  separable part) plus a fixed random admixture of relative size `1e-2` per column; `:random` from a
+  random block. The admixture matters when the product states span an exactly invariant subspace that
+  misses a lower state (a coupling acting only among higher product states): the filter's gain per
+  iteration is capped near `1/√eps`, so a component of size `1e-2` along that state dominates a
+  column within the first iteration or two, where a `√eps` one (`LOBPCG`'s perturbation) would not.
 - `on`: the array storage the block lives on (`Array`, or a device array type).
 - `callback`: `nothing` or a function called once per iteration, after locking, with the named
   tuple `(; iteration, λ, residuals, n_locked, λ_cut, λ_max, degree)` (host copies; `λ_cut` and
@@ -219,10 +223,12 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
 every block direction is amplified, the lowest `m` the most, so the extra columns set the rate.
 Results are host arrays.
 
-Locking from the bottom of the block cannot certify completeness: a state absent from the seed's span
-(or reached only after the lowest `m` locked) can be missed, which the `extra` columns and the stop
-rule (no unlocked Ritz value below the `m`-th locked energy) make unlikely but do not exclude.
-`ShiftInvert(certify=true)` certifies the count by inertia.
+There is no completeness certificate. A lower state outside the seed's span is found only through the
+random admixture (or the random seed) and the guard columns: it is missed when its overlap with the
+initial block is so small (below about `1e-2 · G^(−k)`, with `G ≈ 1/√eps` the capped gain per iteration
+and `k` the iterations the lowest `m + g` columns take to lock) that it has not surfaced in a column
+by then, and the stop rule then accepts the lowest states found. `ShiftInvert()` (inertia certificate,
+on by default with the automatic shift) is the certified path.
 """
 struct ChebyshevFilter <: Solver
     tol::Float64

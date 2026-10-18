@@ -222,12 +222,49 @@ end
 # the product states of energy 50 and 51, whose block [50 82; 82 51] has eigenvalues ≈ −31.5 and 132.5.
 # The seed of nb = 43 columns is the unit vectors of energies 0..42, an exactly invariant span (zero
 # residuals) that contains none of the ground state.
-function _invariant_seed_trap()
-    X = zeros(ComplexF64, 10, 10); X[1, 2] = X[2, 1] = 1
-    P5 = zeros(ComplexF64, 10, 10); P5[6, 6] = 1
-    return KronFreeCircuits.KronFreeOperator([10, 10], [AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:9)))]),
-                                       AxisTerm(10.0, [(2, DiagonalOp(collect(0.0:9)))]),
-                                       AxisTerm(82.0, [(1, DenseOp(X)), (2, DenseOp(P5))])])
+# `pairs` lists couplings `(i1, i2, j, c)`: strength c between the product states (i1, j) and (i2, j)
+# (axis-1 indices i1, i2 from 1, axis-2 level j from 0).
+function _invariant_seed_trap(pairs=[(1, 2, 5, 82.0)])
+    terms = AxisTerm[AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:9)))]), AxisTerm(10.0, [(2, DiagonalOp(collect(0.0:9)))])]
+    for (i1, i2, j, c) in pairs
+        X = zeros(ComplexF64, 10, 10); X[i1, i2] = X[i2, i1] = 1
+        P = zeros(ComplexF64, 10, 10); P[j+1, j+1] = 1
+        push!(terms, AxisTerm(c, [(1, DenseOp(X)), (2, DenseOp(P))]))
+    end
+    return KronFreeCircuits.KronFreeOperator([10, 10], terms)
+end
+
+# The coupling c between product energies 50 and 51 that puts the lower eigenvalue of [50 c; c 51] at e.
+_trap_coupling(e) = sqrt(((101 - 2e)^2 - 1) / 4)
+
+@testset "ChebyshevFilter: a lower state outside an invariant seed span, near or among the seeded energies" begin
+    variants = [("pushed to -0.001, just below the lowest seeded energy", [(1, 2, 5, _trap_coupling(-0.001))], (3,)),
+                ("pushed exactly to 0, degenerate with a seeded state", [(1, 2, 5, _trap_coupling(0.0))], (2, 3)),
+                ("pushed to 0.5, between seeded energies", [(1, 2, 5, _trap_coupling(0.5))], (3,)),
+                ("coupling just outside the seed (energies 43, 44)", [(4, 5, 4, 60.0)], (3,)),
+                ("3-fold coupling among energies 50, 51, 52", [(1, 2, 5, 60.0), (2, 3, 5, 60.0), (1, 3, 5, 60.0)], (3,))]
+    for (name, pairs, ms) in variants
+        H = _invariant_seed_trap(pairs)
+        Ed, Vd = solve(Dense(), H, 0)
+        @test Ed[1] < 0.75                                             # a state below the seeded energy 1, outside the seed span
+        P = KronFreeCircuits.product_seed(H, 43)
+        @test norm(H * P - P * (P' * (H * P))) == 0
+        for m in ms, tol in (1e-8, 1e-4), extra in (40, 1)          # extra = 1 has no guard column: the admixture alone
+            E, V = solve(ChebyshevFilter(tol=tol, extra=extra), H, m)
+            @testset "$name, m = $m, tol = $tol, extra = $extra" begin
+                @test E ≈ Ed[1:m] atol=10tol * max(1, maximum(abs, Ed[1:m]))
+                check_eigenpairs(H, E, V; tol=2tol)
+            end
+        end
+    end
+    # a block one short of the space (nb = N − 1) with a degenerate top level: the guard columns stay below
+    # the top column, which sets λ_cut, so the iteration converges (no LAPACK failure, no maxiter error)
+    Hd = KronFreeCircuits.KronFreeOperator([10], [AxisTerm(1.0, [(1, DiagonalOp([0.0:7..., 9, 9]))])])
+    for extra in (4, 3)
+        E, V = solve(ChebyshevFilter(extra=extra), Hd, 5)
+        @test E ≈ 0:4 atol=1e-8
+        check_eigenpairs(Hd, E, V; tol=1e-8)
+    end
 end
 
 @testset "ChebyshevFilter: an exactly invariant product seed that excludes the ground state" begin
