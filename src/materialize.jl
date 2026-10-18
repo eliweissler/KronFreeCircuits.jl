@@ -57,8 +57,10 @@ const _HYBRID_RATIO = 0.5
     materialize(root, terms, θ; constant=Coefficient(0), previous=nothing, modetypes=Dict()) -> System
 
 Diagonalize every node of the tree under `root` at parameters `θ`, children first.
-The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref),
-appends `extra_terms` (terms not in the circuit spec, such as couplings to a
+The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref) given the
+tree's `mode => basis` children (so a compact mode on a [`PeriodicGrid`](@ref) gets its twisted
+derivative pieces), checks every `PeriodicGrid` against the integer harmonics of the cosines on its
+mode ([`check_sectors`](@ref)), appends `extra_terms` (terms not in the circuit spec, such as couplings to a
 [`GivenSystem`](@ref)), and delegates to the second, which takes a user-built (filtered,
 transformed) term list and a scalar `constant`.
 
@@ -81,7 +83,7 @@ implemented, and equal dimensions alone do not establish the same basis).
 A parameter missing from `θ` raises an `ArgumentError` naming it.
 
 Each `mode => basis` leaf child is checked against the mode's type: a compact mode (`:c`) needs
-a `ChargeBasis`, an extended (`:e`) or harmonic (`:h`) mode a `PhaseGrid` or `FockBasis`.
+a `ChargeBasis` or `PeriodicGrid`, an extended (`:e`) or harmonic (`:h`) mode a `PhaseGrid` or `FockBasis`.
 The spec form takes the types from the spec; the term-list form from `modetypes` (mode => type),
 skipping modes absent from it (an empty dictionary skips the check).
 
@@ -104,9 +106,26 @@ end
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
                      extra_terms::Vector{Term}=Term[])
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
-    sys = materialize(root, vcat(circuit_terms(spec), extra_terms), θ; constant=constant_term(spec),
+    _check_bases(root, modetypes)
+    bases = _tree_bases(root)
+    for (mode, b) in bases
+        b isa PeriodicGrid || continue
+        idx = findfirst(m -> m.name === mode, spec.modes)
+        idx === nothing && continue
+        check_sectors(b, Int[round(Int, c.omega[idx]) for c in spec.cosines if c.omega[idx] != 0], mode)
+    end
+    sys = materialize(root, vcat(circuit_terms(spec, bases), extra_terms), θ; constant=constant_term(spec, bases),
                       previous=previous, modetypes=modetypes)
     return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
+end
+
+# Every `mode => basis` child in the tree.
+function _tree_bases(root::Node)
+    bases = Dict{Symbol,Basis}()
+    for node in _all_nodes(root), ch in node.children
+        ch isa Pair && (bases[ch.first] = ch.second)
+    end
+    return bases
 end
 
 const _MODE_TYPE_NAMES = Dict(:c => "compact", :e => "extended", :h => "harmonic")
@@ -525,3 +544,47 @@ The spec-form spelling `port(sys, :n, :varphi_2)`: `kind` is one of `:n, :n2, :p
 """
 port(sys::System, kind::Symbol, mode::Symbol, node::Node=sys.root.node; k::Real=0.0) =
     port(sys, mode, port_of_kind(kind, k), node)
+
+"""
+    charge_port(sys, mode) -> Matrix{ComplexF64}
+
+The physical charge `n` of `mode` in the kept eigenbasis of the leaf that holds it, computed on
+demand from that leaf's kept vectors.
+For a [`PeriodicGrid`](@ref) mode it is `V'(D₁)V + n_g I`, with the twisted derivative
+`D₁ = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋` (which is `n - n_g` in the twisted gauge) and
+`n_g` the mode's offset charge from `sys.spec`, both evaluated at `sys.θ`; it needs a system built
+from a spec.
+For a `ChargeBasis` mode it is `V' n V`, equal to `port(sys, mode, nport(), leaf)` when that port was
+formed.
+A `PeriodicGrid` does not serve `nport()` itself, so this is the accessor for its charge.
+"""
+function charge_port(sys::System, mode::Symbol)
+    leaf = _leaf_holding(sys.root, mode)
+    leaf === nothing && throw(ArgumentError("mode :$mode is not a basis child of any node of this system"))
+    a = axis_of(leaf.node, mode)
+    b = leaf.children[a]
+    V, dims = leaf.vectors, leaf.dims
+    b isa PeriodicGrid || return _port_matrix(V, dims, a, localop(b, nport()))
+    sys.spec === nothing &&
+        throw(ArgumentError("charge_port on the PeriodicGrid mode :$mode needs its offset charge, but the system " *
+                            "was built from a term list; materialize it from a spec"))
+    idx = findfirst(m -> m.name === mode, sys.spec.modes)
+    idx === nothing && throw(ArgumentError("mode :$mode is not a mode of the system's spec"))
+    ng = sys.spec.n_g[idx]
+    Q = ng(sys.θ) * Matrix{ComplexF64}(I, size(V, 2), size(V, 2))
+    for (t, p) in _twisted_pieces(ng, :d1)
+        Q .+= (t === nothing ? 1.0 : t(sys.θ)) .* _port_matrix(V, dims, a, localop(b, p))
+    end
+    return Q
+end
+
+# The materialized node with a `mode => basis` child, or `nothing`.
+function _leaf_holding(root::MaterializedNode, mode::Symbol)
+    stack = MaterializedNode[root]
+    while !isempty(stack)
+        mn = pop!(stack)
+        mn.node isa Node && any(ch -> ch isa Pair && ch.first === mode, mn.node.children) && return mn
+        append!(stack, (c for c in mn.children if c isa MaterializedNode))
+    end
+    return nothing
+end

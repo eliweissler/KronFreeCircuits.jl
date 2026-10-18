@@ -54,7 +54,7 @@ _make(ex, deps::Vector{Symbol}) = Coefficient(ex, deps, _compile(ex, deps))
 
 # Functions a coefficient expression may call, and the named constants it may use.
 const _ALLOWED_CALLS = (:+, :-, :*, :/, :^, ://, :sqrt, :exp, :cos, :sin, :tan, :cosh, :sinh, :tanh,
-                       :log, :abs, :cis, :sign, :conj, :real, :imag)
+                       :log, :abs, :cis, :cispi, :sign, :conj, :real, :imag)
 const _ALLOWED_CONSTANTS = (:pi, :π, :im, :ℯ)
 
 """
@@ -98,7 +98,7 @@ end
 
 Compile the expression `src` of the declared `params`.
 `src` may use numeric literals, the parameters, the constants `pi, π, im, ℯ`, and calls of
-`+ - * / ^ // sqrt exp cos sin tan cosh sinh tanh log abs cis sign conj real imag`;
+`+ - * / ^ // sqrt exp cos sin tan cosh sinh tanh log abs cis cispi sign conj real imag`;
 anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
 """
 function Coefficient(src::AbstractString, params::AbstractVector{Symbol})
@@ -137,4 +137,15 @@ The coefficient `exp(sign * im * offset)`.
 phase_factor(offset::Coefficient, sign::Int) =
     _make(:(exp($(sign) * im * $(offset.ex))), copy(offset.deps))
 
+"""
+    twist_factor(ng::Coefficient, sign::Int) -> Coefficient
+
+The twist phase `e^{sign · 2πi n_g}` of a `PeriodicGrid` wrap corner, built with `cispi` so that it
+is exactly real (±1, zero imaginary part) at `n_g ∈ {0, ½}`.
+"""
+twist_factor(ng::Coefficient, sign::Int) =
+    _make(:(cispi($(2 * sign) * $(ng.ex))), copy(ng.deps))
+
 iszero_expr(c::Coefficient) = c.ex isa Number && iszero(c.ex)
+
+free_symbols(c::Coefficient) = free_symbols(c.ex)

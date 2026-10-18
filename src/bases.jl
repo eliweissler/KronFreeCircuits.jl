@@ -88,6 +88,8 @@ struct PeriodicGrid <: Basis
 end
 PeriodicGrid(N::Integer; order::Integer=8, sectors::Integer=1) = PeriodicGrid(N, order, sectors)
 
+_is_twisted(::PeriodicGrid) = true          # term construction uses its derivative pieces (terms.jl)
+
 """
     FockBasis(N; phi_zpf)
 

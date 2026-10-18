@@ -47,7 +47,7 @@ end
         sys = @test_logs (:warn, r"PhaseGrid on mode :phi") materialize(leaf, spec_zp, θ)
         @test energies(sys) ≈ ref.energies atol=5e-4
         @test port(sys, :theta, nport()) ≈ port(sys, :theta, nport())'
-        small = Node([:theta => ChargeBasis(8), :phi => PhaseGrid(-6π, 6π, 151)]; keep=lowest(8))
+        small = Node([:theta => ChargeBasis(8), :phi => PhaseGrid(-6π, 6π, 151)]; solver=Dense(), keep=lowest(8))   # explicit: the default Auto() is ShiftInvert here
         smalll = Node([:theta => ChargeBasis(8), :phi => PhaseGrid(-6π, 6π, 151)]; solver=Lanczos(), compute=8, keep=lowest(8))
         Ed = energies(@test_logs (:warn, r"PhaseGrid") materialize(small, spec_zp, θ))
         El = energies(@test_logs (:warn, r"PhaseGrid") materialize(smalll, spec_zp, θ))
@@ -340,6 +340,37 @@ end
         """
     out = read(`$(Base.julia_cmd()) -t 4 --project=$(Base.active_project()) -e $code`, String)
     @test occursin("THREADED-SLICING-OK", out)
+end
+
+@testset "PeriodicGrid (slow): convergence in N at order 8 against the charge basis" begin
+    cases = [("transmon", load_spec(fixture("transmon.json")), :varphi_1, (E_J=20.0, E_C=1.0, n_g=0.3), 6),
+             ("cos 2φ", load_spec(fixture("cos2phi.json")), :phi, (E_C=1.0, n_g=0.2, E_1=0.0, E_2=15.0), 8)]
+    for (name, spec, m, θ, k) in cases
+        ref = energies(materialize(Node([m => ChargeBasis(30)]; solver=Dense(), keep=lowest(k)), spec, θ))
+        errs = [maximum(abs, energies(materialize(Node([m => PeriodicGrid(N; order=8)]; solver=Dense(), keep=lowest(k)), spec, θ)) .- ref)
+                for N in (32, 64, 128, 256)]
+        println("PeriodicGrid convergence, $name (lowest $k, max abs error vs ChargeBasis(30)): ",
+                join(("N = $N: $(round(e; sigdigits=3))" for (N, e) in zip((32, 64, 128, 256), errs)), ", "))
+        @test issorted(errs; rev=true) && allunique(errs)          # monotone decrease
+        @test errs[end] < 1e-9
+    end
+end
+
+@testset "PeriodicGrid (slow): symmetric zero-pi with θ on a periodic grid vs the charge basis, identical φ grid" begin
+    # θ on PeriodicGrid(32) against ChargeBasis(15) (converged: ChargeBasis(20) differs by 1.4e-12), φ on the same
+    # PhaseGrid. Measured: max abs error 6.3e-6 GHz on the lowest 10 (relative 2.8e-7), from the θ stencil
+    # (PeriodicGrid(48): 2.6e-7, (64): 2.7e-8). Both share the undersized φ grid, hence the edge warning.
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params()
+    grid = PhaseGrid(-6π, 6π, 101; order=6)
+    mk(b) = Node([:theta => b, :phi => grid]; solver=Dense(), keep=lowest(10))
+    sc = @test_logs (:warn, r"PhaseGrid on mode :phi is too small") match_mode=:any materialize(mk(ChargeBasis(15)), spec, θ)
+    sp = @test_logs (:warn, r"PhaseGrid on mode :phi is too small") match_mode=:any materialize(mk(PeriodicGrid(32; order=8)), spec, θ)
+    @test maximum(abs, energies(sp) .- energies(sc)) < 2e-5
+    @test maximum(abs.(energies(sp) .- energies(sc)) ./ abs.(energies(sc))) < 1e-6
+    # the physical charge of θ (axis 1 of a two-mode leaf), up to the eigenvector phases
+    Qc = KronFreeCircuits.charge_port(sc, :theta); Qp = KronFreeCircuits.charge_port(sp, :theta)
+    @test real(diag(Qp)) ≈ real(diag(Qc)) atol=1e-4
+    @test abs.(Qp) ≈ abs.(Qc) atol=1e-4
 end
 
 # The slow-case measurements, printed once for the outcomes record (observations, not assertions).

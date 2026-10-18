@@ -1,0 +1,18 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": "cos 2phi element with a weak cos phi: 4 E_C (n - n_g)^2 - E_2 cos(2 phi) - E_1 cos(phi).",
+  "parameters": ["E_C", "n_g", "E_1", "E_2"],
+  "modes": [
+    {"name": "phi", "type": "c"}
+  ],
+  "E_C": [["E_C"]],
+  "E_L": [["0"]],
+  "flux_linear": ["0"],
+  "n_g": ["n_g"],
+  "cosines": [
+    {"energy": "E_2", "omega": [2], "offset": "0"},
+    {"energy": "E_1", "omega": [1], "offset": "0"}
+  ]
+}
