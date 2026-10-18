@@ -142,6 +142,7 @@ phase_factor(offset::Coefficient, sign::Int) =
 
 The twist phase `e^{sign · 2πi n_g}` of a `PeriodicGrid` wrap corner, built with `cispi` so that it
 is exactly real (±1, zero imaginary part) at `n_g ∈ {0, ½}`.
+Exported for hand-written terms on a twisted mode's charge (the README's periodic-grid section).
 """
 twist_factor(ng::Coefficient, sign::Int) =
     _make(:(cispi($(2 * sign) * $(ng.ex))), copy(ng.deps))

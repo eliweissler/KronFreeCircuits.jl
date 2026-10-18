@@ -19,7 +19,7 @@ end
 Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
 
 """
-    LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, on=Array, callback=nothing)
+    LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:product, on=Array, callback=nothing)
 
 Block iterative solver: the JuliaMolSim LOBPCG eigensolver (LOBPCGEigensolver.jl), used
 through its public interface only.
@@ -170,8 +170,9 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
 
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. Columns lock (stop being filtered)
-  in order from the bottom of the block once below it; the iteration stops when the lowest `m` are
-  locked, and the returned pairs are checked again with a fresh application of the operator.
+  in order from the bottom of the block once their Rayleigh–Ritz residual is below `tol / 2`; the
+  iteration stops when the lowest `m` are locked, and the returned pairs are accepted at `tol` with a
+  fresh residual from a new application of the operator.
 - `degree ∈ 1:200`: the polynomial degree, i.e. block applies per iteration. An iteration lowers it
   so that the filter amplifies the lowest Ritz value of the block at most `1/√eps` over `λ_cut`
   (beyond that the upper columns of the block fall below the resolution of the Gram-based

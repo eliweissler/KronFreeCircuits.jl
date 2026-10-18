@@ -145,10 +145,16 @@ end
     H = three_oscillators(6)
     Ed, Vd = solve(Dense(), H, 0)
     for (seed, deg) in ((:product, 50), (:random, 50), (:product, 200))
-        E, V = solve(ChebyshevFilter(tol=1e-9, degree=deg, extra=12, seed=seed), H, 8)
+        locked = Float64[]
+        s = ChebyshevFilter(tol=1e-9, degree=deg, extra=12, seed=seed,
+                            callback=info -> append!(locked, info.residuals[1:info.n_locked]))
+        E, V = solve(s, H, 8)
         @test E ≈ Ed[1:8] atol=1e-7
         check_eigenpairs(H, E, V; tol=1e-8)
         @test V * V' ≈ Vd[:, 1:8] * Vd[:, 1:8]' atol=1e-6
+        # locked at tol/2, accepted at tol: the fresh true residual keeps the margin (measured max 1.3e-10, :random seed)
+        @test maximum(j -> norm(H * V[:, j] - E[j] * V[:, j]), eachindex(E)) < s.tol
+        @test !isempty(locked) && maximum(locked) <= 0.5 * s.tol
     end
     θ = zero_pi_params(); spec_zp = load_spec(fixture("zero_pi.json"))
     leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(8))

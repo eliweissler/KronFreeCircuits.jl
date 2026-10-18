@@ -20,7 +20,7 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        System, energies, port, eigenvectors, materialized, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
-       separable_eigenbases, product_seed, infnorm
+       separable_eigenbases, product_seed, infnorm, twist_factor
 
 include("parameters.jl")
 include("spec.jl")

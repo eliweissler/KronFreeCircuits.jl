@@ -27,6 +27,11 @@ end
     # the wrap-corner BandedOps in the sparse assembly used by ShiftInvert
     @test sparse(KronFreeCircuits.operator(sp)) ≈ Matrix(KronFreeCircuits.operator(sp))
     @test_throws ArgumentError KronFreeCircuits.charge_port(sp, :nope)
+    # with E_J ≠ 0 the assembled operator is exactly real at n_g ∈ {0, ½} (twist phase ±1) and complex otherwise
+    for (ng, isreal_) in ((0.0, true), (0.5, true), (0.3, false))
+        s = materialize(Node([:varphi_1 => PeriodicGrid(64; order=8)]; solver=Dense(), keep=lowest(4)), spec, (θ..., n_g=ng))
+        @test isreal_assembled(KronFreeCircuits.operator(s)) == isreal_
+    end
 end
 
 @testset "cos 2φ: both parity sectors, exact half-period translation, divisibility" begin
@@ -62,6 +67,30 @@ end
     terms = circuit_terms(spec, Dict(:varphi_1 => PeriodicGrid(96; order=8), :varphi_2 => ChargeBasis(10)))
     wrap = filter(t -> any(f -> f.port.kind in (:d1wrap, :d2wrap), t.factors), terms)
     @test !isempty(wrap) && all(t -> :n_g1 in KronFreeCircuits.free_symbols(t.coeff), wrap)
+end
+
+@testset "a twisted mode's charge above the leaf: the documented recipe for ports and coupling terms" begin
+    spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(; g=0.1); ng = θ.n_g1
+    leaves(b1) = [Node([:varphi_1 => b1]; solver=Dense(), keep=lowest(8)), Node([:varphi_2 => ChargeBasis(10)]; solver=Dense(), keep=lowest(8))]
+    # nport() on the twisted mode is refused, naming both routes
+    err = try materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10), ports=[(:varphi_1, nport())]), spec, θ); nothing catch e; e end
+    @test err isa ArgumentError && occursin("charge_port", err.msg) && occursin("Port(:d1wrap, -1)", err.msg)
+    # the root port from its three pieces equals the charge-basis root port
+    pieces = [(:varphi_1, Port(:d1, 0)), (:varphi_1, Port(:d1wrap, 1)), (:varphi_1, Port(:d1wrap, -1))]
+    sp = materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10), ports=pieces), spec, θ)
+    sc = materialize(Node(leaves(ChargeBasis(10)); solver=Dense(), keep=lowest(10), ports=[(:varphi_1, nport())]), spec, θ)
+    n = port(sp, :varphi_1, Port(:d1, 0)) + cispi(2ng) * port(sp, :varphi_1, Port(:d1wrap, 1)) +
+        cispi(-2ng) * port(sp, :varphi_1, Port(:d1wrap, -1)) + ng * I
+    @test abs.(n) ≈ abs.(port(sc, :varphi_1, nport())) atol=1e-5
+    # a coupling 0.05 n_1 n_2 as three twisted terms plus the n_g share on the other factor
+    c = Coefficient(0.05); ngc = Coefficient("n_g1", [:n_g1])
+    twisted = [Term(c, [Factor(:varphi_1, Port(:d1, 0)), Factor(:varphi_2, nport())]),
+               Term(c * twist_factor(ngc, 1), [Factor(:varphi_1, Port(:d1wrap, 1)), Factor(:varphi_2, nport())]),
+               Term(c * twist_factor(ngc, -1), [Factor(:varphi_1, Port(:d1wrap, -1)), Factor(:varphi_2, nport())]),
+               Term(c * ngc, [Factor(:varphi_2, nport())])]
+    plain = [Term(c, [Factor(:varphi_1, nport()), Factor(:varphi_2, nport())])]
+    @test energies(materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10)), spec, θ; extra_terms=twisted)) ≈
+          energies(materialize(Node(leaves(ChargeBasis(10)); solver=Dense(), keep=lowest(10)), spec, θ; extra_terms=plain)) atol=1e-5
 end
 
 @testset "two transmons with both offset charges nonzero: the twist sign, one or both modes twisted" begin

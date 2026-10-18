@@ -7,6 +7,9 @@
 # Relative eigenvalue cutoff of the unit-diagonal Gram matrix in SVQB.
 const _SVQB_CUTOFF = 1e-12
 
+# Columns lock below this fraction of `tol`, leaving the fresh acceptance residual a margin over the Rayleigh–Ritz one.
+const _LOCK_FRACTION = 0.5
+
 # The Hermitian part of a small matrix, on the host.
 _host_hermitian(G::AbstractMatrix) = (Gh = Array(G); Hermitian((Gh + Gh') / 2))
 
@@ -243,7 +246,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     while true
         act = nlock+1:nb
         res[act] .= _residual_norms!(view(bufs[1], :, 1:length(act)), view(X, :, act), view(HX, :, act), view(θ, act))
-        while nlock < nb && res[nlock+1] <= s.tol
+        while nlock < nb && res[nlock+1] <= _LOCK_FRACTION * s.tol
             nlock += 1
         end
         s.callback === nothing ||

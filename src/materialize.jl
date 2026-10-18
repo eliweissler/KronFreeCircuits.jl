@@ -321,9 +321,9 @@ function _resolve_node_solver(node::Node, children)
     s = resolve(node.solver, (; isleaf=all(c -> c isa Basis, children), dims, m=_compute_count(node, dims)))
     if node.compute == 0 && !(s isa Dense)
         how = s === node.solver ? "got $(nameof(typeof(s)))" :
-              "$(nameof(typeof(node.solver)))() resolved to $(nameof(typeof(s))) for this node of dimension $(prod(dims))"
+              "$(repr(node.solver)) resolved to $(nameof(typeof(s))) for this node of dimension $(prod(dims))"
         throw(ArgumentError("compute == 0 (all eigenpairs) requires the Dense solver; $how (modes $(modes(node))); " *
-                            "set compute to the number of eigenpairs needed"))
+                            "set compute to the number of eigenpairs needed, or pass solver=Dense() to keep all of them"))
     end
     return s
 end
