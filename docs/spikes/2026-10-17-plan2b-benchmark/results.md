@@ -198,4 +198,4 @@ The two `leaf,tree,parts` runs were launched with `nohup` and `timeout 1800` ins
 
 Revisions are `0b70c8b+task9` and `0b70c8b+task9b` (see the top of this file).
 Each JSON went to `out/` and was copied here with `scp`, with its console log in `logs/`.
-`cuda-tests.log` in this directory is the device test suite's log at `d039fe3` (the post-merge fixes and their review round: `ChebyshevFilter` product-seed admixture and guard columns, certified `ShiftInvert`, periodic harmonic check; 332 of 332 pass on the A4500, as at `acc0a6c`).
+`cuda-tests.log` in this directory is the device test suite's log at `6b4f130` (the post-merge fixes and their two review rounds: `ChebyshevFilter` product-seed admixture and counted guard columns, certified `ShiftInvert`, periodic harmonic check; 332 of 332 pass on the A4500, as at `acc0a6c`).

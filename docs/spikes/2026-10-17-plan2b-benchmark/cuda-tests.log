@@ -19,15 +19,15 @@
 [ Info: S3, H = 2.5 I cold start on the device: converged
 Test Summary:                                                                                    | Pass  Total     Time
 CUDA device                                                                                      |  332    332  1m46.1s
-  operator on the device equals host; no device allocation after warm-up                         |    4      4    15.8s
+  operator on the device equals host; no device allocation after warm-up                         |    4      4    15.7s
   fused diagonal expectation                                                                     |    6      6     2.2s
-  LOBPCG on the device equals Dense on the host                                                  |   25     25    57.4s
-  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing           |   29     29     8.7s
+  LOBPCG on the device equals Dense on the host                                                  |   25     25    57.2s
+  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing           |   29     29     8.8s
   O1: axis identity, equal sizes, and complex factor order (ITensor dense path)                  |   27     27     1.9s
   O2: shrinking/growing blocks, views, and stale scratch (ITensor dense path)                    |   38     38     0.6s
   O4: fused diagonal and cancellation                                                            |   13     13     1.3s
   S1: exact and wrong-subspace seeds; bounded recovery                                           |   29     29     2.6s
   S3: H = 0, H = cI, tight clusters and a cutoff inside a cluster                                |   44     44     3.5s
   S5: no locking, several locks at once, one active column, complete locking                     |   52     52     2.4s
-  F3: identical uncoupled zero-pis (small fixture)                                               |   38     38     6.1s
+  F3: identical uncoupled zero-pis (small fixture)                                               |   38     38     6.4s
   F7: complex three-mode cosine as an adjoint pair (device operator and LOBPCG on the flat tree) |   27     27     2.9s
