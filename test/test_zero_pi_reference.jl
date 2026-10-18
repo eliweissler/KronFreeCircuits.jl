@@ -318,6 +318,30 @@ end
     CATALOGUE_SLOW["F9"] = (wide=[(w.edge, w.err) for w in wide], steps=steps, fine=[(f.edge, f.err) for f in fine])
 end
 
+@testset "ShiftInvert slicing on 4 threads (subprocess)" begin
+    # The default suite runs on one thread, where slices = 3 runs the threaded loop serially; this runs
+    # it on 4 threads in a fresh process. Gated because the subprocess pays its own compile time (~30–60 s).
+    helpers = joinpath(@__DIR__, "helpers.jl")
+    code = """
+        using Test, LinearAlgebra, SparseArrays, Random, KronFreeCircuits
+        using KronFreeCircuits: Dense, solve
+        include($(repr(helpers)))
+        @testset "threaded slicing" begin
+            @test Threads.nthreads() == 4
+            Random.seed!(83)
+            H = three_oscillators(7)
+            Ed, Vd = solve(Dense(), H, 0)
+            E, V = solve(ShiftInvert(tol=1e-9, slices=3), H, 40)
+            @test E ≈ Ed[1:40] atol=1e-8
+            @test V * V' ≈ Vd[:, 1:40] * Vd[:, 1:40]' atol=1e-7
+            check_eigenpairs(H, E, V; tol=1e-9)
+        end
+        println("THREADED-SLICING-OK")
+        """
+    out = read(`$(Base.julia_cmd()) -t 4 --project=$(Base.active_project()) -e $code`, String)
+    @test occursin("THREADED-SLICING-OK", out)
+end
+
 # The slow-case measurements, printed once for the outcomes record (observations, not assertions).
 println("Catalogue slow-case measurements:")
 for k in sort!(collect(keys(CATALOGUE_SLOW)))

@@ -228,7 +228,9 @@ function _solve_sliced(s::ShiftInvert, A::SparseMatrixCSC, Emin::Real, m::Int, k
     for i in 1:nsl
         got = count(e -> cuts[i] <= e < cuts[i+1], Eall)
         got == want[i] || error("ShiftInvert: slice $i of $nsl, [$(cuts[i]), $(cuts[i+1])), returned $got eigenpairs, " *
-                                "but its inertia count is $(want[i]) (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))")
+                                "but its inertia count is $(want[i]) (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter)) " *
+                                "(a degenerate level may hold more copies than Lanczos with block = $(s.block) can resolve; " *
+                                "try block = 2 or a single shift with certify = true)")
     end
     Q = Matrix(qr(reduce(hcat, Vall[1:m])).Q)
     G = eigen(Hermitian(Q' * (A * Q)))

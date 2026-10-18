@@ -106,6 +106,9 @@ part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex
   interval: one returning a different number of states than its count raises naming it. `:auto` means
   `Threads.nthreads()` slices when there is more than one thread, and `1` otherwise. Slicing finds the
   lowest `m`, so `k > 1` requires `shift = :auto` (`:auto` with an explicit shift is one slice).
+  BLAS and UMFPACK threads are not pinned inside the threaded loop, so many slices on a many-thread
+  machine can oversubscribe the cores. Each inertia count at a cut costs two `LDLᵀ` factorizations
+  (at `τ ± 10·tol`, to keep every cut clear of an eigenvalue).
 - `certify`: count the eigenvalues below a cut `τ` between the `m`-th and `(m+1)`-th computed
   energies by the inertia of an `LDLᵀ` factorization of `H − τI`, and raise unless the count is `m`
   (a completeness certificate; it costs one more factorization). A sliced solve is always certified.
