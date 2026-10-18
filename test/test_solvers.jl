@@ -171,6 +171,10 @@ end
     # an explicit shift exactly on an eigenvalue: H − σI is singular, refused naming the shift
     err = try solve(ShiftInvert(shift=0.0), H4, 5); nothing catch e; e end
     @test err isa ArgumentError && occursin("singular", err.msg) && occursin("σ = 0.0", err.msg)
+    # nearly on an eigenvalue: the factorization succeeds, the residual check fails, and the message names the shift
+    Random.seed!(1)
+    err = try solve(ShiftInvert(shift=1 + 1e-15), H4, 5); nothing catch e; e end
+    @test err isa ErrorException && occursin("nearly singular", err.msg) && occursin("σ = 1.000000000000001", err.msg)
     # The opt-out has no completeness check: single-vector Lanczos may undercount the 4-fold level and
     # return a wrong spectrum silently, so only the absence of an error is asserted.
     E0, V0 = solve(ShiftInvert(certify=false), H4, 5)

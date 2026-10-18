@@ -302,7 +302,17 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
 
     E = Vector{real(eltype(H))}(Eall[1:m])
     V = Matrix{eltype(H)}(Vall[:, 1:m])
-    _check_residuals(s, H, E, V)
+    try
+        _check_residuals(s, H, E, V)
+    catch err
+        # An explicit shift within √eps of an eigenvalue factors (LU succeeds) but the inverse's huge
+        # eigenvalue there swamps the others: name the shift rather than inner_tol.
+        (err isa ErrorException && s.shift !== :auto) || rethrow()
+        d = minimum(e -> abs(e - σ), Eall)
+        d <= sqrt(eps(Float64)) * max(1, abs(σ)) || rethrow()
+        error(err.msg * ". The shift σ = $σ lies within $d of a computed eigenvalue, so H − σI is nearly singular " *
+              "and the inverse resolves only that pair: move the shift away from the eigenvalue, or use shift = :auto")
+    end
     orth = norm(V' * V - I)
     orth <= sqrt(eps(real(eltype(H)))) ||
         error("ShiftInvert: the returned vectors are not orthonormal (‖V'V − I‖ = $orth)")
