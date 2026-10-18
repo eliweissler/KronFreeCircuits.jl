@@ -201,28 +201,40 @@ const _SEED_ADMIXTURE = 1e-2
 const _CHEBYSHEV_GUARDS = 4
 _chebyshev_guards(extra::Int) = min(extra - 1, _CHEBYSHEV_GUARDS)
 
-# A guard column counts only while the last filter amplified its Ritz value at least this much over
-# λ_cut. A column's unwanted components lie at or above the cut, where |T| ≤ 1, so its residual falls by
-# about 1 / |T_deg(x(θ_j))| per iteration: a guard (near-)degenerate with the top column, which sets the
-# cut, gains ≈ 1 and would never lock (a 2-fold level at the top of the block, or a pair 1e-7 apart). At
-# 1e3 a counted guard gains three decades per iteration and locks from an O(1) residual within about
-# log10(1/tol) / 3 ≈ 3 iterations at tol = 1e-8, about as soon as the wanted columns, which gain more. A
-# threshold of 10 counted slow guards near the cut that set the iteration count at small `extra`
-# (three oscillators, m = 8, extra = 5: 7 iterations, against 3 at 1e3 and 2 with no guards); 100 left
-# the small zero-pi leaf at extra = 5 at 6 iterations, against 4 at 1e3.
-const _GUARD_MIN_GAIN = 1e3
+# A guard column counts only while the last filter's log-gain at its Ritz value, deg · acosh|x(θ_j)| with x
+# the affine map of the filter interval [λ_cut, λ_max] onto [−1, 1], is at least this fraction of the
+# log-gain at the bottom of the block (the lowest Ritz value θ_1). A column's unwanted components lie at or
+# above the cut, where |T| ≤ 1, so its residual falls by about exp(−log-gain) per iteration relative to them.
+# A guard (near-)degenerate with the top column, which sets the cut, has log-gain ≈ 0 and would never lock
+# (a 2-fold level at the top of the block, or a pair 1e-7 apart): its ratio is ≈ 0 and it is waived. When
+# the filter is weak everywhere (a spectral bound far above the block, so every column gains little per
+# iteration) the ratios stay near 1 and the guards are kept: a test on the absolute gain (round 2 counted
+# a guard only above a gain of 1e3) waived them all there and accepted a block that had not yet surfaced a
+# missing low state. The ratio compares a guard with the bottom column's own rate, so a counted guard needs
+# at most about 1 / 0.1 = 10 times its iterations, usually far fewer; near the cut that is the price of the
+# guards at small `extra` (three oscillators, m = 8, extra = 5: 7 iterations, against 2 with no guards). A
+# larger fraction is not safe: at 0.5 a weak-filter solve with extra = 2 waived its guard while the column
+# carrying the missing state descended through the guard's energy (ratio briefly ≈ 0) and returned a
+# wrong ground state; at 0.1 that window is narrow and the solve raises the maxiter error instead.
+const _GUARD_GAIN_FRACTION = 0.1
 
-# The number of leading guard columns m+1 : m+g that the last filter (cut λcut, degree deg) amplified at
-# least `_GUARD_MIN_GAIN` over the cut; θ ascends over them, so the counted ones are a prefix. All g
-# before the first filter (no cut yet; the loop cannot stop then anyway).
+# The filter's log-gain at Ritz value t per unit degree: acosh|x(t)|, zero at or inside the damped interval.
+function _log_gain(t::Real, λcut::Real, λmax::Real)
+    x = abs((t - (λmax + λcut) / 2) / ((λmax - λcut) / 2))
+    return x > 1 ? acosh(x) : zero(x)
+end
+
+# The number of leading guard columns m+1 : m+g whose log-gain under the last filter (cut λcut, degree deg)
+# is at least `_GUARD_GAIN_FRACTION` times that of the lowest Ritz value; θ ascends over them, so the
+# counted ones are a prefix. All g before the first filter (no cut yet; the loop cannot stop then anyway),
+# and when the lowest Ritz value itself gains nothing (no reference rate to compare with).
 function _counted_guards(θ::AbstractVector, m::Int, g::Int, λcut::Real, λmax::Real, deg::Int)
     (deg > 0 && isfinite(λcut)) || return g
-    c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
-    lim = acosh(_GUARD_MIN_GAIN) / deg
+    ref = _log_gain(minimum(θ), λcut, λmax)
+    ref > 0 || return g
     k = 0
     for j in m+1:m+g
-        x = abs((θ[j] - c) / e)
-        x > 1 && acosh(x) >= lim || break
+        _log_gain(θ[j], λcut, λmax) >= _GUARD_GAIN_FRACTION * ref || break
         k += 1
     end
     return k

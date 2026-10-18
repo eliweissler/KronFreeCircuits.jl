@@ -328,6 +328,38 @@ end
     end
 end
 
+@testset "ChebyshevFilter: a uniformly weak filter (a large spectral bound) keeps its guards" begin
+    # The invariant-seed trap with the missing state at `miss` and the product state (10, 10) lifted by `lift`:
+    # the Gershgorin bound ≈ lift makes the filter's gain small at every column, the bottom one included.
+    # Each case must match Dense to tol, or raise the maxiter error; never a wrong spectrum.
+    tol = 1e-4
+    converged = 0
+    for lift in (1e5, 1e6), miss in (-1e-3, -1e-2)
+        H = _invariant_seed_trap([(1, 2, 5, _trap_coupling(miss))]; shifts=[(10, 9, lift)])
+        Ed, _ = solve(Dense(), H, 0)
+        @test Ed[1] ≈ miss atol=1e-12
+        for m in (1, 3), extra in (40, 10, 5)
+            r = try solve(ChebyshevFilter(tol=tol, extra=extra, maxiter=400), H, m) catch e; e end
+            @testset "lift = $lift, miss = $miss, m = $m, extra = $extra" begin
+                if r isa Exception
+                    @test r isa ErrorException && occursin("maxiter = 400", r.msg)
+                else
+                    E, V = r
+                    @test E ≈ Ed[1:m] atol=tol
+                    check_eigenpairs(H, E, V; tol=2tol)
+                    converged += 1
+                end
+            end
+        end
+    end
+    @test converged == 24                                              # all converge within maxiter = 400 (6–296 iterations)
+    # the review's reproduction: lift 1e6, miss −0.01, defaults but tol = 1e-4, m = 1
+    H = _invariant_seed_trap([(1, 2, 5, _trap_coupling(-0.01))]; shifts=[(10, 9, 1e6)])
+    E, V = solve(ChebyshevFilter(tol=1e-4), H, 1)
+    @test E ≈ [-0.01] atol=1e-4
+    check_eigenpairs(H, E, V; tol=2e-4)
+end
+
 @testset "ChebyshevFilter: an exactly invariant product seed that excludes the ground state" begin
     H = _invariant_seed_trap()
     Ed, Vd = solve(Dense(), H, 0)

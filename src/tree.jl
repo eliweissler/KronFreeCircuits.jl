@@ -203,10 +203,14 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
 - `extra ≥ 1`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states).
   Up to four of them double as guards that must converge before the iteration stops, as `LOBPCG`'s:
   `g = min(extra − 1, 4)`, one fewer than `extra` because the top column sets `λ_cut` and sits at the
-  cut, where the filter does not converge it (so `extra = 1` has no guard). A guard counts only while
-  the last filter amplified its Ritz value at least `1e3` over `λ_cut`: one (near-)degenerate with the
-  top column gains about 1 per iteration and would never lock, so it is not waited for. When guards
-  are what remains unconverged at `maxiter`, the error advises raising `extra` or `maxiter`.
+  cut, where the filter does not converge it (so `extra = 1` has no guard). A guard is waived only
+  while the last filter's log-gain at its Ritz value (`degree · acosh|x|`, `x` its image on the filter
+  interval mapped to `[−1, 1]`) is below `0.1` times the log-gain at the lowest Ritz value: one
+  (near-)degenerate with the top column gains about nothing and would never lock, while under a filter
+  that is weak everywhere (a spectral bound far above the block) every guard keeps a ratio near 1 and
+  is waited for. Guards near the cut converge slowly, so a small `extra` can take many more
+  iterations; when guards are what remains unconverged at `maxiter`, the error advises raising
+  `extra` or `maxiter`.
 - `maxiter`: the bound on filter iterations; running out raises an error naming the converged count.
 - `rescale_every`: every this many recurrence steps the pair `(T_{k−1}, T_k)` is divided column-wise
   by the norm of `T_k` (the recurrence is linear, so only column scales change), preventing overflow.
