@@ -39,24 +39,216 @@ function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
     return lu(A - σ * I), false
 end
 
-# The number of eigenvalues of A below a cut: the negative entries of D in the LDLᵀ factorization
-# of A − τI (Sylvester's law of inertia), at the first cut of `τs` whose factorization succeeds.
+# The number of eigenvalues of A below τ: the negative entries of D in the LDLᵀ factorization of
+# A − τI (Sylvester's law of inertia), or `nothing` when the factorization breaks down.
 # CHOLMOD's LDLᵀ is simplicial with no pivoting: D is diagonal (1×1 pivots only, no 2×2 blocks to
 # resolve), and a tiny pivot can break it down even on a well-conditioned indefinite matrix, so
-# callers pass a second cut elsewhere in the same gap to retry once. Returns `(count, τ)`.
+# callers retry at another cut.
+function _inertia(A::SparseMatrixCSC, τ::Real)
+    F = ldlt(Hermitian(A); shift=-τ, check=false)
+    return issuccess(F) ? count(d -> real(d) < 0, diag(sparse(F.LD))) : nothing
+end
+
+# The inertia count at the first cut of `τs` whose factorization succeeds (callers pass a second cut
+# elsewhere in the same gap to retry once). Returns `(count, τ)`.
 function _count_below(A::SparseMatrixCSC, τs)
     for τ in τs
-        F = ldlt(Hermitian(A); shift=-τ, check=false)
-        issuccess(F) && return count(d -> real(d) < 0, diag(sparse(F.LD))), τ
+        c = _inertia(A, τ)
+        c === nothing || return c, τ
     end
     error("ShiftInvert: the inertia certificate could not be computed: the LDLᵀ factorization (no pivoting) " *
           "of H − τI broke down at every cut τ ∈ $(collect(τs))")
 end
 
+# ---- Spectrum slicing (slices > 1) ----
+
+_nslices(s::ShiftInvert) =
+    s.slices === :auto ? (s.shift === :auto && Threads.nthreads() > 1 ? Threads.nthreads() : 1) : s.slices
+
+# The eigenvalue count below τ when no eigenvalue lies within ε of τ (the counts at τ − ε and τ + ε
+# agree), else `nothing`, also when either factorization breaks down. A guarded cut puts every
+# computed energy, accurate to well within ε, on the correct side.
+function _guarded_count(A::SparseMatrixCSC, τ::Real, ε::Real)
+    below = _inertia(A, τ - ε)
+    below === nothing && return nothing
+    return _inertia(A, τ + ε) == below ? below : nothing
+end
+
+# A guarded count at τ, or at a cut nudged from it by growing fractions of `width` on alternating
+# sides, inside (lo, hi). Returns `(τ, count)`, or `nothing` when every nudged cut fails.
+function _nudged_count(A::SparseMatrixCSC, τ::Real, ε::Real, width::Real; lo::Real=-Inf, hi::Real=Inf)
+    for j in 0:16
+        t = τ + (isodd(j) ? 1 : -1) * cld(j, 2) * width / 64
+        lo < t < hi || continue
+        c = _guarded_count(A, t, ε)
+        c === nothing || return t, c
+    end
+    return nothing
+end
+
+function _edge_count(A::SparseMatrixCSC, τ::Real, ε::Real, width::Real)
+    r = _nudged_count(A, τ, ε, width)
+    r === nothing && error("ShiftInvert: slicing could not place an interval edge near τ = $τ: the LDLᵀ " *
+                           "factorization of H − τI broke down, or an eigenvalue lay within $ε, at every nudged cut")
+    return r
+end
+
+# A guarded cut τ in (lo, hi) with tlo ≤ N(τ) ≤ thi (N the count below), by bisection on inertia
+# counts, given guarded ends with N(lo) < tlo ≤ N(hi) = Nhi. Counts are exact integers, so it ends in
+# about log₂ steps; when a cluster of eigenvalues spans the target band, or no guarded cut is found
+# near a midpoint, it returns the current upper end. Returns `(τ, N(τ))`.
+function _bisect_cut(A::SparseMatrixCSC, lo::Real, hi::Real, Nhi::Int, tlo::Int, thi::Int, ε::Real; maxsteps::Int=64)
+    for _ in 1:maxsteps
+        hi - lo > 4ε || break
+        r = _nudged_count(A, (lo + hi) / 2, ε, hi - lo; lo=lo, hi=hi)
+        r === nothing && break
+        τ, c = r
+        if c < tlo
+            lo = τ
+        else
+            hi, Nhi = τ, c
+            c <= thi && break
+        end
+    end
+    return hi, Nhi
+end
+
+# The intervals [cuts[i], cuts[i+1]) and the count below each cut: the left edge has no eigenvalue
+# below it, the right edge at least m (and at most about m / 10 more, unless a cluster spans E_m),
+# and the interior cuts split the total M into k parts of about M / k. A target an earlier cut has
+# already passed is dropped, so fewer than k slices can result (when M < k, or across a cluster).
+function _slice_intervals(s::ShiftInvert, A::SparseMatrixCSC, Emin::Real, m::Int, k::Int, ε::Real)
+    w = s.shift_margin
+    τL, cL = _edge_count(A, Emin - w, ε, w)
+    j = 0
+    while cL > 0                                 # the E_min estimate is off by more than shift_margin
+        (j += 1) <= 60 || error("ShiftInvert: slicing found no cut with no eigenvalue below it")
+        τL, cL = _edge_count(A, Emin - w * 2.0^j, ε, w)
+    end
+    # Raise the left edge to just below the estimate (an upper bound on E_1, usually accurate far
+    # beyond these offsets), so the first slice's shift sits among its eigenvalues.
+    for δ in (1e-3, 1e-2, 1e-1) .* w
+        Emin - δ > τL || break
+        if _guarded_count(A, Emin - δ, ε) == 0
+            τL = Emin - δ
+            break
+        end
+    end
+    lo, j = τL, 0
+    hi, Nhi = _edge_count(A, Emin + w, ε, w)
+    while Nhi < m                                # double the guess above E_min until it holds m states
+        (j += 1) <= 60 || error("ShiftInvert: slicing found no cut with $m eigenvalues below it")
+        lo = hi
+        hi, Nhi = _edge_count(A, Emin + w * 2.0^j, ε, w)
+    end
+    τR, M = _bisect_cut(A, lo, hi, Nhi, m, m + max(1, m ÷ 10), ε)
+    cuts, counts = [τL], [0]
+    for i in 1:k-1
+        t = round(Int, i * M / k)
+        slack = max(1, round(Int, M / 10k))
+        last(counts) < t - slack || continue
+        τ, c = _bisect_cut(A, last(cuts), τR, M, t - slack, t + slack, ε)
+        last(counts) < c < M && (push!(cuts, τ); push!(counts, c))
+    end
+    push!(cuts, τR); push!(counts, M)
+    return cuts, counts
+end
+
+# One slice [a, b) holding `c` eigenvalues: shift-invert Lanczos with σ at its center (interior, so
+# LU) for the `c` eigenvalues nearest σ, which are exactly the slice's; converged energies outside
+# [a, b) (neighbors the inverse map also pulls in) are dropped.
+function _solve_slice(s::ShiftInvert, A::SparseMatrixCSC, a::Real, b::Real, c::Int, x0)
+    σ = (a + b) / 2
+    F, _ = _factor_shifted(A, σ, true)
+    vals, vecs, info = KrylovKit.eigsolve(x -> F \ x, x0, c, :LM; ishermitian=true, tol=s.inner_tol,
+                                          krylovdim=max(2c + 10, s.krylovdim), maxiter=s.maxiter, verbosity=0)
+    nconv = min(info.converged, length(vals))
+    E = σ .+ inv.(real.(vals[1:nconv]))
+    keep = findall(e -> a <= e < b, E)
+    return E[keep], vecs[keep]
+end
+
+# Duplicates removed from a union of slice results sorted by energy: a pair within 10·tol of a kept
+# energy whose vector is parallel to the kept one (|overlap| > 0.99) is dropped; one that is not
+# parallel (a degenerate partner) is orthogonalized against it.
+function _dedup_union(E::AbstractVector, vecs::AbstractVector, tol::Real)
+    keepE, keepV = similar(E, 0), similar(vecs, 0)
+    for (e, v) in zip(E, vecs)
+        dup, noted = false, false
+        for i in reverse(eachindex(keepE))
+            keepE[i] < e - 10tol && break
+            ov = dot(keepV[i], v)
+            if abs(ov) > 0.99
+                dup = true
+                break
+            end
+            if abs(ov) > 1e-8
+                v = v - keepV[i] * ov
+                noted = true
+            end
+        end
+        if dup
+            @debug "ShiftInvert: dropped a state at E = $e returned twice"
+            continue
+        end
+        noted && @debug "ShiftInvert: re-orthogonalized a state at E = $e against a degenerate partner"
+        push!(keepE, e)
+        push!(keepV, v / norm(v))
+    end
+    return keepE, keepV
+end
+
+# The lowest m eigenpairs of the exactly Hermitian assembled matrix `A` by spectrum slicing over
+# `k` threads, every slice certified complete by its inertia count. A final Rayleigh–Ritz on the kept
+# block makes the vectors from different slices orthonormal to working precision.
+function _solve_sliced(s::ShiftInvert, A::SparseMatrixCSC, Emin::Real, m::Int, k::Int)
+    n = size(A, 1)
+    cuts, counts = _slice_intervals(s, A, Emin, m, k, 10s.tol)
+    nsl = length(cuts) - 1
+    want = diff(counts)
+    @debug "ShiftInvert: $nsl slices, cuts $cuts, holding $want eigenvalues"
+    T = eltype(A)
+    # Starting vectors drawn serially, so the result does not depend on the thread schedule.
+    x0s = [s.block == 1 ? randn(T, n) : KrylovKit.Block([randn(T, n) for _ in 1:s.block]) for _ in 1:nsl]
+    results = Vector{Any}(undef, nsl)
+    Threads.@threads for i in 1:nsl
+        results[i] = try
+            _solve_slice(s, A, cuts[i], cuts[i+1], want[i], x0s[i])
+        catch err
+            err
+        end
+    end
+    for r in results
+        r isa Exception && throw(r)
+    end
+    Eall = reduce(vcat, first.(results))
+    Vall = reduce(vcat, last.(results))
+    p = sortperm(Eall)
+    Eall, Vall = _dedup_union(Eall[p], Vall[p], s.tol)
+    for i in 1:nsl
+        got = count(e -> cuts[i] <= e < cuts[i+1], Eall)
+        got == want[i] || error("ShiftInvert: slice $i of $nsl, [$(cuts[i]), $(cuts[i+1])), returned $got eigenpairs, " *
+                                "but its inertia count is $(want[i]) (inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))")
+    end
+    Q = Matrix(qr(reduce(hcat, Vall[1:m])).Q)
+    G = eigen(Hermitian(Q' * (A * Q)))
+    return G.values, Q * G.vectors
+end
+
+# Acceptance: the true residual of every returned pair, with the package operator.
+function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix)
+    R = H * V .- V .* transpose(E)
+    res = [norm(view(R, :, j)) for j in axes(R, 2)]
+    worst, jw = findmax(res)
+    worst <= s.tol ||
+        error("ShiftInvert: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) " *
+              "(inner_tol = $(s.inner_tol) on the inverted operator); tighten inner_tol")
+    return nothing
+end
+
 function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     H.on === Array || throw(ArgumentError("ShiftInvert is a CPU solver, but the operator is stored on $(H.on); " *
                                           "use LOBPCG for device storage"))
-    s.slices == 1 || throw(ArgumentError("slicing arrives in Task 3"))
     n = size(H, 1)
     m >= 1 || throw(ArgumentError("ShiftInvert requires m >= 1, got $m"))
     m <= n || throw(ArgumentError("ShiftInvert: m = $m exceeds the operator dimension $n"))
@@ -71,6 +263,13 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
                       "ShiftInvert: complex arithmetic (the assembled matrix has a nonzero imaginary part)")
 
     Emin = _lowest_estimate(A, s.maxiter)
+    k = _nslices(s)
+    if k > 1
+        Es, Vs = _solve_sliced(s, A, Emin, m, k)
+        E, V = Vector{real(eltype(H))}(Es), Matrix{eltype(H)}(Vs)
+        _check_residuals(s, H, E, V)
+        return E, V
+    end
     σ = s.shift === :auto ? Emin - s.shift_margin : s.shift
     F, ischol = _factor_shifted(A, σ, σ >= Emin)
     if s.shift === :auto && !ischol
@@ -95,13 +294,7 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     E = Vector{real(eltype(H))}(Eall[1:m])
     V = Matrix{eltype(H)}(reduce(hcat, vecs[p[1:m]]))
 
-    # Acceptance: the true residual of every returned pair, with the package operator.
-    R = H * V .- V .* transpose(E)
-    res = [norm(view(R, :, j)) for j in axes(R, 2)]
-    worst, jw = findmax(res)
-    worst <= s.tol ||
-        error("ShiftInvert: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) " *
-              "(inner_tol = $(s.inner_tol) on the inverted operator); tighten inner_tol")
+    _check_residuals(s, H, E, V)
 
     if s.certify
         # The cut halfway into the gap above E_m, and a retry a quarter of the gap further up.

@@ -67,7 +67,9 @@ end
     err = try solve(ShiftInvert(tol=1e-10, inner_tol=1e-4), H, 12); nothing catch e; e end
     @test err isa ErrorException && occursin("residual", err.msg)
     @test_throws ArgumentError ShiftInvert(block=4)
-    @test_throws ArgumentError solve(ShiftInvert(slices=2), H, 4)
+    @test_throws ArgumentError ShiftInvert(slices=0)
+    @test_throws ArgumentError ShiftInvert(slices=:many)
+    @test_throws ArgumentError ShiftInvert(slices=2, shift=1.0)            # slicing targets the lowest m
 end
 
 @testset "ShiftInvert: complex path, explicit shifts, LU fallback" begin
@@ -89,6 +91,10 @@ end
         check_eigenpairs(Hc, E, V; tol=1e-9)
         @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-7
     end
+    E, V = solve(ShiftInvert(tol=1e-9, slices=3), Hc, 10)                  # slicing in complex arithmetic
+    @test E ≈ Ed[1:10] atol=1e-8
+    check_eigenpairs(Hc, E, V; tol=1e-9)
+    @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-7
 
     H = three_oscillators(6)
     @test isreal_assembled(H)
@@ -115,6 +121,23 @@ end
     E, V = solve(ShiftInvert(tol=1e-9, shift=Ed[1] + 1e-3, certify=true), H, 5)
     @test E ≈ Ed[1:5] atol=1e-8
     check_eigenpairs(H, E, V; tol=1e-9)
+end
+
+@testset "ShiftInvert slicing equals the single-shift solve" begin
+    Random.seed!(82)
+    H = three_oscillators(7)                                   # 343 states
+    E1, V1 = solve(ShiftInvert(tol=1e-9), H, 40)
+    E3, V3 = solve(ShiftInvert(tol=1e-9, slices=3), H, 40)
+    @test E3 ≈ E1 atol=1e-8; @test V3 * V3' ≈ V1 * V1' atol=1e-7
+    check_eigenpairs(H, E3, V3; tol=1e-9)
+    # :auto is Threads.nthreads() slices (1 on a single thread); the result does not depend on it
+    Ea, Va = solve(ShiftInvert(tol=1e-9, slices=:auto), H, 40)
+    @test Ea ≈ E1 atol=1e-8; @test Va * Va' ≈ V1 * V1' atol=1e-7
+    check_eigenpairs(H, Ea, Va; tol=1e-9)
+    # more slices than states: the empty slices collapse
+    E5, V5 = solve(ShiftInvert(tol=1e-9, slices=5), H, 3)
+    @test E5 ≈ E1[1:3] atol=1e-8; @test V5 * V5' ≈ V1[:, 1:3] * V1[:, 1:3]' atol=1e-7
+    check_eigenpairs(H, E5, V5; tol=1e-9)
 end
 
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,

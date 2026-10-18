@@ -98,10 +98,17 @@ part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex
   acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
 - `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated
   eigenvalues). Block size 4 reported false convergence in KrylovKit 0.10.4 and is not offered.
-- `slices`: spectrum slicing across threads; only `1` is available yet.
+- `slices`: spectrum slicing across threads. `1` is the single-shift solve above. An integer `k > 1`
+  locates the range `[E_min, E_m]` by inertia counts (bisection on the negative pivots of
+  `LDLᵀ(H − τI)`), cuts it into `k` contiguous intervals holding about `m / k` eigenvalues each, and
+  solves each by Lanczos on `(H − σ_k I)⁻¹` with `σ_k` at its center (an `LU` factorization each),
+  in parallel over `Threads.@threads` (serially on one thread). The inertia counts certify every
+  interval: one returning a different number of states than its count raises naming it. `:auto` means
+  `Threads.nthreads()` slices when there is more than one thread, and `1` otherwise. Slicing finds the
+  lowest `m`, so `k > 1` requires `shift = :auto` (`:auto` with an explicit shift is one slice).
 - `certify`: count the eigenvalues below a cut `τ` between the `m`-th and `(m+1)`-th computed
   energies by the inertia of an `LDLᵀ` factorization of `H − τI`, and raise unless the count is `m`
-  (a completeness certificate; it costs one more factorization).
+  (a completeness certificate; it costs one more factorization). A sliced solve is always certified.
 - `maxnnz`: the nonzero cap of `sparse(H)`; a larger operator is refused before assembly.
 """
 struct ShiftInvert <: Solver
@@ -112,11 +119,11 @@ struct ShiftInvert <: Solver
     krylovdim::Int
     maxiter::Int
     block::Int
-    slices::Int
+    slices::Union{Int,Symbol}
     certify::Bool
     maxnnz::Int
     function ShiftInvert(tol::Real, shift::Union{Symbol,Real}, shift_margin::Real, inner_tol::Real, krylovdim::Integer,
-                         maxiter::Integer, block::Integer, slices::Integer, certify::Bool, maxnnz::Integer)
+                         maxiter::Integer, block::Integer, slices::Union{Integer,Symbol}, certify::Bool, maxnnz::Integer)
         tol > 0 && isfinite(tol) || throw(ArgumentError("ShiftInvert: tol must be positive and finite, got $tol"))
         shift === :auto || (shift isa Real && isfinite(shift)) ||
             throw(ArgumentError("ShiftInvert: shift must be :auto or a finite number, got $(repr(shift))"))
@@ -127,7 +134,11 @@ struct ShiftInvert <: Solver
         krylovdim >= 0 || throw(ArgumentError("ShiftInvert: krylovdim must be nonnegative, got $krylovdim"))
         maxiter >= 1 || throw(ArgumentError("ShiftInvert: maxiter must be at least 1, got $maxiter"))
         block in (1, 2) || throw(ArgumentError("ShiftInvert: block must be 1 or 2 (block size 4 is not offered), got $block"))
-        slices >= 1 || throw(ArgumentError("ShiftInvert: slices must be at least 1, got $slices"))
+        slices === :auto || (slices isa Integer && slices >= 1) ||
+            throw(ArgumentError("ShiftInvert: slices must be :auto or an integer at least 1, got $(repr(slices))"))
+        slices isa Integer && slices > 1 && shift isa Real &&
+            throw(ArgumentError("ShiftInvert: slicing finds the lowest m and places its own shifts; " *
+                                "slices = $slices requires shift = :auto, got shift = $shift"))
         maxnnz >= 1 || throw(ArgumentError("ShiftInvert: maxnnz must be positive, got $maxnnz"))
         return new(tol, shift isa Real ? Float64(shift) : shift, shift_margin, inner_tol, krylovdim, maxiter, block, slices,
                    certify, maxnnz)
