@@ -10,8 +10,10 @@ Whether the assembled matrix `sparse(H; maxnnz)` and the fused diagonal `H.diag`
 imaginary part: an exact check on assembled data, never a threshold. [`ShiftInvert`](@ref) runs in
 real arithmetic exactly when this holds.
 """
-isreal_assembled(H::KronFreeOperator; maxnnz::Integer=10^8) =
-    all(x -> iszero(imag(x)), H.diag) && all(x -> iszero(imag(x)), nonzeros(sparse(H; maxnnz=maxnnz)))
+isreal_assembled(H::KronFreeOperator; maxnnz::Integer=10^8) = _isreal_assembled(sparse(H; maxnnz=maxnnz), H.diag)
+
+_isreal_assembled(A::SparseMatrixCSC, diag::AbstractVector) =
+    all(x -> iszero(imag(x)), diag) && all(x -> iszero(imag(x)), nonzeros(A))
 
 # The tolerance of the short Lanczos estimate of the lowest eigenvalue that places the automatic shift.
 const _EMIN_TOL = 1e-6
@@ -25,8 +27,7 @@ function _lowest_estimate(A::AbstractMatrix, maxiter::Int)
 end
 
 # Cholesky of A − σI when σ lies below the estimate, falling back to LU when it is not positive
-# definite; LU always for an interior σ. The Hermitian wrapper reads one triangle: the assembled
-# matrix is Hermitian only up to the summation order of duplicate entries.
+# definite; LU always for an interior σ. Returns the factorization and whether it is a Cholesky.
 function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
     if !interior
         try
@@ -38,14 +39,18 @@ function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
     return lu(A - σ * I), false
 end
 
-# The number of eigenvalues of A below τ: the negative entries of D in the LDLᵀ factorization of
-# A − τI (Sylvester's law of inertia). CHOLMOD's LDLᵀ is simplicial with 1×1 pivots only, so D is
-# diagonal and there are no 2×2 pivot blocks to resolve.
-function _count_below(A::SparseMatrixCSC, τ::Real)
-    F = ldlt(Hermitian(A); shift=-τ, check=false)
-    issuccess(F) || error("ShiftInvert: the inertia certificate could not be computed: the LDLᵀ factorization " *
-                          "of H − τI broke down at τ = $τ")
-    return count(d -> real(d) < 0, diag(sparse(F.LD)))
+# The number of eigenvalues of A below a cut: the negative entries of D in the LDLᵀ factorization
+# of A − τI (Sylvester's law of inertia), at the first cut of `τs` whose factorization succeeds.
+# CHOLMOD's LDLᵀ is simplicial with no pivoting: D is diagonal (1×1 pivots only, no 2×2 blocks to
+# resolve), and a tiny pivot can break it down even on a well-conditioned indefinite matrix, so
+# callers pass a second cut elsewhere in the same gap to retry once. Returns `(count, τ)`.
+function _count_below(A::SparseMatrixCSC, τs)
+    for τ in τs
+        F = ldlt(Hermitian(A); shift=-τ, check=false)
+        issuccess(F) && return count(d -> real(d) < 0, diag(sparse(F.LD))), τ
+    end
+    error("ShiftInvert: the inertia certificate could not be computed: the LDLᵀ factorization (no pivoting) " *
+          "of H − τI broke down at every cut τ ∈ $(collect(τs))")
 end
 
 function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
@@ -57,8 +62,11 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     m <= n || throw(ArgumentError("ShiftInvert: m = $m exceeds the operator dimension $n"))
 
     A = sparse(H; maxnnz=s.maxnnz)
-    realpath = isreal_assembled(H; maxnnz=s.maxnnz)
+    realpath = _isreal_assembled(A, H.diag)
     realpath && (A = real(A))
+    # One exactly Hermitian matrix for the estimate and every factorization: the assembled matrix is
+    # Hermitian only up to the summation order of duplicate entries.
+    A = (A + A') / 2
     @debug(realpath ? "ShiftInvert: real arithmetic (the assembled matrix is exactly real)" :
                       "ShiftInvert: complex arithmetic (the assembled matrix has a nonzero imaginary part)")
 
@@ -96,8 +104,9 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
               "(inner_tol = $(s.inner_tol) on the inverted operator); tighten inner_tol")
 
     if s.certify
-        τ = howmany > m ? E[m] + (Eall[m+1] - E[m]) / 2 : E[m] + s.tol
-        below = _count_below(A, τ)
+        # The cut halfway into the gap above E_m, and a retry a quarter of the gap further up.
+        gap = howmany > m ? Eall[m+1] - E[m] : 2s.tol
+        below, τ = _count_below(A, (E[m] + gap / 2, E[m] + 3gap / 4))
         below == m || error("ShiftInvert: completeness certificate failed: the inertia of H − τI counts $below " *
                             "eigenvalues below τ = $τ, but $m were computed")
     end

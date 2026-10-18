@@ -47,7 +47,7 @@ end
 
 @testset "ShiftInvert equals Dense; real path; residual check; certificate" begin
     Random.seed!(81)
-    H = three_oscillators(6)                                   # complex coefficients? check: if real, the real path runs
+    H = three_oscillators(6)                                   # real coefficients: the assembled matrix is exactly real, the real path runs
     Ed, Vd = solve(Dense(), H, 0)
     E, V = solve(ShiftInvert(tol=1e-9), H, 12)
     @test E ≈ Ed[1:12] atol=1e-8
@@ -68,6 +68,53 @@ end
     @test err isa ErrorException && occursin("residual", err.msg)
     @test_throws ArgumentError ShiftInvert(block=4)
     @test_throws ArgumentError solve(ShiftInvert(slices=2), H, 4)
+end
+
+@testset "ShiftInvert: complex path, explicit shifts, LU fallback" begin
+    using KronFreeCircuits: _factor_shifted, isreal_assembled
+    Random.seed!(82)
+    # (a) a purely imaginary Hermitian coupling makes the assembled matrix complex
+    d = 6
+    K = zeros(ComplexF64, d, d); for i in 1:d-1; K[i, i+1] = im; K[i+1, i] = -im; end
+    X = Matrix{ComplexF64}(I, d, d); for i in 1:d-1; X[i, i+1] = X[i+1, i] = 0.1; end
+    terms = [AxisTerm(1.0 + i, [(i, DiagonalOp(collect(0.0:d-1)))]) for i in 1:3]
+    push!(terms, AxisTerm(0.3, [(1, DenseOp(K)), (2, DenseOp(X))]))
+    Hc = KronFreeCircuits.KronFreeOperator([d, d, d], terms)
+    @test Matrix(Hc) ≈ Matrix(Hc)'
+    @test !isreal_assembled(Hc)
+    Ed, Vd = solve(Dense(), Hc, 0)
+    for blk in (1, 2)
+        E, V = solve(ShiftInvert(tol=1e-9, block=blk, certify=true), Hc, 10)
+        @test E ≈ Ed[1:10] atol=1e-8
+        check_eigenpairs(Hc, E, V; tol=1e-9)
+        @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-7
+    end
+
+    H = three_oscillators(6)
+    @test isreal_assembled(H)
+    Ed, Vd = solve(Dense(), H, 0)
+    # (b) an explicit interior shift returns the eigenvalues nearest it, which the certificate refuses
+    σ = Ed[20] + 1e-3
+    E, V = solve(ShiftInvert(tol=1e-9, shift=σ), H, 4)
+    @test E ≈ Ed[17:20] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
+    err = try solve(ShiftInvert(tol=1e-9, shift=σ, certify=true), H, 4); nothing catch e; e end
+    @test err isa ErrorException && occursin("certificate", err.msg)
+    # (c) an explicit shift far below the spectrum
+    E, V = solve(ShiftInvert(tol=1e-9, shift=Ed[1] - 20, certify=true), H, 5)
+    @test E ≈ Ed[1:5] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
+    @test V * V' ≈ Vd[:, 1:5] * Vd[:, 1:5]' atol=1e-7
+    # (d) H − σI indefinite: Cholesky raises PosDefException and LU takes over. An explicit shift just
+    # above E_min is at or above the E_min estimate, so solve factors it by LU directly; the nearest
+    # eigenvalues to it are then the lowest, and match Dense.
+    A = real(sparse(H)); A = (A + A') / 2
+    F, ischol = _factor_shifted(A, Ed[1] + 1e-3, false)
+    @test !ischol && F isa SparseArrays.UMFPACK.UmfpackLU
+    @test _factor_shifted(A, Ed[1] - 1, false)[2]
+    E, V = solve(ShiftInvert(tol=1e-9, shift=Ed[1] + 1e-3, certify=true), H, 5)
+    @test E ≈ Ed[1:5] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
 end
 
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
