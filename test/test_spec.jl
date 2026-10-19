@@ -59,3 +59,17 @@ using KronFreeCircuits: Spec, ModeSpec, CosineSpec, ChargeCosineSpec, parse_spec
     @test [m.name for m in z2.modes] == [:theta1, :phi1, :theta2, :phi2]
     @test z2.E_C[1,3]((g=0.8,)) ≈ 0.1 && z2.E_C[3,1]((g=0.8,)) ≈ 0.1
 end
+
+@testset "Spec expressions are real-valued" begin
+    zp_src = read(fixture("zero_pi.json"), String)
+    err = try parse_spec(replace(zp_src, "\"E_CS/2\"" => "\"E_CS/2*im\"")); nothing catch e; e end
+    @test err isa ArgumentError && occursin("E_C[1,1]", err.msg) && occursin("E_CS/2*im", err.msg) && occursin("`im`", err.msg)
+    with_offset(o) = replace(zp_src, r"\"offset\": \"[^\"]*\"" => "\"offset\": \"$o\""; count=1)
+    @test_throws ArgumentError parse_spec(with_offset("cis(varphi_ext)"))
+    @test_throws ArgumentError parse_spec(with_offset("real(cispi(varphi_ext))"))
+    @test_throws ArgumentError parse_spec(replace(zp_src, "\"n_g\": [\"n_g\", \"0\"]" => "\"n_g\": [\"n_g + 0*im\", \"0\"]"))
+    @test parse_spec(with_offset("-varphi_ext/2 + sqrt(abs(varphi_ext))")) isa Spec      # real-valued calls stay allowed
+    # every spec fixture still loads
+    specs = filter(f -> endswith(f, ".json") && f != "scqubits_reference.json", readdir(joinpath(@__DIR__, "fixtures")))
+    @test length(specs) == 8 && all(f -> load_spec(fixture(f)) isa Spec, specs)
+end

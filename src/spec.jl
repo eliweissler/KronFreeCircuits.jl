@@ -60,15 +60,32 @@ const _INTEGER_TOL = 1e-12
 
 _spec_error(msg) = throw(ArgumentError("spec: " * msg))
 
+# The first complex construct (`im`, or a call of `cis` or `cispi`) in a spec expression, or `nothing`.
+function _complex_construct(ex)
+    ex === :im && return "the symbol `im`"
+    ex isa Expr || return nothing
+    ex.head === :call && ex.args[1] in (:cis, :cispi) && return "a call of `$(ex.args[1])`"
+    for a in ex.args
+        r = _complex_construct(a)
+        r === nothing || return r
+    end
+    return nothing
+end
+
+# Every spec expression is real-valued (spec Section 20f, "Real inputs"): complex structure enters only through the
+# package's own phase factors and the bases' operators.
 function _coefficient(x, params::Vector{Symbol}, where_::AbstractString)
-    x isa Number && !(x isa Bool) && return Coefficient(x)
+    x isa Real && !(x isa Bool) && return Coefficient(x)
     x isa AbstractString || _spec_error("$where_ must be an expression string, got $(repr(x))")
-    try
-        return Coefficient(x, params)
+    c = try
+        Coefficient(x, params)
     catch e
         e isa ArgumentError && _spec_error("$where_: $(e.msg)")
         rethrow()
     end
+    bad = _complex_construct(c.ex)
+    bad === nothing || _spec_error("$where_: the expression \"$x\" uses $bad; spec expressions must be real-valued")
+    return c
 end
 
 function _vector(d, key::Symbol, N::Int, params)
@@ -97,6 +114,8 @@ end
 
 Parse and validate a `kronfree-spec` version 1 JSON document.
 Keys starting with `_` are ignored; any other unknown key is an error.
+Every expression (`E_C`, `E_L`, `flux_linear`, `n_g`, cosine and charge-cosine `energy` and `offset`, `constant`) must be
+real-valued: one that uses `im` or calls `cis` or `cispi` is rejected.
 Throws `ArgumentError` on any invalid content.
 """
 function parse_spec(json::AbstractString)

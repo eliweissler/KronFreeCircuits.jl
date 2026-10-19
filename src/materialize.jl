@@ -82,7 +82,8 @@ child kept states, computed recursively (the identity on basis axes).
 This needs, at every such node and below it, the same product dims and equal bases on basis axes;
 otherwise an `ArgumentError` is thrown (overlaps across different primitive bases are not
 implemented, and equal dimensions alone do not establish the same basis).
-A parameter missing from `θ` raises an `ArgumentError` naming it.
+A parameter missing from `θ`, or one whose value is not of a `Real` type (all system parameters are real; pass a
+complex amplitude as two real parameters), raises an `ArgumentError` naming it.
 
 Each `mode => basis` leaf child is checked against the mode's type: a compact mode (`:c`) needs
 a `ChargeBasis` or `PeriodicGrid`, an extended (`:e`) or harmonic (`:h`) mode a `PhaseGrid` or `FockBasis`.
@@ -99,11 +100,12 @@ composite (multi-mode) port of that child; these are not supported and throw an 
 function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
                      previous::Union{Nothing,System}=nothing,
                      modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}())
+    _check_real_parameters(θ)
     _check_bases(root, modetypes)
     _check_periodic_harmonics(root, terms)
     routed = route(root, terms)
-    realnodes = classify(root, routed, constant, θ)
     _check_composite(routed)
+    realnodes = classify(root, routed, constant, θ)
     needed = required_ports(root, routed)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root

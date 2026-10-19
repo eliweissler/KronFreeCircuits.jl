@@ -130,6 +130,41 @@ end
 
 _agree(a::Number, b::Number) = abs(a - b) <= _TEST_RTOL * max(abs(a), abs(b))
 
+# The three-point test proves an identity for every θ only for coefficients real-analytic in θ, so a syntactic gate
+# rejects the allowed calls that are not: `abs` and `sign` anywhere, and `sqrt`, `log` or `^` (with an exponent that is
+# not an integer literal) where an argument can be complex-valued (branch cuts).
+# On real-valued arguments `sqrt`, `log` and `^` are analytic where defined and throw a `DomainError` elsewhere.
+
+# Whether `ex` can be complex-valued with real parameters; anything unrecognized can (conservative).
+function _maybe_complex(ex)
+    ex isa Real && return false
+    ex isa Symbol && return ex === :im          # parameters are real (a non-Real θ is rejected); pi, π, ℯ
+    (ex isa Expr && ex.head === :call && ex.args[1] isa Symbol) || return true
+    f, args = ex.args[1], @view ex.args[2:end]
+    f in (:real, :imag, :abs, :sign) && return false
+    f in (:cis, :cispi) && return true
+    f in (:+, :-, :*, :/, ://, :^, :sqrt, :exp, :log, :cos, :sin, :tan, :cosh, :sinh, :tanh, :conj) &&
+        return any(_maybe_complex, args)
+    return true
+end
+
+# The first non-analytic call in `ex`, described, or `nothing`.
+function _nonanalytic(ex)
+    ex isa Expr || return nothing
+    if ex.head === :call && ex.args[1] isa Symbol
+        f, args = ex.args[1], @view ex.args[2:end]
+        f in (:abs, :sign) && return "calls `$f`, which is not real-analytic"
+        f in (:sqrt, :log) && any(_maybe_complex, args) && return "calls `$f` on a possibly complex argument (a branch cut)"
+        f === :^ && !(length(args) == 2 && args[2] isa Integer) && any(_maybe_complex, args) &&
+            return "raises a possibly complex value to a power that is not an integer literal (a branch cut)"
+    end
+    for a in ex.args
+        r = _nonanalytic(a)
+        r === nothing || return r
+    end
+    return nothing
+end
+
 # Why the terms of one node (and the root's constant) fail the node test, or `nothing` when they pass.
 function _term_reason(ts::Vector{Term}, constant::Union{Nothing,Coefficient}, leaves, @nospecialize(points::Vector))
     entries = constant === nothing ? ts : vcat(ts, Term(constant, Factor[]))
@@ -145,6 +180,8 @@ function _term_reason(ts::Vector{Term}, constant::Union{Nothing,Coefficient}, le
     order = _FactorKey[]
     for t in entries
         K = _factor_key(t)
+        bad = _nonanalytic(t.coeff.ex)
+        bad === nothing || return "the coefficient of the term $(_term_string(t)) $bad, so the test points cannot establish its conjugate image"
         v = _at_points(t.coeff, points)
         v === nothing && return "the coefficient of the term $(_term_string(t)) cannot be evaluated at a test point"
         if haskey(sums, K)
@@ -173,29 +210,40 @@ function _term_reason(ts::Vector{Term}, constant::Union{Nothing,Coefficient}, le
     return nothing
 end
 
+# All system parameters are real (spec Section 20f, "Real inputs"): a complex amplitude is passed as two real parameters.
+function _check_real_parameters(@nospecialize(θ::NamedTuple))
+    for (k, v) in pairs(θ)
+        v isa Real || throw(ArgumentError("parameter :$k = $(repr(v)) is of type $(typeof(v)); all system parameters must be " *
+                                          "of a Real type (pass a complex amplitude as two real parameters)"))
+    end
+    return nothing
+end
+
 """
     classify(root, routed, constant, θ) -> IdDict{Node,Bool}
 
 Which nodes of the tree run in real arithmetic (`true`), decided bottom-up from the term list and the tree, never from
 the values in `θ` (the node test of the architecture spec, Section 20f).
 A node is real when its `arithmetic` is not `:complex`, every node below it is real, every factor of its `routed` terms
-has a real, imaginary or paired character in its mode's leaf, and for every factor key `K` the summed coefficient
-satisfies `C_{π(K)} = σ_K conj(C_K)` at three fixed pseudo-random parameter points; `constant` joins the root's empty key.
-When any value of `θ` is not of a `Real` type, every node is complex.
+has a real, imaginary or paired character in its mode's leaf, every coefficient passes a syntactic real-analyticity gate
+(no `abs` or `sign`; no `sqrt`, `log` or non-integer-literal `^` of a possibly complex argument), and for every factor key
+`K` the summed coefficient satisfies `C_{π(K)} = σ_K conj(C_K)` at three fixed pseudo-random parameter points;
+`constant` joins the root's empty key.
+A value of `θ` that is not of a `Real` type throws an `ArgumentError` naming the parameter.
 A node with `arithmetic = :real` that tests complex throws an `ArgumentError` naming its modes and the reason (the first
 term whose conjugate image is missing); on `:auto` the reason is logged at debug level.
 """
 function classify(root::Node, routed::IdDict, constant::Coefficient, @nospecialize(θ::NamedTuple))
+    _check_real_parameters(θ)
     leaves = _mode_leaves(root)
-    nonreal = [k for (k, v) in pairs(θ) if !(v isa Real)]
-    points = isempty(nonreal) ? _test_points(Iterators.flatten(((constant,), (t.coeff for ts in values(routed) for t in ts))), θ) : nothing
+    points = _test_points(Iterators.flatten(((constant,), (t.coeff for ts in values(routed) for t in ts))), θ)
     out = IdDict{Node,Bool}()
     function visit(node::Node)
         foreach(visit, _subnodes(node))
         node.arithmetic === :complex && return (out[node] = false)
-        complex_child = findfirst(ch -> !out[ch], collect(_subnodes(node)))
-        reason = !isempty(nonreal) ? "the parameters $(join((":$k" for k in nonreal), ", ")) are not of a Real type" :
-                 complex_child !== nothing ? "its child node on modes $(modes(collect(_subnodes(node))[complex_child])) is complex" :
+        subs = collect(_subnodes(node))
+        complex_child = findfirst(ch -> !out[ch], subs)
+        reason = complex_child !== nothing ? "its child node on modes $(modes(subs[complex_child])) is complex" :
                  _term_reason(get(routed, node, Term[]), node === root ? constant : nothing, leaves, points)
         reason === nothing && return (out[node] = true)
         node.arithmetic === :real &&
