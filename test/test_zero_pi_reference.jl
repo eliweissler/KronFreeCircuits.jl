@@ -1,8 +1,14 @@
 @testset "two zero-pi vs scqubits HilbertSpace" begin
     θ = two_zero_pi_params(g=0.05)
-    mk(i) = Node([Symbol("theta$i") => ChargeBasis(15), Symbol("phi$i") => PhaseGrid(-6π, 6π, 301)]; solver=Lanczos(), compute=10, keep=lowest(10))
+    mk(i; ar=:auto) = Node([Symbol("theta$i") => ChargeBasis(15), Symbol("phi$i") => PhaseGrid(-6π, 6π, 301)]; solver=Lanczos(), compute=10, keep=lowest(10), arithmetic=ar)
     top = Node([mk(1), mk(2)]; solver=Dense(), keep=lowest(20))
     sys = @test_logs (:warn, r"PhaseGrid on mode :phi\d is too small") match_mode=:any materialize(top, load_spec(fixture("two_zero_pi.json")), θ)
+    # the whole tree is real by structure; the all-complex path gives the same energies
+    @test all(n -> arithmetic(sys, n) === :real, (top, top.children...)) && eltype(eigenvectors(sys)) === Float64
+    topc = Node([mk(1; ar=:complex), mk(2; ar=:complex)]; solver=Dense(), keep=lowest(20), arithmetic=:complex)
+    sysc = @test_logs (:warn, r"PhaseGrid on mode :phi\d is too small") match_mode=:any materialize(topc, load_spec(fixture("two_zero_pi.json")), θ)
+    @test arithmetic(sysc) === :complex
+    @test energies(sys) ≈ energies(sysc) atol=1e-10
     # `≈` with atol compares the 2-norm of the difference over all 20 levels.
     # Observed: max elementwise error 6.8e-5 (passes 1e-4), 2-norm about 2e-4 (misses 1e-4, within 1e-3).
     # Two causes: grid convergence on the shared ±6π range (scqubits' 7-point stencil on 1001 points vs

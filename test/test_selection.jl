@@ -201,3 +201,18 @@ end
     @test SelectionContext(zeros(2), Vc, noports, nothing).reference === nothing
     @test select(follow(), SelectionContext(zeros(2), Vc, noports, prev, Vc)) == [1, 2]
 end
+
+@testset "SelectionContext converts other matrix types" begin
+    using KronFreeCircuits: NodeMatrix
+    P32 = Float32[0 1 0; 1 0 1; 0 1 0]
+    ctx = SelectionContext(Float32[0, 1, 2], Matrix{ComplexF32}(I, 3, 3), Dict((:m, nport()) => P32'), nothing)
+    @test ctx.energies isa Vector{Float64} && ctx.vectors isa Matrix{ComplexF64} && ctx.vectors == I
+    @test ctx.ports[(:m, nport())] isa Matrix{Float64} && ctx.ports[(:m, nport())] == P32
+    @test select(connected([1], (:m, nport()), 0.5), ctx) == [1, 2, 3]
+    A = [1.0 2.0; 3.0 4.0]
+    ctx2 = SelectionContext(zeros(2), A', Dict{Tuple{Symbol,Port},NodeMatrix}(), nothing, A')
+    @test ctx2.vectors isa Matrix{Float64} && ctx2.vectors == [1.0 3.0; 2.0 4.0]
+    # stored matrices of the node's own types are not copied
+    V = Matrix{Float64}(I, 2, 2)
+    @test SelectionContext(zeros(2), V, Dict{Tuple{Symbol,Port},NodeMatrix}(), nothing).vectors === V
+end

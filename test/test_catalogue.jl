@@ -363,26 +363,32 @@ end
     sel2 = (:varphi_1, nport()); req2 = [(:varphi_1, expiphi(1)), (:varphi_1, expiphi(-1)), (:varphi_2, nport())]
     top(perm; kw...) = Node([Node([:varphi_1 => ChargeBasis(8)]; keep=lowest(5)), Node([:varphi_2 => ChargeBasis(8)]; keep=lowest(5))];
                             keep=_PermutedSelection(perm, sel2), ports=req2, kw...)
-    t0 = materialize(top(1:k), terms2, θ2)
-    T0 = Dict(key => port(t0, key...) for key in vcat([sel2], req2))
-    Ψ0 = _primitive(t0.root)
-    Id = Matrix{ComplexF64}(I, 17, 17)
-    prim2 = Dict(sel2 => kron(Id, dense(localop(ChargeBasis(8), nport()))),
-                 req2[1] => kron(Id, dense(localop(ChargeBasis(8), expiphi(1)))),
-                 req2[2] => kron(Id, dense(localop(ChargeBasis(8), expiphi(-1)))),
-                 req2[3] => kron(dense(localop(ChargeBasis(8), nport())), Id))
-    for (key, O) in prim2
-        @test T0[key] ≈ Ψ0' * O * Ψ0 atol=1e-11                  # the primitive operators on explicit primitive states
+    # the two-transmon branch is real by structure and its phases are signs: complex phases on a branch forced complex
+    # (over the real leaves), signs on the real one
+    for (ar, phs) in ((:complex, ph), (:auto, Float64[1, -1, -1, 1, -1]))
+        t0 = materialize(top(1:k; arithmetic=ar), terms2, θ2)
+        @test arithmetic(t0) === (ar === :complex ? :complex : :real)
+        T0 = Dict(key => port(t0, key...) for key in vcat([sel2], req2))
+        Ψ0 = _primitive(t0.root)
+        Id = Matrix{ComplexF64}(I, 17, 17)
+        prim2 = Dict(sel2 => kron(Id, dense(localop(ChargeBasis(8), nport()))),
+                     req2[1] => kron(Id, dense(localop(ChargeBasis(8), expiphi(1)))),
+                     req2[2] => kron(Id, dense(localop(ChargeBasis(8), expiphi(-1)))),
+                     req2[3] => kron(dense(localop(ChargeBasis(8), nport())), Id))
+        for (key, O) in prim2
+            @test T0[key] ≈ Ψ0' * O * Ψ0 atol=1e-11              # the primitive operators on explicit primitive states
+        end
+        @test T0[req2[1]] ≈ T0[req2[2]]' atol=1e-12
+        U = Matrix{eltype(eigenvectors(t0))}(I, k, k)[:, perm] * Diagonal(phs)
+        t1 = materialize(top(perm; phase=:follow, arithmetic=ar), terms2, θ2; previous=phased(t0, U))
+        @test arithmetic(t1) === arithmetic(t0)
+        @test eigenvectors(t1) ≈ eigenvectors(t0) * U atol=1e-10
+        for key in vcat([sel2], req2)
+            @test port(t1, key...) ≈ U' * T0[key] * U atol=1e-10
+        end
+        @test port(t1, :varphi_1, expiphi(1)) ≈ port(t1, :varphi_1, expiphi(-1))' atol=1e-12
+        @test port(t1, :varphi_2, nport()) ≈ port(t1, :varphi_2, nport())' atol=1e-12
     end
-    @test T0[req2[1]] ≈ T0[req2[2]]' atol=1e-12
-    U = Matrix{ComplexF64}(I, k, k)[:, perm] * Diagonal(ph)                 # the branch is complex
-    t1 = materialize(top(perm; phase=:follow), terms2, θ2; previous=phased(t0, U))
-    @test eigenvectors(t1) ≈ eigenvectors(t0) * U atol=1e-10
-    for key in vcat([sel2], req2)
-        @test port(t1, key...) ≈ U' * T0[key] * U atol=1e-10
-    end
-    @test port(t1, :varphi_1, expiphi(1)) ≈ port(t1, :varphi_1, expiphi(-1))' atol=1e-12
-    @test port(t1, :varphi_2, nport()) ≈ port(t1, :varphi_2, nport())' atol=1e-12
 end
 
 @testset "T4: phase-anchor cancellation" begin
@@ -478,4 +484,88 @@ end
     sl = @test_logs (:warn, r"column 1 has no weight") (:warn, r"column 2 has no weight") materialize(Node([:x => PhaseGrid(-3, -1, 81)]; keep=lowest(2)), tg, (;))
     Vl = eigenvectors(sl)
     @test all(isfinite, Vl) && all(j -> (i = argmax(abs.(Vl[:, j])); abs(imag(Vl[i, j])) < 1e-14 && real(Vl[i, j]) > 0), 1:2)
+end
+
+@testset "real branch: two coupled zero-pis equal the complex path" begin
+    using KronFreeCircuits: arithmetic, follow, _initial_block
+    tz = load_spec(fixture("two_zero_pi.json")); θ = two_zero_pi_params(g=0.05)
+    mk(ar) = (q1 = Node([:theta1 => ChargeBasis(4), :phi1 => PhaseGrid(-6π, 6π, 61; order=6)]; solver=Dense(), keep=lowest(10), arithmetic=ar);
+              q2 = Node([:theta2 => ChargeBasis(4), :phi2 => PhaseGrid(-6π, 6π, 61; order=6)]; solver=Dense(), keep=lowest(10), arithmetic=ar);
+              Node([q1, q2]; solver=Dense(), keep=lowest(12), ports=[(:theta1, nport())], arithmetic=ar))
+    tr, tc = mk(:auto), mk(:complex)
+    sr = @test_logs (:warn, r"edge") match_mode=:any materialize(tr, tz, θ)
+    sc = @test_logs (:warn, r"edge") match_mode=:any materialize(tc, tz, θ)
+    @test arithmetic(sr) === :real && eltype(eigenvectors(sr)) === Float64
+    @test energies(sr) ≈ energies(sc) atol=1e-11
+    Pr, Pc = port(sr, :theta1, nport()), port(sc, :theta1, nport())
+    @test eltype(Pr) === Float64
+    # The exchange pairs of the two identical zero-pis are split by only 6e-8 to 3e-6, so the two paths' Dense solves rotate
+    # within a pair by round-off over the gap (about 2e-8, as between any two equally valid solves; abs.(Pr) and abs.(Pc)
+    # differ by 2e-9 in norm): compare the rotation-invariant block norms over clusters of nearly degenerate levels,
+    # which are also invariant to the per-state signs.
+    clusters(E) = (b = [0; findall(>(1e-4), diff(E)); length(E)]; [b[i]+1:b[i+1] for i in 1:length(b)-1])
+    blocknorms(P, cs) = [norm(P[a, b]) for a in cs, b in cs]
+    cs = clusters(energies(sc))
+    @test 6 <= length(cs) < 12                                                            # several clusters, some pairs
+    @test blocknorms(Pr, cs) ≈ blocknorms(Pc, cs) atol=1e-10
+    # LOBPCG at the branch (Auto's branch solver) in real arithmetic equals Dense
+    tl = mk(:auto); tl.solver = LOBPCG(); tl.compute = 12
+    sl = @test_logs (:warn, r"edge") match_mode=:any materialize(tl, tz, θ)
+    @test arithmetic(sl) === :real
+    @test energies(sl) ≈ energies(sr) atol=1e-8
+    # the root's physical states agree with the complex path's up to per-state signs (the branch peak argmax may tie
+    # between exchange-symmetric components, so signs are not compared) and the in-pair rotation, which enters the
+    # diagonal overlaps only at second order
+    Vr = eigenvectors(sr)
+    # physical overlaps of two roots' kept states, through the leaves' kept-state overlaps (axis 1 fastest)
+    phys(a, b) = (S = [a.root.children[i].vectors' * b.root.children[i].vectors for i in 1:2];
+                  a.root.vectors' * kron(S[2], S[1]) * b.root.vectors)
+    offcluster(O) = norm(O - cat((O[c, c] for c in cs)...; dims=(1, 2)))
+    O = phys(sr, sc)
+    @test abs.(diag(O)) ≈ ones(12) atol=1e-12
+    @test offcluster(O) < 1e-10
+    # the operator rebuilt for the real root is real, and the stored eigenpairs are its eigenpairs
+    Hr = KronFreeCircuits.operator(sr)
+    @test eltype(Hr) === Float64 && eltype(sr.root.peak_amplitudes) === Float64
+    check_eigenpairs(Hr, energies(sr), Vr; tol=1e-9)
+    # the branch :positive_sector phase on the real root: real vectors whose peak amplitude is positive
+    amps = [c.peak_amplitudes for c in sr.root.children]
+    for j in axes(Vr, 2)
+        comp, α = branch_peak_phase(reshape(Vr[:, j], sr.root.dims...), amps)
+        @test comp == sr.root.peak_component[j] && imag(α) == 0 && real(α) > 0
+        @test sr.root.peak_amplitudes[j, j] ≈ real(α) atol=1e-14
+    end
+    # Review Focus 2: a parent over a child forced complex is complex (no term needs to touch it), with sc's energies
+    q1c = Node([:theta1 => ChargeBasis(4), :phi1 => PhaseGrid(-6π, 6π, 61; order=6)]; solver=Dense(), keep=lowest(10), arithmetic=:complex)
+    q2r = Node([:theta2 => ChargeBasis(4), :phi2 => PhaseGrid(-6π, 6π, 61; order=6)]; solver=Dense(), keep=lowest(10))
+    tm = Node([q1c, q2r]; solver=Dense(), keep=lowest(12), ports=[(:theta1, nport())])
+    sm = @test_logs (:warn, r"edge") match_mode=:any materialize(tm, tz, θ)
+    @test arithmetic(sm, q1c) === :complex && arithmetic(sm, q2r) === :real && arithmetic(sm) === :complex
+    @test energies(sm) ≈ energies(sc) atol=1e-11
+    @test blocknorms(port(sm, :theta1, nport()), cs) ≈ blocknorms(Pc, cs) atol=1e-10
+    # Review Focus 4: a previous solution from the other arithmetic, at g = 0.06 with follow() on the root
+    θ′ = two_zero_pi_params(g=0.06)
+    fol(ar) = (t = mk(ar); t.keep = follow(); t.phase = :follow; t)                       # as Node(...; keep=follow()) sets them
+    matprev(t, prev) = @test_logs (:warn, r"edge") match_mode=:any materialize(t, tz, θ′; previous=prev)
+    trf, tcf = fol(:auto), fol(:complex)
+    rr, rc, cr, cc = matprev(trf, sr), matprev(trf, sc), matprev(tcf, sr), matprev(tcf, sc)
+    @test arithmetic(rr) === arithmetic(rc) === :real && arithmetic(cr) === arithmetic(cc) === :complex
+    @test eltype(eigenvectors(rc)) === Float64 && eltype(port(rc, :theta1, nport())) === Float64
+    @test energies(rc) ≈ energies(rr) atol=1e-11
+    @test energies(cr) ≈ energies(cc) atol=1e-11
+    @test energies(rr) ≈ energies(cc) atol=1e-11
+    # :follow fixes each state's sign (or phase) by the previous physical state, so states that followed the same previous
+    # solution agree across arithmetics with their signs, whichever signs that solution's branch phase rule picked
+    @test diag(phys(rc, cc)) ≈ ones(12) atol=1e-12
+    @test diag(phys(rr, cr)) ≈ ones(12) atol=1e-12
+    cs′ = clusters(energies(cc))
+    @test blocknorms(port(rc, :theta1, nport()), cs′) ≈ blocknorms(port(cc, :theta1, nport()), cs′) atol=1e-10
+    # LOBPCG at the branch warm-started from the other arithmetic: complex into real dropped, real into complex converted
+    @test _initial_block(sc.root, sc.root.dims, 12, Float64) === nothing
+    @test _initial_block(sr.root, sr.root.dims, 12, ComplexF64) isa Matrix{ComplexF64}
+    lob(ar) = (t = mk(ar); t.solver = LOBPCG(tol=1e-11); t.compute = 12; t)
+    lr, lc = matprev(lob(:auto), sc), matprev(lob(:complex), sr)
+    @test arithmetic(lr) === :real && arithmetic(lc) === :complex
+    @test energies(lr) ≈ energies(cc) atol=1e-8
+    @test energies(lc) ≈ energies(cc) atol=1e-8
 end

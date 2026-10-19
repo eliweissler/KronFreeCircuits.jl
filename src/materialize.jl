@@ -14,9 +14,10 @@ eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 Ports have their natural type (spec Section 20f, "Outputs"): on a real node a real-character port is a
 `Matrix{Float64}` and an imaginary, paired or general one a `Matrix{ComplexF64}`; on a complex node every port is a
 `Matrix{ComplexF64}`.
-A [`GivenSystem`](@ref) child is materialized as a `MaterializedNode` whose `node` is the given
+A [`GivenSystem`](@ref) child is materialized as a `MaterializedNode{Float64}` whose `node` is the given
 system, with identity `vectors` and `peak_amplitudes`, all states kept, its operators as the ports
-`(mode, Port(kind, 0))`, and `children = Any[g]`.
+`(mode, Port(kind, 0))` in their natural type (real data as a `Matrix{Float64}`, otherwise complex), and `children = Any[g]`;
+a real parent consumes it directly, and a complex parent converts its ports.
 
 `peak_component[j]` is the linear index, in the node's product basis, of kept state `j`'s peak
 point: at a leaf (all children bases) the positive-sector argmax used by `:positive_sector`, at a
@@ -39,6 +40,7 @@ struct MaterializedNode{T<:Union{Float64,ComplexF64}}
 end
 
 # From any matrices: `vectors` and `peak_amplitudes` in their promoted element type, the ports as stored.
+# For nodes built by hand; `materialize` gives the element type of a node's classification explicitly (`_check_eltype`).
 function MaterializedNode(node, dims, energies, vectors::AbstractMatrix, kept, ports::AbstractDict, children,
                           peak_component, peak_amplitudes::AbstractMatrix)
     T = promote_type(eltype(vectors), eltype(peak_amplitudes))
@@ -229,11 +231,14 @@ end
 
 # A given child as a node: identity eigenvectors and peak amplitudes, all states kept, its energies
 # on the parent's axis (through `_node_operator`) and its operators as exponent-free ports.
+# Its vectors and peak amplitudes are real by construction, so it is stored in `Float64`, and its ports in their natural
+# type (`character(g, port)`): real data as a `Matrix{Float64}`, imaginary or general data complex as stored.
 function _materialize_given(g::GivenSystem)
     k = dimension(g)
-    ports = Dict{Tuple{Symbol,Port},NodeMatrix}((g.mode, Port(kind, 0)) => M for (kind, M) in g.operators)
-    return MaterializedNode(g, [k], g.energies, Matrix{ComplexF64}(I, k, k), collect(1:k), ports, Any[g],
-                            collect(1:k), Matrix{ComplexF64}(I, k, k))
+    natural(kind, M) = character(g, Port(kind, 0)).kind === :real ? Matrix{Float64}(real(M)) : M
+    ports = Dict{Tuple{Symbol,Port},NodeMatrix}((g.mode, Port(kind, 0)) => natural(kind, M) for (kind, M) in g.operators)
+    return MaterializedNode{Float64}(g, [k], g.energies, Matrix{Float64}(I, k, k), collect(1:k), ports, Any[g],
+                                     collect(1:k), Matrix{Float64}(I, k, k))
 end
 
 # The previous solution of child `i`, or `nothing`.
@@ -496,10 +501,12 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     reference = prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
 
     # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
-    # A node classified real runs in real arithmetic; branches stay complex for now, over real leaves too.
+    # A node classified real (whose child nodes are then all real) runs in real arithmetic; its operator takes the
+    # children's ports by their components (spec Section 20f, "The real operator").
     solver = _resolve_node_solver(node, children)
     isleaf = all(c -> c isa Basis, children)
-    H = _node_operator(node, solver, children, routed[node], θ, constant; real=isleaf && realnodes[node])
+    realnode = realnodes[node]
+    H = _node_operator(node, solver, children, routed[node], θ, constant; real=realnode)
 
     # (4) Diagonalize.
     _dense_too_large(solver, prod(dims)) &&
@@ -527,7 +534,8 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # the joint peak of the dominant product component (`branch_peak_phase`), the argmax restricted
     # to the positive sector on basis-child axes only (node-child masks are all true).
     # Peaks are taken on the unphased vectors, as fix_phases! and branch_peak_phase do.
-    # On real vectors every phase is a sign (`_unphase`), so a real node never acquires complex vectors.
+    # On real vectors every phase is a sign (`_unphase`), so a real node never acquires complex vectors: at a real
+    # branch the joint-peak amplitude is real (its children's peak amplitudes are), and its sign is used.
     mask = _kronaxes(_childmask(c) for c in children)
     amps = isleaf ? AbstractMatrix[] : AbstractMatrix[_childamps(c) for c in children]
     V0 = copy(V)
@@ -589,7 +597,20 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
-    return MaterializedNode(node, dims, E, V, collect(Int, idx), ports, children, peak, peak_amps)
+    T = _check_eltype(node, realnode, V, peak_amps, ports)
+    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, children, peak, peak_amps)
+end
+
+# The element type a node is stored in, its classification's (`Float64` when `real`, else `ComplexF64`), asserted
+# against the data (vectors, peak amplitudes, and on a complex node every port), so that a type leak cannot change a
+# node's arithmetic silently in either direction.
+function _check_eltype(node::Node, real::Bool, V, peak_amps, ports=Dict())
+    T = real ? Float64 : ComplexF64
+    eltype(V) === T && eltype(peak_amps) === T && (real || all(P -> eltype(P) === T, values(ports))) ||
+        error("internal error: the node on modes $(modes(node)) is classified $(real ? "real" : "complex"), but its " *
+              "vectors are $(eltype(V)), its peak amplitudes $(eltype(peak_amps)) and its port types " *
+              "$(unique(eltype.(values(ports))))")
+    return T
 end
 
 """

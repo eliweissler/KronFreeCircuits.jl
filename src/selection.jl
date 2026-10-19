@@ -24,8 +24,10 @@ physical overlaps, so that `reference' * vectors` are physical overlaps even whe
 re-diagonalized.
 The four-argument form takes `previous.vectors` (raw coefficients) as the reference, which is the
 physical overlap only when the children's bases are unchanged.
-`vectors` and the ports are real (`Matrix{Float64}`) or complex (`Matrix{ComplexF64}`), as the node stores them, and
-`reference` either; overlaps promote.
+`vectors` and the ports are stored real (`Matrix{Float64}`) or complex (`Matrix{ComplexF64}`), as the node stores them;
+other matrix types (a `Matrix{ComplexF32}`, an `Adjoint`) are converted to the one of their element type's kind, and
+matrices already of a stored type are not copied.
+`reference` may be of either element type; overlaps promote.
 """
 struct SelectionContext
     energies::Vector{Float64}
@@ -33,6 +35,11 @@ struct SelectionContext
     ports::Dict{Tuple{Symbol,Port},NodeMatrix}
     previous::Any
     reference::Union{Nothing,AbstractMatrix}
+
+    SelectionContext(energies::AbstractVector{<:Real}, vectors::AbstractMatrix, ports::AbstractDict, previous,
+                     reference::Union{Nothing,AbstractMatrix}) =
+        new(convert(Vector{Float64}, energies), _node_matrix(vectors),
+            Dict{Tuple{Symbol,Port},NodeMatrix}(k => _node_matrix(P) for (k, P) in ports), previous, reference)
 end
 SelectionContext(energies, vectors, ports, previous) =
     SelectionContext(energies, vectors, ports, previous, previous === nothing ? nothing : previous.vectors)

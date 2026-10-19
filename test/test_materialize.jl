@@ -833,22 +833,23 @@ end
     @test energies(materialize(leaf(:complex), spec, θ; previous=sr)) ≈ energies(sc) atol=1e-9
 end
 
-@testset "a complex branch over real leaves equals the all-complex tree" begin
+@testset "a complex or real branch over real leaves equals the all-complex tree" begin
     using KronFreeCircuits: LOBPCG, follow
     spec = load_spec(fixture("two_transmons.json"))
-    function tree(ar; top=Dense(), keep=lowest(6))
+    function tree(ar; top=Dense(), keep=lowest(6), topar=ar)
         l1 = Node([:varphi_1 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6), arithmetic=ar)
         l2 = Node([:varphi_2 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6), arithmetic=ar)
-        return Node([l1, l2]; solver=top, compute=8, keep=keep, ports=[(:varphi_1, nport()), (:varphi_2, expiphi(1))])
+        return Node([l1, l2]; solver=top, compute=8, keep=keep, ports=[(:varphi_1, nport()), (:varphi_2, expiphi(1))], arithmetic=topar)
     end
     θ0, θ1 = two_transmons_params(; g=0.1), two_transmons_params(; g=0.12)
-    # a previous solution feeds the LOBPCG warm start, and the follow rule through the real leaves' overlaps
-    for (top, keep) in ((Dense(), lowest(6)), (LOBPCG(tol=1e-11), lowest(6)), (Dense(), follow()))
-        sr0, sc0 = materialize(tree(:auto; top), spec, θ0), materialize(tree(:complex; top), spec, θ0)
-        tr, tc = tree(:auto; top, keep), tree(:complex; top, keep)
+    # a previous solution feeds the LOBPCG warm start, and the follow rule through the real leaves' overlaps;
+    # the branch over the real leaves is forced complex (`topar = :complex`) or real by structure (`:auto`)
+    for (top, keep) in ((Dense(), lowest(6)), (LOBPCG(tol=1e-11), lowest(6)), (Dense(), follow())), topar in (:complex, :auto)
+        sr0, sc0 = materialize(tree(:auto; top, topar), spec, θ0), materialize(tree(:complex; top), spec, θ0)
+        tr, tc = tree(:auto; top, keep, topar), tree(:complex; top, keep)
         sr, sc = materialize(tr, spec, θ1; previous=sr0), materialize(tc, spec, θ1; previous=sc0)
         @test arithmetic(sr, tr.children[1]) === :real && arithmetic(sr, tr.children[2]) === :real
-        @test arithmetic(sr) === :complex                                       # branches stay complex until Task 7
+        @test arithmetic(sr) === (topar === :auto ? :real : :complex)
         @test eltype(port(sr, :varphi_1, nport(), tr.children[1])) === Float64
         @test energies(sr) ≈ energies(sc) atol=1e-9
         # the branch phase rule does not depend on the children's phases, so the physical states agree exactly
@@ -857,4 +858,57 @@ end
             @test port(sr, m, p) ≈ port(sc, m, p) atol=1e-8
         end
     end
+end
+
+@testset "real branch over a GivenSystem: Float64 given node, natural-type ports, a :general port in ports=" begin
+    X = ComplexF64[0 1 0; 1 0 √2; 0 √2 0]                                                  # real data
+    Y = ComplexF64[0 -im 0; im 0 -√2*im; 0 √2*im 0]                                        # purely imaginary data
+    G = ComplexF64[0 1+im 0; 1-im 0 0.5im; 0 -0.5im 0]                                     # both parts: :general
+    r = GivenSystem(:r; energies=[0.0, 4.0, 8.5], operators=Dict(:x => X, :y => Y, :g => G))
+    # φ⊗x is real ⊗ real and n⊗y imaginary ⊗ imaginary with real coefficients, the e^{±iφ}⊗x pair (paired leaf ports) has
+    # conjugate coefficients, and no term touches :g: the parent is real
+    terms = [Term(Coefficient(1.0), [Factor(:q, n2port())]), Term(Coefficient(2.0), [Factor(:q, phi2port())]),
+             Term(Coefficient(0.3), [Factor(:q, phiport()), Factor(:r, Port(:x, 0))]),
+             Term(Coefficient(0.2), [Factor(:q, nport()), Factor(:r, Port(:y, 0))]),
+             Term(Coefficient(0.15 + 0.1im), [Factor(:q, expiphi(1)), Factor(:r, Port(:x, 0))]),
+             Term(Coefficient(0.15 - 0.1im), [Factor(:q, expiphi(-1)), Factor(:r, Port(:x, 0))])]
+    ps = [(:r, Port(:x, 0)), (:r, Port(:y, 0)), (:r, Port(:g, 0)), (:q, nport()), (:q, expiphi(1)), (:q, phiport())]
+    tree(ar) = Node([Node([:q => PhaseGrid(-8, 8, 81)]; solver=Dense(), keep=lowest(6), arithmetic=ar), r];
+                    solver=Dense(), keep=lowest(8), ports=ps, arithmetic=ar)
+    tr, tc = tree(:auto), tree(:complex)
+    sr, sc = materialize(tr, terms, (;)), materialize(tc, terms, (;))
+    @test arithmetic(sr) === :real && arithmetic(sr, tr.children[1]) === :real && arithmetic(sc) === :complex
+    # the given system materializes in Float64 (identity vectors and peak amplitudes), its ports in their natural type,
+    # in either parent: a complex parent converts them
+    for s in (sr, sc)
+        mg = materialized(s, r)
+        @test mg isa KronFreeCircuits.MaterializedNode{Float64} && mg.vectors == I && mg.peak_amplitudes == I
+        @test mg.ports[(:r, Port(:x, 0))] isa Matrix{Float64} && mg.ports[(:r, Port(:x, 0))] == real(X)
+        @test mg.ports[(:r, Port(:y, 0))] isa Matrix{ComplexF64} && mg.ports[(:r, Port(:y, 0))] == Y
+        @test mg.ports[(:r, Port(:g, 0))] isa Matrix{ComplexF64} && mg.ports[(:r, Port(:g, 0))] == G
+    end
+    @test energies(sr) ≈ energies(sc) atol=1e-12
+    @test minimum(diff(energies(sc))) > 1e-6                                                # nondegenerate: per-state signs
+    # per-state signs from the physical overlaps (the given axis is the identity in both)
+    S1 = materialized(sr, tr.children[1]).vectors' * materialized(sc, tc.children[1]).vectors
+    O = eigenvectors(sr)' * kron(Matrix(I, 3, 3), S1) * eigenvectors(sc)
+    s = sign.(real(diag(O)))
+    @test abs.(O) ≈ I atol=1e-9
+    for (m, p) in ps
+        Pr, Pc = port(sr, m, p), port(sc, m, p)
+        @test eltype(Pr) === (p in (Port(:x, 0), phiport()) ? Float64 : ComplexF64)          # :y, n imaginary; e^{iφ} paired; :g general
+        @test Pr ≈ s .* Pc .* s' atol=1e-9
+    end
+    @test all(iszero, real(port(sr, :r, Port(:y, 0)))) && !all(iszero, real(port(sr, :r, Port(:g, 0))))
+    check_eigenpairs(KronFreeCircuits.operator(sr), energies(sr), eigenvectors(sr); tol=1e-9)
+end
+
+@testset "a node's stored element type is its classification's" begin
+    using KronFreeCircuits: MaterializedNode, _check_eltype
+    spec = load_spec(fixture("transmon.json")); θ = (E_J=20.0, E_C=1.0, n_g=0.3)
+    s = materialize(Node([:varphi_1 => ChargeBasis(6)]; solver=Dense(), keep=lowest(3)), spec, θ)
+    mn = s.root
+    @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes) === Float64
+    @test_throws ErrorException _check_eltype(mn.node, false, mn.vectors, mn.peak_amplitudes)    # a real leak into a complex node
+    @test_throws ErrorException _check_eltype(mn.node, true, complex(mn.vectors), mn.peak_amplitudes)
 end
