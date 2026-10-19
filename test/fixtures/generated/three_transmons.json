@@ -1,0 +1,125 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "parameters": [
+    "E_C1",
+    "g",
+    "E_C2",
+    "E_C3",
+    "n_g1",
+    "n_g2",
+    "n_g3",
+    "E_J1",
+    "E_J2",
+    "E_J3"
+  ],
+  "modes": [
+    {
+      "name": "varphi_1",
+      "type": "c"
+    },
+    {
+      "name": "varphi_2",
+      "type": "c"
+    },
+    {
+      "name": "varphi_3",
+      "type": "c"
+    }
+  ],
+  "E_C": [
+    [
+      "E_C1",
+      "g / 8",
+      "0"
+    ],
+    [
+      "g / 8",
+      "E_C2",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "E_C3"
+    ]
+  ],
+  "E_L": [
+    [
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0"
+    ]
+  ],
+  "flux_linear": [
+    "0",
+    "0",
+    "0"
+  ],
+  "n_g": [
+    "n_g1",
+    "n_g2",
+    "n_g3"
+  ],
+  "cosines": [
+    {
+      "energy": "E_J1",
+      "omega": [
+        1,
+        0,
+        0
+      ],
+      "offset": "0"
+    },
+    {
+      "energy": "E_J2",
+      "omega": [
+        0,
+        1,
+        0
+      ],
+      "offset": "0"
+    },
+    {
+      "energy": "E_J3",
+      "omega": [
+        0,
+        0,
+        1
+      ],
+      "offset": "0"
+    }
+  ],
+  "constant": "0",
+  "_generator": {
+    "package": "circuit-quantization",
+    "version": "0.2.0",
+    "branches": [
+      "Cc",
+      "J1",
+      "J2",
+      "J3"
+    ],
+    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "dirty": false,
+    "script": "test/fixtures/generate_specs.py"
+  },
+  "_comment": [
+    "Grounded junctions J1 (node 1), J2 (node 2), J3 (node 3) with EJ = E_Jk, and a coupling capacitor Cc between nodes 1 and 2; Z_full = identity, all modes c.",
+    "Element capacitances C = ghz_to_farad(x) with x_1 = D/(E_C2 - g/8), x_2 = D/(E_C1 - g/8), x_c = 8 D/g, D = E_C1 E_C2 - g^2/64: the values whose inverse capacitance matrix is [[E_C1, g/8], [g/8, E_C2]] (see transmons() in generate_specs.py).",
+    "J3's junction capacitance is ghz_to_farad(E_C3).",
+    "The capacitive loop J1-Cc-J2 carries zero flux (Loops.from_circuit with zero_capacitive=True).",
+    "Sector labels n_g1, n_g2, n_g3 already carry the fixture's names."
+  ]
+}

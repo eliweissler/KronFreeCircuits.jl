@@ -1,0 +1,252 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "parameters": [
+    "E_CS1",
+    "g",
+    "E_CJ1",
+    "E_CS2",
+    "E_CJ2",
+    "E_L1",
+    "E_L2",
+    "n_g1",
+    "n_g2",
+    "E_J1",
+    "varphi_ext1",
+    "E_J2",
+    "varphi_ext2"
+  ],
+  "modes": [
+    {
+      "name": "theta1",
+      "type": "c"
+    },
+    {
+      "name": "phi1",
+      "type": "e"
+    },
+    {
+      "name": "theta2",
+      "type": "c"
+    },
+    {
+      "name": "phi2",
+      "type": "e"
+    },
+    {
+      "name": "zeta1",
+      "type": "h"
+    },
+    {
+      "name": "zeta2",
+      "type": "h"
+    }
+  ],
+  "E_C": [
+    [
+      "E_CS1 / 2",
+      "0",
+      "g / 8",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "E_CJ1 / 2",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "g / 8",
+      "0",
+      "E_CS2 / 2",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "E_CJ2 / 2",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "(16 * E_CJ1 .* E_CS1 .* E_CS2 - E_CJ1 .* g .^ 2) ./ (16 * E_CJ1 .* E_CS2 + 12 * E_CJ1 .* g - 16 * E_CS1 .* E_CS2 + g .^ 2)",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "(16 * E_CJ2 .* E_CS1 .* E_CS2 - E_CJ2 .* g .^ 2) ./ (16 * E_CJ2 .* E_CS1 + 12 * E_CJ2 .* g - 16 * E_CS1 .* E_CS2 + g .^ 2)"
+    ]
+  ],
+  "E_L": [
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "2 * E_L1",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "2 * E_L2",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "E_L1",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "E_L2"
+    ]
+  ],
+  "flux_linear": [
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0"
+  ],
+  "n_g": [
+    "n_g1",
+    "0",
+    "n_g2",
+    "0",
+    "0",
+    "0"
+  ],
+  "cosines": [
+    {
+      "energy": "E_J1",
+      "omega": [
+        1,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext1 / 2"
+    },
+    {
+      "energy": "E_J1",
+      "omega": [
+        -1,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext1 / 2"
+    },
+    {
+      "energy": "E_J2",
+      "omega": [
+        0,
+        0,
+        1,
+        1,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext2 / 2"
+    },
+    {
+      "energy": "E_J2",
+      "omega": [
+        0,
+        0,
+        -1,
+        1,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext2 / 2"
+    }
+  ],
+  "constant": "0",
+  "_generator": {
+    "package": "circuit-quantization",
+    "version": "0.2.0",
+    "branches": [
+      "C1a",
+      "C1b",
+      "C2a",
+      "C2b",
+      "Cc1_1",
+      "Cc1_4",
+      "Cc1_2",
+      "Cc1_3",
+      "Cc2_5",
+      "Cc2_8",
+      "Cc2_6",
+      "Cc2_7",
+      "J1a",
+      "J1b",
+      "J2a",
+      "J2b",
+      "L1a",
+      "L1b",
+      "L2a",
+      "L2b"
+    ],
+    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "dirty": false,
+    "script": "test/fixtures/generate_specs.py"
+  },
+  "_comment": [
+    "Two symmetric zero-pis (nodes 1-4 and 5-8, branches J<q>a, J<q>b, L<q>a, L<q>b, C<q>a, C<q>b as in zero_pi.json) coupled by scheme (a) of circuit-quantization tests/circuits.py coupled_zero_pis: Cc<q>_<n> from nodes 1, 4, 5, 8 to island 10 and from nodes 2, 3, 6, 7 to island 9; no capacitance to ground (floating).",
+    "Element charging energies (see two_zero_pi() in generate_specs.py), D = E_CS1*E_CS2/4 - g^2/64: coupler x_c = 4 D/g; qubit 1 junction 1/(1/E_CJ1 - g/(8 D)), large C 1/((E_CS2/4 + g/16)/D - 1/E_CJ1); qubit 2 likewise with E_CS1.",
+    "These give exactly E_C[theta block] = [[E_CS1/2, g/8], [g/8, E_CS2/2]] and E_C[phi_q,phi_q] = E_CJq/2.",
+    "Z_full: each qubit's columns as zero_pi.json, ordered theta1, phi1, theta2, phi2, zeta1, zeta2; non-dynamical: Sigma1 - Sigma2, the coupler-island directions (free), all-ones (cyclic).",
+    "zeta1, zeta2 are decoupled harmonic modes (two_zero_pi.json has none). Ring flux on the junctions: custom B with +1/2 of the ring flux on each junction and capacitor entries solving G B = I (static flux: a gauge choice; the irrotational B would put it on L<q>b instead, giving flux_linear on phi and zeta).",
+    "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.",
+    "The substitution is applied before to_spec (substituted() in generate_specs.py, numerify plus sympy.together), because to_spec's cancel of the substituted E_C does not finish; the coefficients are the same.",
+    "constant 0: scqubits' potential adds 2 E_J1 + 2 E_J2 (two_zero_pi.json keeps them)."
+  ]
+}

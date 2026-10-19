@@ -1,0 +1,56 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "parameters": [
+    "E_C",
+    "n_g",
+    "E_J"
+  ],
+  "modes": [
+    {
+      "name": "varphi_1",
+      "type": "c"
+    }
+  ],
+  "E_C": [
+    [
+      "E_C"
+    ]
+  ],
+  "E_L": [
+    [
+      "0"
+    ]
+  ],
+  "flux_linear": [
+    "0"
+  ],
+  "n_g": [
+    "n_g"
+  ],
+  "cosines": [
+    {
+      "energy": "E_J",
+      "omega": [
+        1
+      ],
+      "offset": "0"
+    }
+  ],
+  "constant": "0",
+  "_generator": {
+    "package": "circuit-quantization",
+    "version": "0.2.0",
+    "branches": [
+      "J"
+    ],
+    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "dirty": false,
+    "script": "test/fixtures/generate_specs.py"
+  },
+  "_comment": [
+    "Grounded junction J (node 1 to ground 0), C = ghz_to_farad(E_C), EJ = E_J; Z_full = [1], mode c.",
+    "subs: sector label n_g1 -> n_g."
+  ]
+}

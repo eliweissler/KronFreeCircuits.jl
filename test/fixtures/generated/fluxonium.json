@@ -1,0 +1,59 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "parameters": [
+    "E_C",
+    "E_L",
+    "varphi_ext",
+    "E_J"
+  ],
+  "modes": [
+    {
+      "name": "varphi_1",
+      "type": "e"
+    }
+  ],
+  "E_C": [
+    [
+      "E_C"
+    ]
+  ],
+  "E_L": [
+    [
+      "E_L"
+    ]
+  ],
+  "flux_linear": [
+    "E_L .* varphi_ext"
+  ],
+  "n_g": [
+    "0"
+  ],
+  "cosines": [
+    {
+      "energy": "E_J",
+      "omega": [
+        1
+      ],
+      "offset": "0"
+    }
+  ],
+  "constant": "0",
+  "_generator": {
+    "package": "circuit-quantization",
+    "version": "0.2.0",
+    "branches": [
+      "J",
+      "L"
+    ],
+    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "dirty": false,
+    "script": "test/fixtures/generate_specs.py"
+  },
+  "_comment": [
+    "README fluxonium: junction J and inductor L from node 1 to ground, C = ghz_to_farad(E_C), L = ghz_to_henry(E_L), EJ = E_J.",
+    "Loop closed by L (+L -J) with flux phase_to_weber(varphi_ext), irrotational B (all flux on L); Z_full = [1], mode e.",
+    "constant 0: circuit-quantization omits the flux-only inductive energy E_L varphi_ext^2/2 that the hand fixture keeps."
+  ]
+}
