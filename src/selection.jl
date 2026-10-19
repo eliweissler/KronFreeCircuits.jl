@@ -1,3 +1,17 @@
+# The data a node stores and a selection rule inspects: real for a real node (and a real-character port of it), complex
+# otherwise (spec Section 20f, "Outputs").
+const NodeMatrix = Union{Matrix{Float64},Matrix{ComplexF64}}
+
+# `A` as a `NodeMatrix`: `Matrix{Float64}` for a real element type, else `Matrix{ComplexF64}` (no copy when it already is one).
+_node_matrix(A::AbstractMatrix{<:Real}) = convert(Matrix{Float64}, A)
+_node_matrix(A::AbstractMatrix) = convert(Matrix{ComplexF64}, A)
+
+# `A' * B` in the promoted element type of the two (BLAS has no mixed real–complex gemm).
+function _overlap(A::AbstractMatrix, B::AbstractMatrix)
+    T = promote_type(eltype(A), eltype(B))
+    return convert(Matrix{T}, A)' * convert(Matrix{T}, B)
+end
+
 """
     SelectionContext(energies, vectors, ports, previous[, reference])
 
@@ -10,11 +24,13 @@ physical overlaps, so that `reference' * vectors` are physical overlaps even whe
 re-diagonalized.
 The four-argument form takes `previous.vectors` (raw coefficients) as the reference, which is the
 physical overlap only when the children's bases are unchanged.
+`vectors` and the ports are real (`Matrix{Float64}`) or complex (`Matrix{ComplexF64}`), as the node stores them, and
+`reference` either; overlaps promote.
 """
 struct SelectionContext
     energies::Vector{Float64}
-    vectors::Matrix{ComplexF64}
-    ports::Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}
+    vectors::NodeMatrix
+    ports::Dict{Tuple{Symbol,Port},NodeMatrix}
     previous::Any
     reference::Union{Nothing,AbstractMatrix}
 end
@@ -63,11 +79,11 @@ A warning lists the reference states whose assigned overlap is below `minoverlap
 A node with this rule defaults to the `:follow` phase convention.
 """
 struct Follow <: SelectionRule
-    reference::Union{Nothing,Matrix{ComplexF64}}
+    reference::Union{Nothing,NodeMatrix}
     minoverlap::Float64
 end
 follow(reference::Union{Nothing,AbstractMatrix}=nothing; minoverlap::Real=0.5) =
-    Follow(reference === nothing ? nothing : Matrix{ComplexF64}(reference), Float64(minoverlap))
+    Follow(reference === nothing ? nothing : copy(_node_matrix(reference)), Float64(minoverlap))
 
 ports_needed(rule::Connected) = Tuple{Symbol,Port}[rule.port]
 
@@ -113,7 +129,7 @@ function select(rule::Follow, ctx::SelectionContext)
     nref, ncur = size(R, 2), size(ctx.vectors, 2)
     nref <= ncur ||
         throw(ArgumentError("follow selection has $nref reference columns but only $ncur computed states"))
-    O = abs.(R' * ctx.vectors)
+    O = abs.(_overlap(R, ctx.vectors))
     # Global greedy assignment: take (reference, current) pairs in order of decreasing overlap.
     order = sortperm(vec(O); rev=true)
     idx = zeros(Int, nref)

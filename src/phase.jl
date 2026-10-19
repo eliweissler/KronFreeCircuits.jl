@@ -5,6 +5,9 @@ Fix the global phase of each column of `V` in place and return `V`.
 `:positive_sector` makes the largest-modulus entry among `mask` real and positive
 (falling back to the global largest entry, with a warning, if the column has no weight on `mask`).
 `:follow` makes the overlap with the matching `reference` column real and positive.
+On real `V` both reduce to signs (spec Section 20f): the peak entry is made positive, and the column is multiplied by the
+sign of the real part of the overlap (`+1` when it is zero), so real vectors stay real; `reference` may be of either
+element type.
 """
 function fix_phases!(V::AbstractMatrix, convention::Symbol, mask::AbstractVector{Bool}, reference)
     if convention === :positive_sector
@@ -15,19 +18,24 @@ function fix_phases!(V::AbstractMatrix, convention::Symbol, mask::AbstractVector
             col = view(V, :, j)
             istar, fellback = _sector_peak(col, sector)
             fellback && @warn "fix_phases!: column $j has no weight on the phase mask; using its largest entry"
-            col .*= exp(-im * angle(col[istar]))
+            col .*= _unphase(eltype(V), col[istar])
         end
     elseif convention === :follow
         reference === nothing && throw(ArgumentError("phase convention :follow needs a reference"))
         for j in axes(V, 2)
             col = view(V, :, j)
-            col .*= exp(-im * angle(dot(view(reference, :, j), col)))
+            col .*= _unphase(eltype(V), dot(view(reference, :, j), col))
         end
     else
         throw(ArgumentError("unknown phase convention :$convention"))
     end
     return V
 end
+
+# The unit factor that makes the amplitude `x` of a vector of element type `T` real and nonnegative: on real vectors the
+# sign of `real(x)` (`+1` at zero), on complex ones `exp(-i angle(x))`.
+_unphase(::Type{<:Real}, x::Number) = real(x) < 0 ? -1.0 : 1.0
+_unphase(::Type{<:Complex}, x::Number) = exp(-im * angle(x))
 
 # The index of the largest-modulus entry of `col` among `sector`, and whether it fell back to the
 # global largest entry because `col` has no weight on `sector`.

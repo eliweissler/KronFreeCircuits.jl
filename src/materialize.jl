@@ -2,14 +2,18 @@
 # the kept states and form the ports its ancestors need, children first.
 
 """
-    MaterializedNode
+    MaterializedNode{T}
 
-A diagonalized node.
+A diagonalized node, stored in its arithmetic: `T = Float64` for a node classified real (see [`classify`](@ref)),
+else `ComplexF64`.
 `dims` are the axis sizes of the node's product basis (a basis child's dimension, or a node
 child's number of kept states); `vectors` is `prod(dims) × length(kept)` in that basis, with
 `energies` the kept eigenvalues (absolute, GHz) and `kept` their indices among the computed
 eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 `children` holds, in axis order, the child's `Basis` or `MaterializedNode`.
+Ports have their natural type (spec Section 20f, "Outputs"): on a real node a real-character port is a
+`Matrix{Float64}` and an imaginary, paired or general one a `Matrix{ComplexF64}`; on a complex node every port is a
+`Matrix{ComplexF64}`.
 A [`GivenSystem`](@ref) child is materialized as a `MaterializedNode` whose `node` is the given
 system, with identity `vectors` and `peak_amplitudes`, all states kept, its operators as the ports
 `(mode, Port(kind, 0))`, and `children = Any[g]`.
@@ -22,16 +26,23 @@ basis child's index is its own point).
 `peak_amplitudes[p, j]` is the exact full-space amplitude of kept state `j` at the peak point of
 kept state `p`; a leaf's is `vectors[peak_component, :]`.
 """
-struct MaterializedNode
+struct MaterializedNode{T<:Union{Float64,ComplexF64}}
     node::Union{Node,GivenSystem}
     dims::Vector{Int}
     energies::Vector{Float64}
-    vectors::Matrix{ComplexF64}
+    vectors::Matrix{T}
     kept::Vector{Int}
-    ports::Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}
+    ports::Dict{Tuple{Symbol,Port},NodeMatrix}
     children::Vector{Any}
     peak_component::Vector{Int}
-    peak_amplitudes::Matrix{ComplexF64}
+    peak_amplitudes::Matrix{T}
+end
+
+# From any matrices: `vectors` and `peak_amplitudes` in their promoted element type, the ports as stored.
+function MaterializedNode(node, dims, energies, vectors::AbstractMatrix, kept, ports::AbstractDict, children,
+                          peak_component, peak_amplitudes::AbstractMatrix)
+    T = promote_type(eltype(vectors), eltype(peak_amplitudes))
+    return MaterializedNode{T}(node, dims, energies, vectors, kept, ports, children, peak_component, peak_amplitudes)
 end
 
 """
@@ -195,7 +206,7 @@ _childmask(mn::MaterializedNode) = fill(true, length(mn.kept))
 
 # The peak-amplitude matrix a branch contracts with on a child's axis: a node child's stored
 # `peak_amplitudes`, or for a basis child the identity (its peak point is the basis index itself).
-_childamps(b::Basis) = Diagonal(ones(ComplexF64, dimension(b)))
+_childamps(b::Basis) = Diagonal(ones(dimension(b)))
 _childamps(mn::MaterializedNode) = mn.peak_amplitudes
 
 _childop(b::Basis, ::Symbol, p::Port) = localop(b, p)
@@ -220,7 +231,7 @@ end
 # on the parent's axis (through `_node_operator`) and its operators as exponent-free ports.
 function _materialize_given(g::GivenSystem)
     k = dimension(g)
-    ports = Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}((g.mode, Port(kind, 0)) => M for (kind, M) in g.operators)
+    ports = Dict{Tuple{Symbol,Port},NodeMatrix}((g.mode, Port(kind, 0)) => M for (kind, M) in g.operators)
     return MaterializedNode(g, [k], g.energies, Matrix{ComplexF64}(I, k, k), collect(1:k), ports, Any[g],
                             collect(1:k), Matrix{ComplexF64}(I, k, k))
 end
@@ -265,19 +276,21 @@ The previous kept vectors expressed in the current product basis, `R̃ = (⊗_a 
 with `S_a = _child_overlap(prev.children[a], children[a])` on node axes and the identity on basis
 axes, so that `R̃' * V` are physical overlaps `⟨previous kept i | current j⟩` (exact: the children's
 discarded states do not enter an overlap with a current state).
+`R̃` has the promoted element type of `prev.vectors` and the overlaps (real only when all of them are).
 Requires the checks of `_check_transportable`; `prev.vectors` is never written.
 """
 function _transport_previous(prev::MaterializedNode, children, dims)
     _check_transportable(prev, children, dims)
-    X = copy(prev.vectors)
     nodeaxes = [a for a in eachindex(children) if children[a] isa MaterializedNode]
-    isempty(nodeaxes) && return X
+    isempty(nodeaxes) && return copy(prev.vectors)
+    S = Dict(a => _child_overlap(prev.children[a], children[a]) for a in nodeaxes)
+    T = promote_type(eltype(prev.vectors), (eltype(M) for M in values(S))...)
+    X = Matrix{T}(prev.vectors)                    # a copy
     # apply_axis! forbids aliasing: alternate between two distinct work arrays, one application per axis.
     W = similar(X)
     shape = (dims..., size(X, 2))
     for a in nodeaxes
-        S = _child_overlap(prev.children[a], children[a])
-        apply_axis!(reshape(W, shape), DenseOp(Matrix(S')), reshape(X, shape), a)
+        apply_axis!(reshape(W, shape), DenseOp(Matrix{T}(S[a]')), reshape(X, shape), a)
         X, W = W, X
     end
     return X
@@ -287,21 +300,44 @@ end
     _child_overlap(prev::MaterializedNode, cur::MaterializedNode) -> Matrix
 
 The physical overlaps `⟨prev kept i | cur kept j⟩`: at a leaf `prev.vectors' * cur.vectors`, at a
-branch `_transport_previous(prev, cur.children, cur.dims)' * cur.vectors`.
+branch `_transport_previous(prev, cur.children, cur.dims)' * cur.vectors`, in the promoted element type.
 Throws an `ArgumentError` when the dims or a basis child differ anywhere below.
 """
 _child_overlap(prev::MaterializedNode, cur::MaterializedNode) =
-    _transport_previous(prev, cur.children, cur.dims)' * cur.vectors
+    _overlap(_transport_previous(prev, cur.children, cur.dims), cur.vectors)
 
 # Kronecker product of per-axis vectors, axis 1 fastest.
 _kronaxes(vs) = foldl((acc, v) -> kron(v, acc), vs; init=[true])
 
 # ⟨v_i| O_axis |v_j⟩ for the columns of V, with O acting on axis `axis` of the product basis.
-function _port_matrix(V::Matrix{ComplexF64}, dims::Vector{Int}, axis::Int, op::LocalOp)
+# On real `V` it takes only real operators (the components the method below passes).
+function _port_matrix(V::NodeMatrix, dims::Vector{Int}, axis::Int, op::LocalOp)
     X = reshape(V, dims..., size(V, 2))
     Y = similar(X)
     apply_axis!(Y, op, X, axis)
     return V' * reshape(Y, size(V))
+end
+
+# The port with operator `op` and conjugation character `ch` (spec Section 20f).
+# On a complex node the character is not needed, and a real dense operator (a real child's port) is converted first,
+# since BLAS has no mixed real–complex gemm.
+# On a real node the port is formed from the components `R = realpart(op)`, `I = imagpart(op)` in real arithmetic, in
+# its natural type: a real port is `Vᵀ R V` (`Matrix{Float64}`), an imaginary one `i Vᵀ I V`, and a paired or general one
+# `Vᵀ R V + i Vᵀ I V` (`Matrix{ComplexF64}`, whose real and imaginary parts are the separately computed components).
+_port_matrix(V::Matrix{ComplexF64}, dims::Vector{Int}, axis::Int, op::LocalOp, ::PortCharacter) =
+    _port_matrix(V, dims, axis, op isa DenseOp ? DenseOp(convert(Matrix{ComplexF64}, op.M)) : op)
+function _port_matrix(V::Matrix{Float64}, dims::Vector{Int}, axis::Int, op::LocalOp, ch::PortCharacter)
+    ch.kind === :real && return _port_matrix(V, dims, axis, realpart(op))
+    Im = _port_matrix(V, dims, axis, imagpart(op))
+    ch.kind === :imaginary && return complex.(zero(Im), Im)
+    return complex.(_port_matrix(V, dims, axis, realpart(op)), Im)
+end
+
+# The port `p` of `mode` on the columns of `V`, a node's vectors over its materialized `children`; its character is
+# the port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
+function _node_port(node::Node, children, dims::Vector{Int}, V::NodeMatrix, mode::Symbol, p::Port)
+    a = axis_of(node, mode)
+    return _port_matrix(V, dims, a, _childop(children[a], mode, p), _factor_character(_mode_leaves(node), Factor(mode, p)))
 end
 
 # Per column of V, the 2-norm of its entries on the first and last `w` points of axis `axis`.
@@ -355,7 +391,8 @@ end
 # (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
 # child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
 # With `real` (a node classified real) it is built from real data only: `Float64` terms from
-# `_real_node_terms` and `real(constant)`.
+# `_real_node_terms` and `real(constant)`; otherwise it is `ComplexF64`, whatever the types of its data (a real child's
+# ports and energies are converted).
 # Scratch is reserved for the resolved `solver`'s full block (LOBPCG: the computed pairs and its guard
 # columns; ChebyshevFilter: the computed pairs and its extra columns), on the solver's storage.
 function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term}, θ::NamedTuple, constant; real::Bool)
@@ -364,6 +401,7 @@ function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term
         axisterms = AxisTerm[t for t in _real_node_terms(node, children, terms, θ)]
         constant = Base.real(constant)
     else
+        constant = ComplexF64(constant)
         axisterms = AxisTerm[]
         for t in terms
             fs = Tuple{Int,LocalOp}[]
@@ -419,12 +457,15 @@ end
 # The initial block of an LOBPCG node: `nothing` without a previous solution of the same `dims`,
 # else a copy of its kept vectors (raw coefficients, in kept order) truncated to `m` columns or
 # padded on the right with `randn` columns (never zeros, which the solver rejects) of element type `T`.
+# Real previous vectors are converted for a complex operator; complex ones are dropped (a cold start) for a real
+# operator (spec Section 20f; only when `arithmetic` or the term list changed between the calls).
 # Truncation follows the kept order, not energy order (a previous kept with a reordered `indices`
 # rule contributes its first columns); the solver's guard columns recover any lower states.
 _initial_block(prev, dims, m::Int) =
     _initial_block(prev, dims, m, prev === nothing ? Nothing : eltype(prev.vectors))
 function _initial_block(prev, dims, m::Int, ::Type{T}) where {T}
     (prev === nothing || prev.dims != dims) && return nothing
+    T <: Real && !(eltype(prev.vectors) <: Real) && return nothing
     k = min(size(prev.vectors, 2), m)
     X = Matrix{T}(undef, size(prev.vectors, 1), m)
     X[:, 1:k] .= view(prev.vectors, :, 1:k)
@@ -455,8 +496,10 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     reference = prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
 
     # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
+    # A node classified real runs in real arithmetic; branches stay complex for now, over real leaves too.
     solver = _resolve_node_solver(node, children)
-    H = _node_operator(node, solver, children, routed[node], θ, constant; real=false)   # every node still runs complex
+    isleaf = all(c -> c isa Basis, children)
+    H = _node_operator(node, solver, children, routed[node], θ, constant; real=isleaf && realnodes[node])
 
     # (4) Diagonalize.
     _dense_too_large(solver, prod(dims)) &&
@@ -471,10 +514,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # Selection rules see only moduli (port elements, overlaps), so phases are fixed on the kept
     # vectors only (fixing them on every computed vector would cost a pass over all of them and
     # warn for high states with no weight on the mask), and the selection ports are rotated to match.
-    ports = Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}()
+    ports = Dict{Tuple{Symbol,Port},NodeMatrix}()
     for (mode, p) in ports_needed(node.keep)
-        a = axis_of(node, mode)
-        ports[(mode, p)] = _port_matrix(V, dims, a, _childop(children[a], mode, p))
+        ports[(mode, p)] = _node_port(node, children, dims, V, mode, p)
     end
     idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev, reference)), size(V, 2), node.keep)
     E, V = E[idx], V[:, idx]
@@ -485,9 +527,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # the joint peak of the dominant product component (`branch_peak_phase`), the argmax restricted
     # to the positive sector on basis-child axes only (node-child masks are all true).
     # Peaks are taken on the unphased vectors, as fix_phases! and branch_peak_phase do.
+    # On real vectors every phase is a sign (`_unphase`), so a real node never acquires complex vectors.
     mask = _kronaxes(_childmask(c) for c in children)
-    isleaf = all(c -> c isa Basis, children)
-    amps = isleaf ? AbstractMatrix{ComplexF64}[] : AbstractMatrix{ComplexF64}[_childamps(c) for c in children]
+    amps = isleaf ? AbstractMatrix[] : AbstractMatrix[_childamps(c) for c in children]
     V0 = copy(V)
     sector = findall(mask)
     peaks = [_sector_peak(view(V0, :, j), sector) for j in axes(V0, 2)]
@@ -513,7 +555,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
                       "ratio $(abs(α) / d) < $_HYBRID_RATIO to its dominant product component's (heavy " *
                       "hybridization); its phase is fixed by a small amplitude" maxlog=10
             end
-            view(V, :, j) .*= exp(-im * angle(α))
+            view(V, :, j) .*= _unphase(eltype(V), α)
         end
     end
     ph = [dot(view(V0, :, j), view(V, :, j)) for j in axes(V, 2)]    # V[:, j] = ph[j] V0[:, j]
@@ -525,7 +567,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     if isleaf
         peak_amps = V[peak, :]
     else
-        peak_amps = Matrix{ComplexF64}(undef, length(peak), length(peak))
+        peak_amps = Matrix{eltype(V)}(undef, length(peak), length(peak))
         cis = CartesianIndices(Tuple(dims))
         for (p, comp) in enumerate(peak)
             ci = cis[comp]
@@ -536,8 +578,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # (8) The remaining required ports, on the kept vectors.
     for (mode, p) in needed[node]
         haskey(ports, (mode, p)) && continue
-        a = axis_of(node, mode)
-        ports[(mode, p)] = _port_matrix(V, dims, a, _childop(children[a], mode, p))
+        ports[(mode, p)] = _node_port(node, children, dims, V, mode, p)
     end
 
     # (9) Grid edge support of the kept states.
@@ -571,32 +612,35 @@ end
 
 The Hamiltonian of `node` in its product basis at `sys.θ`, rebuilt from the materialized children
 exactly as `materialize` built it (the root's includes the constant; its scratch and storage follow
-the node's solver, as resolved by `materialize`).
+the node's solver, as resolved by `materialize`); it is real exactly when the node was materialized in real arithmetic.
 """
 function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
     mn = materialized(sys, node)
     routed = route(sys.root.node, sys.terms)
     c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
-    return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c; real=false)
+    return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c;
+                          real=mn isa MaterializedNode{Float64})
 end
 
 """
     arithmetic(sys, node=root) -> Symbol
 
-The arithmetic `node` was materialized in: `:real` when its stored eigenvectors are real, else `:complex`.
+The arithmetic `node` was materialized in: `:real` when it is stored as a `MaterializedNode{Float64}` (real
+eigenvectors), else `:complex`.
 """
-arithmetic(sys::System, node::Node=sys.root.node) = eltype(materialized(sys, node).vectors) <: Real ? :real : :complex
+arithmetic(sys::System, node::Node=sys.root.node) = materialized(sys, node) isa MaterializedNode{Float64} ? :real : :complex
 
 "Kept energies of `node` (default: the root), absolute, GHz."
 energies(sys::System, node::Node=sys.root.node) = materialized(sys, node).energies
 
-"Kept eigenvectors of `node` in its product basis, one column per kept state."
+"Kept eigenvectors of `node` in its product basis, one column per kept state, as stored (`Matrix{Float64}` for a node in real arithmetic)."
 eigenvectors(sys::System, node::Node=sys.root.node) = materialized(sys, node).vectors
 
 """
-    port(sys, mode, p, node=root) -> Matrix{ComplexF64}
+    port(sys, mode, p, node=root) -> Matrix{Float64} or Matrix{ComplexF64}
 
-The port `p` of `mode` in the kept eigenbasis of `node`.
+The port `p` of `mode` in the kept eigenbasis of `node`, as stored: a `Matrix{Float64}` for a real-character port of a
+node in real arithmetic, else a `Matrix{ComplexF64}` (see [`MaterializedNode`](@ref)).
 """
 function port(sys::System, mode::Symbol, p::Port, node::Node=sys.root.node)
     mn = materialized(sys, node)
@@ -607,7 +651,7 @@ function port(sys::System, mode::Symbol, p::Port, node::Node=sys.root.node)
 end
 
 """
-    port(sys, kind::Symbol, mode::Symbol, node=root; k=0.0) -> Matrix{ComplexF64}
+    port(sys, kind::Symbol, mode::Symbol, node=root; k=0.0) -> Matrix
 
 The spec-form spelling `port(sys, :n, :varphi_2)`: `kind` is one of `:n, :n2, :phi, :phi2,
 :expiphi, :exp2pin`, and `k` the exponent coefficient of the exponential ports.
@@ -616,10 +660,11 @@ port(sys::System, kind::Symbol, mode::Symbol, node::Node=sys.root.node; k::Real=
     port(sys, mode, port_of_kind(kind, k), node)
 
 """
-    charge_port(sys, mode) -> Matrix{ComplexF64}
+    charge_port(sys, mode) -> Matrix{Float64} or Matrix{ComplexF64}
 
 The physical charge `n` of `mode` in the kept eigenbasis of the leaf that holds it, computed on
-demand from that leaf's kept vectors.
+demand from that leaf's kept vectors, in its natural type (as [`port`](@ref)): real for a `ChargeBasis` mode of a leaf
+in real arithmetic, complex otherwise (always on a `PeriodicGrid` mode).
 For a [`PeriodicGrid`](@ref) mode it is `V'(D₁)V + n_g I`, with the twisted derivative
 `D₁ = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋` (which is `n - n_g` in the twisted gauge) and
 `n_g` the mode's offset charge from `sys.spec`, both evaluated at `sys.θ`; it needs a system built
@@ -634,7 +679,7 @@ function charge_port(sys::System, mode::Symbol)
     a = axis_of(leaf.node, mode)
     b = leaf.children[a]
     V, dims = leaf.vectors, leaf.dims
-    b isa PeriodicGrid || return _port_matrix(V, dims, a, localop(b, nport()))
+    b isa PeriodicGrid || return _port_matrix(V, dims, a, localop(b, nport()), character(b, nport()))
     sys.spec === nothing &&
         throw(ArgumentError("charge_port on the PeriodicGrid mode :$mode needs its offset charge, but the system " *
                             "was built from a term list; materialize it from a spec"))
@@ -643,7 +688,7 @@ function charge_port(sys::System, mode::Symbol)
     ng = sys.spec.n_g[idx]
     Q = ng(sys.θ) * Matrix{ComplexF64}(I, size(V, 2), size(V, 2))
     for (t, p) in _twisted_pieces(ng, :d1)
-        Q .+= (t === nothing ? 1.0 : t(sys.θ)) .* _port_matrix(V, dims, a, localop(b, p))
+        Q .+= (t === nothing ? 1.0 : t(sys.θ)) .* _port_matrix(V, dims, a, localop(b, p), character(b, p))
     end
     return Q
 end

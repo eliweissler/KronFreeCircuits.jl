@@ -103,6 +103,10 @@ end
     n = Node([:varphi_1 => ChargeBasis(6)]; solver=Dense(), keep=lowest(3), arithmetic=:complex)
     sys = materialize(n, tr, θtr)
     @test arithmetic(sys) === :complex && arithmetic(sys, n) === :complex
+    # :auto follows the classification: the charge-basis transmon is real, the periodic-grid one (parameter n_g) complex
+    sa = materialize(Node([:varphi_1 => ChargeBasis(6)]; solver=Dense(), keep=lowest(3)), tr, θtr)
+    @test arithmetic(sa) === :real && sa.root isa KronFreeCircuits.MaterializedNode{Float64}
+    @test arithmetic(materialize(Node([:varphi_1 => PeriodicGrid(16; order=4)]; solver=Dense(), keep=lowest(3)), tr, θtr)) === :complex
     @test n.arithmetic === :complex && Node([:x => ChargeBasis(2)]).arithmetic === :auto
     # a composite term on a :real node raises the composite error, not a conjugate-image one (checks run first)
     comp = [Term(Coefficient("E*im", [:E]), [Factor(:a, nport()), Factor(:a, n2port())])]
@@ -201,7 +205,9 @@ end
     terms = [T(C("E", :E), (:x, n2port())), T(C("F", :F), (:y, n2port())), T(C("0.4"), (:x, nport()), (:y, nport())),
              T(C("E", :E), (:z, n2port())), T(C("0.3*E", :E), (:x, nport()), (:z, nport())), T(C("0.9*F", :F), (:y, nport()), (:z, nport()))]
     θ = (E=1.3, F=0.7)
-    sys = materialize(root, terms, θ)                    # children through the (complex) materialize path
+    # children through the materialize path; the child is diagonal in charge, so its real eigenvectors include charge
+    # states on negative charges, which have no weight on the phase mask (a warning, silenced here)
+    sys = @test_logs min_level=Base.CoreLogging.Error materialize(root, terms, θ)
     routed = KronFreeCircuits.route(root, terms)
     @test KronFreeCircuits.classify(root, routed, Coefficient(0), θ)[root]
     Hr = KronFreeCircuits._node_operator(root, Dense(), sys.root.children, routed[root], θ, 0.0; real=true)

@@ -35,10 +35,11 @@ end
 bare_overlaps(sys::System, node::Node=sys.root.node) = abs2.(permutedims(materialized(sys, node).vectors))
 
 """
-    decompose(sys, node, i; thresh=1e-3) -> Vector{Pair{Tuple,ComplexF64}}
+    decompose(sys, node, i; thresh=1e-3) -> Vector{Pair{Tuple,T}}
 
 Bare label => amplitude of kept state `i` on every product state with weight above `thresh`,
 sorted by descending weight.
+The amplitudes have the element type `T` of the node's stored eigenvectors (`Float64` for a node in real arithmetic).
 """
 function decompose(sys::System, node::Node, i::Int; thresh::Real=1e-3)
     mn = materialized(sys, node)
@@ -52,7 +53,7 @@ function _decompose(mn::MaterializedNode, i::Int, thresh::Real)
     cart = CartesianIndices(Tuple(mn.dims))
     ps = [p for p in eachindex(v) if abs2(v[p]) > thresh]
     sort!(ps; by=p -> -abs2(v[p]))
-    return Pair{Tuple,ComplexF64}[Tuple(Int(k) for k in Tuple(cart[p])) => v[p] for p in ps]
+    return Pair{Tuple,eltype(v)}[Tuple(Int(k) for k in Tuple(cart[p])) => v[p] for p in ps]
 end
 
 """

@@ -765,3 +765,96 @@ end
     @test _block_capacity(H) == 6 + LOBPCG().guard                                        # the resolved solver's block, as materialize built it
     check_eigenpairs(H, energies(s_auto), eigenvectors(s_auto); tol=1e-7)
 end
+
+@testset "real leaves: Float64 throughout and equal to the complex path" begin
+    cases = [(load_spec(fixture("transmon.json")), [:varphi_1 => ChargeBasis(15)], (E_J=20.0, E_C=1.0, n_g=0.3), [(:varphi_1, nport())]),
+             (load_spec(fixture("fluxonium.json")), [:varphi_1 => PhaseGrid(-6π, 6π, 151; order=8)], (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π), [(:varphi_1, nport()), (:varphi_1, phiport()), (:varphi_1, expiphi(1))]),
+             (load_spec(fixture("zero_pi.json")), [:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)], zero_pi_params(), [(:theta, nport()), (:phi, nport())])]
+    quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())               # the small zero-pi grid warns on edge support
+    for (spec, ch, θ, ps) in cases
+        sr = quiet(() -> materialize(Node(ch; solver=Dense(), keep=lowest(8), ports=ps), spec, θ))
+        sc = quiet(() -> materialize(Node(ch; solver=Dense(), keep=lowest(8), ports=ps, arithmetic=:complex), spec, θ))
+        @test arithmetic(sr) === :real && arithmetic(sc) === :complex
+        @test eltype(eigenvectors(sr)) === Float64
+        H = KronFreeCircuits.operator(sc)
+        @test energies(sr) ≈ energies(sc) atol=1e-12 * max(1, gershgorin_bound(H))
+        @test minimum(diff(energies(sc))) > 1e-6                                              # the kept states are nondegenerate
+        s = sign.(real(diag(eigenvectors(sc)' * eigenvectors(sr))))                         # per-state signs (nondegenerate here)
+        @test eigenvectors(sr) ≈ real(eigenvectors(sc)) .* s' atol=1e-9
+        for (m, p) in ps
+            Pr, Pc = port(sr, m, p), port(sc, m, p)
+            ch_ = character(only(b for (k, b) in ch if k === m), p)
+            @test eltype(Pr) === (ch_.kind === :real ? Float64 : ComplexF64)
+            @test Pr ≈ s .* Pc .* s' atol=1e-9
+        end
+        Hr = KronFreeCircuits.operator(sr)                                                   # rebuilt as materialize built it
+        @test eltype(Hr) === Float64 && eltype(materialized(sr, sr.root.node).peak_amplitudes) === Float64
+        check_eigenpairs(Hr, energies(sr), eigenvectors(sr); tol=1e-9)
+    end
+end
+
+@testset "real leaves: a paired selection port, decompose, edge warning, charge_port" begin
+    using KronFreeCircuits: charge_port
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params()
+    ch = [:theta => ChargeBasis(6), :phi => PhaseGrid(-6π, 6π, 101; order=6)]
+    rule = connected(core=[1], port=(:phi, expiphi(1)), thresh=1e-3)
+    quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())               # the small zero-pi grid warns on edge support
+    sr = quiet(() -> materialize(Node(ch; solver=Dense(), compute=12, keep=rule), spec, θ))
+    sc = quiet(() -> materialize(Node(ch; solver=Dense(), compute=12, keep=rule, arithmetic=:complex), spec, θ))
+    @test arithmetic(sr) === :real && materialized(sr, sr.root.node).kept == materialized(sc, sc.root.node).kept
+    @test length(materialized(sr, sr.root.node).kept) > 1
+    s = sign.(real(diag(eigenvectors(sc)' * eigenvectors(sr))))
+    Pr, Pc = port(sr, :phi, expiphi(1)), port(sc, :phi, expiphi(1))
+    @test eltype(Pr) === ComplexF64
+    @test Pr ≈ s .* Pc .* s' atol=1e-9
+    d = decompose(sr, 1)
+    @test d isa Vector{Pair{Tuple,Float64}} && !isempty(d)
+    # the PhaseGrid edge-support warning still fires on a too-small real leaf
+    fl = load_spec(fixture("fluxonium.json")); θf = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)
+    small = @test_logs (:warn, r"PhaseGrid on mode :varphi_1 is too small") materialize(Node([:varphi_1 => PhaseGrid(-2, 2, 41)]; keep=lowest(6)), fl, θf)
+    @test arithmetic(small) === :real
+    # charge_port on a ChargeBasis mode of a real leaf is real; on a PhaseGrid mode it is imaginary
+    tr = materialize(Node([:varphi_1 => ChargeBasis(15)]; solver=Dense(), keep=lowest(6), ports=[(:varphi_1, nport())]), load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3))
+    Q = charge_port(tr, :varphi_1)
+    @test Q isa Matrix{Float64}
+    @test Q ≈ port(tr, :varphi_1, nport()) atol=1e-12
+    @test charge_port(sr, :phi) isa Matrix{ComplexF64} && all(iszero, real(charge_port(sr, :phi)))
+end
+
+@testset "warm start across arithmetics: real into complex converted, complex into real dropped" begin
+    using KronFreeCircuits: LOBPCG, _initial_block
+    spec = load_spec(fixture("fluxonium.json")); θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)
+    leaf(ar) = Node([:varphi_1 => PhaseGrid(-10π, 10π, 201)]; solver=LOBPCG(tol=1e-11), compute=6, keep=lowest(6), arithmetic=ar)
+    sr, sc = materialize(leaf(:auto), spec, θ), materialize(leaf(:complex), spec, θ)
+    @test _initial_block(sc.root, sc.root.dims, 6, Float64) === nothing                    # complex into real: a cold start
+    X = _initial_block(sr.root, sr.root.dims, 6, ComplexF64)
+    @test X isa Matrix{ComplexF64} && X == eigenvectors(sr)                               # real into complex: converted
+    @test energies(materialize(leaf(:auto), spec, θ; previous=sc)) ≈ energies(sc) atol=1e-9
+    @test energies(materialize(leaf(:complex), spec, θ; previous=sr)) ≈ energies(sc) atol=1e-9
+end
+
+@testset "a complex branch over real leaves equals the all-complex tree" begin
+    using KronFreeCircuits: LOBPCG, follow
+    spec = load_spec(fixture("two_transmons.json"))
+    function tree(ar; top=Dense(), keep=lowest(6))
+        l1 = Node([:varphi_1 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6), arithmetic=ar)
+        l2 = Node([:varphi_2 => ChargeBasis(8)]; solver=Dense(), keep=lowest(6), arithmetic=ar)
+        return Node([l1, l2]; solver=top, compute=8, keep=keep, ports=[(:varphi_1, nport()), (:varphi_2, expiphi(1))])
+    end
+    θ0, θ1 = two_transmons_params(; g=0.1), two_transmons_params(; g=0.12)
+    # a previous solution feeds the LOBPCG warm start, and the follow rule through the real leaves' overlaps
+    for (top, keep) in ((Dense(), lowest(6)), (LOBPCG(tol=1e-11), lowest(6)), (Dense(), follow()))
+        sr0, sc0 = materialize(tree(:auto; top), spec, θ0), materialize(tree(:complex; top), spec, θ0)
+        tr, tc = tree(:auto; top, keep), tree(:complex; top, keep)
+        sr, sc = materialize(tr, spec, θ1; previous=sr0), materialize(tc, spec, θ1; previous=sc0)
+        @test arithmetic(sr, tr.children[1]) === :real && arithmetic(sr, tr.children[2]) === :real
+        @test arithmetic(sr) === :complex                                       # branches stay complex until Task 7
+        @test eltype(port(sr, :varphi_1, nport(), tr.children[1])) === Float64
+        @test energies(sr) ≈ energies(sc) atol=1e-9
+        # the branch phase rule does not depend on the children's phases, so the physical states agree exactly
+        @test _primitive(sr.root) ≈ _primitive(sc.root) atol=1e-8
+        for (m, p) in ((:varphi_1, nport()), (:varphi_2, expiphi(1)))
+            @test port(sr, m, p) ≈ port(sc, m, p) atol=1e-8
+        end
+    end
+end

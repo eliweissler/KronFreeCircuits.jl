@@ -61,7 +61,7 @@ end
     sd = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec_zp, θ)
     si = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(leaf.children; solver=ShiftInvert(tol=1e-10), compute=8, keep=lowest(8)), spec_zp, θ)
     @test energies(si) ≈ energies(sd) atol=1e-8
-    @test eltype(KronFreeCircuits.operator(si)) === ComplexF64                   # materialize builds complex operators until Task 6
+    @test eltype(KronFreeCircuits.operator(si)) === Float64                       # the symmetric zero-pi leaf is real by structure
     check_eigenpairs(KronFreeCircuits.operator(si), energies(si), eigenvectors(si); tol=1e-9)
     # a loose inner tolerance must raise, not return
     err = try solve(ShiftInvert(tol=1e-10, inner_tol=1e-4), H, 12); nothing catch e; e end

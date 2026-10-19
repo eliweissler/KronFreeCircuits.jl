@@ -49,7 +49,8 @@ KronFreeCircuits.ports_needed(r::_PermutedSelection) = Tuple{Symbol,Port}[r.port
         if ng == 0.2
             # nondegenerate levels: the eigenvectors are parity-resolved, and the selection stays in the
             # ground state's sector
-            @test all(x -> x < 1e-20 || x > 1 - 1e-20, w)
+            wo = [sum(abs2, V[.!ev, j]) for j in axes(V, 2)]     # off-sector weights (1 - 1e-20 == 1.0, so test these, not w)
+            @test all(j -> min(w[j], wo[j]) < 1e-20, axes(V, 2))
             @test all(==(w[1] > 0.5), w .> 0.5)
             Esame = eigvals(Hermitian(w[1] > 0.5 ? A[ev, ev] : A[.!ev, .!ev]))
             @test all(e -> minimum(abs.(Esame .- e)) < 1e-9, E)
@@ -328,9 +329,6 @@ end
         end
         @test port(sys, :varphi_1, expiphi(0.5)) ≈ port(sys, :varphi_1, expiphi(-0.5))' atol=1e-12   # conjugate ports
     end
-    s0 = materialize(leaf(1:k), terms, θ; constant=c); V0 = eigenvectors(s0)
-    P0 = Dict(key => port(s0, key...) for key in keys_)
-    checkports(s0)
     Random.seed!(82)
     perm = [3, 1, 5, 2, 4]; ph = cis.(2π .* rand(k))
     function phased(sys, U)                                       # the same previous solution with V -> V U
@@ -339,18 +337,25 @@ end
                                                r.peak_component, r.peak_amplitudes)
         return KronFreeCircuits.System(mn, sys.spec, sys.terms, sys.θ, sys.constant)
     end
-    Uperm = Matrix{ComplexF64}(I, k, k)[:, perm]; Uph = Matrix(Diagonal(ph))
-    # V -> V U with U a permutation (the selection), a diagonal of phases (:follow from a phased previous),
-    # and both; every port must transform as U' P U
-    runs = [(materialize(leaf(perm), terms, θ; constant=c), Uperm),
-            (materialize(leaf(1:k; phase=:follow), terms, θ; constant=c, previous=phased(s0, Uph)), Uph),
-            (materialize(leaf(perm; phase=:follow), terms, θ; constant=c, previous=phased(s0, Uperm * Uph)), Uperm * Uph)]
-    for (sys, U) in runs
-        @test eigenvectors(sys) ≈ V0 * U atol=1e-10
-        for key in keys_
-            @test port(sys, key...) ≈ U' * P0[key] * U atol=1e-10
+    # the fluxonium leaf is real by structure and its phases are signs: complex phases on the complex path, signs on the real one
+    for (ar, phs) in ((:complex, ph), (:auto, Float64[1, -1, -1, 1, -1]))
+        s0 = materialize(leaf(1:k; arithmetic=ar), terms, θ; constant=c); V0 = eigenvectors(s0)
+        P0 = Dict(key => port(s0, key...) for key in keys_)
+        checkports(s0)
+        Uperm = Matrix{eltype(V0)}(I, k, k)[:, perm]; Uph = Matrix(Diagonal(phs))
+        # V -> V U with U a permutation (the selection), a diagonal of phases (:follow from a phased previous),
+        # and both; every port must transform as U' P U
+        runs = [(materialize(leaf(perm; arithmetic=ar), terms, θ; constant=c), Uperm),
+                (materialize(leaf(1:k; phase=:follow, arithmetic=ar), terms, θ; constant=c, previous=phased(s0, Uph)), Uph),
+                (materialize(leaf(perm; phase=:follow, arithmetic=ar), terms, θ; constant=c, previous=phased(s0, Uperm * Uph)), Uperm * Uph)]
+        for (sys, U) in runs
+            @test arithmetic(sys) === (ar === :complex ? :complex : :real)
+            @test eigenvectors(sys) ≈ V0 * U atol=1e-10
+            for key in keys_
+                @test port(sys, key...) ≈ U' * P0[key] * U atol=1e-10
+            end
+            checkports(sys)
         end
-        checkports(sys)
     end
     # at a branch: ports formed from the children's ports, a selection port at the root, ancestor ports
     # (expiphi(±1) on varphi_1) required from the leaf after its slicing
@@ -370,7 +375,7 @@ end
         @test T0[key] ≈ Ψ0' * O * Ψ0 atol=1e-11                  # the primitive operators on explicit primitive states
     end
     @test T0[req2[1]] ≈ T0[req2[2]]' atol=1e-12
-    U = Uperm * Uph
+    U = Matrix{ComplexF64}(I, k, k)[:, perm] * Diagonal(ph)                 # the branch is complex
     t1 = materialize(top(perm; phase=:follow), terms2, θ2; previous=phased(t0, U))
     @test eigenvectors(t1) ≈ eigenvectors(t0) * U atol=1e-10
     for key in vcat([sel2], req2)
