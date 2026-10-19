@@ -27,10 +27,12 @@ end
     # the wrap-corner BandedOps in the sparse assembly used by ShiftInvert
     @test sparse(KronFreeCircuits.operator(sp)) ≈ Matrix(KronFreeCircuits.operator(sp))
     @test_throws ArgumentError KronFreeCircuits.charge_port(sp, :nope)
-    # with E_J ≠ 0 the assembled operator is exactly real at n_g ∈ {0, ½} (twist phase ±1) and complex otherwise
-    for (ng, isreal_) in ((0.0, true), (0.5, true), (0.3, false))
+    # the operator is complex by structure at every n_g (spec §20f), though its data has no imaginary part at n_g ∈ {0, ½} (twist phase ±1)
+    for (ng, zero_imag) in ((0.0, true), (0.5, true), (0.3, false))
         s = materialize(Node([:varphi_1 => PeriodicGrid(64; order=8)]; solver=Dense(), keep=lowest(4)), spec, (θ..., n_g=ng))
-        @test isreal_assembled(KronFreeCircuits.operator(s)) == isreal_
+        H = KronFreeCircuits.operator(s)
+        @test eltype(H) === ComplexF64
+        @test (maximum(abs, imag(Matrix(H))) == 0) == zero_imag
     end
 end
 

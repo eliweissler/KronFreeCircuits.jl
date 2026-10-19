@@ -45,6 +45,43 @@ function three_oscillators(d::Int)
     return KronFreeCircuits.KronFreeOperator([d, d, d], terms)
 end
 
+# Three coupled truncated oscillators whose cos couplings are real matrices: a Float64 operator.
+function real_three_oscillators(d::Int)
+    cos_op, nvec, ω = _three_osc_pieces(d)
+    cos_r = real.(cos_op)
+    terms = KronFreeCircuits.AxisTerm[]
+    for i in 1:3
+        push!(terms, KronFreeCircuits.AxisTerm(ω[i], [(i, KronFreeCircuits.DiagonalOp(nvec))]))
+    end
+    for (i, j) in ((1, 2), (2, 3), (1, 3))
+        push!(terms, KronFreeCircuits.AxisTerm(0.2, [(i, KronFreeCircuits.DenseOp(cos_r)), (j, KronFreeCircuits.DenseOp(cos_r))]))
+    end
+    return KronFreeCircuits.KronFreeOperator([d, d, d], terms)
+end
+
+# Two identical uncoupled real oscillators: every level above the ground is degenerate.
+function two_identical_real_oscillators(d::Int)
+    nvec = collect(0.0:d-1)
+    return KronFreeCircuits.KronFreeOperator([d, d], [KronFreeCircuits.AxisTerm(1.0, [(1, KronFreeCircuits.DiagonalOp(nvec))]),
+                                                      KronFreeCircuits.AxisTerm(1.0, [(2, KronFreeCircuits.DiagonalOp(nvec))])])
+end
+
+"""
+    complexified(H::KronFreeOperator)
+
+`H` rebuilt with every coefficient (and the constant) converted to `ComplexF64`, with the same factors.
+"""
+function complexified(H::KronFreeCircuits.KronFreeOperator)
+    terms = KronFreeCircuits.AxisTerm[]
+    for t in H.diagterms
+        push!(terms, KronFreeCircuits.AxisTerm(ComplexF64(t.coeff), t.factors))
+    end
+    for t in H.terms
+        push!(terms, KronFreeCircuits.AxisTerm(ComplexF64(t.coeff), Tuple{Int,KronFreeCircuits.LocalOp}[(a, op) for (a, op, _) in t.factors]))
+    end
+    return KronFreeCircuits.KronFreeOperator(H.dims, terms)
+end
+
 function kron_three_oscillators(d::Int)::Matrix{ComplexF64}
     cos_op, nvec, ω = _three_osc_pieces(d)
     N = Matrix{ComplexF64}(diagm(nvec))

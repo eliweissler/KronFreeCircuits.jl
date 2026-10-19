@@ -61,7 +61,7 @@ end
     sd = @test_logs (:warn, r"edge") match_mode=:any materialize(leaf, spec_zp, θ)
     si = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(leaf.children; solver=ShiftInvert(tol=1e-10), compute=8, keep=lowest(8)), spec_zp, θ)
     @test energies(si) ≈ energies(sd) atol=1e-8
-    @test KronFreeCircuits.isreal_assembled(KronFreeCircuits.operator(si))        # the symmetric zero-pi leaf takes the real path
+    @test eltype(KronFreeCircuits.operator(si)) === ComplexF64                   # materialize builds complex operators until Task 6
     check_eigenpairs(KronFreeCircuits.operator(si), energies(si), eigenvectors(si); tol=1e-9)
     # a loose inner tolerance must raise, not return
     err = try solve(ShiftInvert(tol=1e-10, inner_tol=1e-4), H, 12); nothing catch e; e end
@@ -73,7 +73,7 @@ end
 end
 
 @testset "ShiftInvert: complex path, explicit shifts, LU fallback" begin
-    using KronFreeCircuits: _factor_shifted, isreal_assembled
+    using KronFreeCircuits: _factor_shifted
     Random.seed!(82)
     # (a) a purely imaginary Hermitian coupling makes the assembled matrix complex
     d = 6
@@ -83,7 +83,7 @@ end
     push!(terms, AxisTerm(0.3, [(1, DenseOp(K)), (2, DenseOp(X))]))
     Hc = KronFreeCircuits.KronFreeOperator([d, d, d], terms)
     @test Matrix(Hc) ≈ Matrix(Hc)'
-    @test !isreal_assembled(Hc)
+    @test eltype(Hc) === ComplexF64
     Ed, Vd = solve(Dense(), Hc, 0)
     for blk in (1, 2)
         E, V = solve(ShiftInvert(tol=1e-9, block=blk, certify=true), Hc, 10)
@@ -96,8 +96,8 @@ end
     check_eigenpairs(Hc, E, V; tol=1e-9)
     @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-7
 
-    H = three_oscillators(6)
-    @test isreal_assembled(H)
+    H = real_three_oscillators(6)
+    @test eltype(H) === Float64
     Ed, Vd = solve(Dense(), H, 0)
     # (b) an explicit interior shift returns the eigenvalues nearest it, which the certificate refuses
     σ = Ed[20] + 1e-3
@@ -197,7 +197,7 @@ end
                                                       AxisTerm(1.3, [(2, DiagonalOp(collect(0.0:d-1)))]),
                                                       AxisTerm(0.3, [(1, DenseOp(K)), (2, DenseOp(X))]),
                                                       AxisTerm(1.0, [(3, DiagonalOp(zeros(3)))])])
-    @test !KronFreeCircuits.isreal_assembled(Hc)
+    @test eltype(Hc) === ComplexF64
     Edc, Vdc = solve(Dense(), Hc, 0)
     for m in (6, 7)
         E, V = solve(ShiftInvert(), Hc, m)
@@ -263,16 +263,16 @@ end
 # `pairs` lists couplings `(i1, i2, j, c)`: strength c between the product states (i1, j) and (i2, j)
 # (axis-1 indices i1, i2 from 1, axis-2 level j from 0); `shifts` lists `(i, j, δ)`: δ added to the energy
 # of the product state (i, j) by a diagonal two-axis term.
-function _invariant_seed_trap(pairs=[(1, 2, 5, 82.0)]; shifts=[])
+function _invariant_seed_trap(pairs=[(1, 2, 5, 82.0)]; shifts=[], T=ComplexF64)
     terms = AxisTerm[AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:9)))]), AxisTerm(10.0, [(2, DiagonalOp(collect(0.0:9)))])]
     for (i1, i2, j, c) in pairs
-        X = zeros(ComplexF64, 10, 10); X[i1, i2] = X[i2, i1] = 1
-        P = zeros(ComplexF64, 10, 10); P[j+1, j+1] = 1
+        X = zeros(T, 10, 10); X[i1, i2] = X[i2, i1] = 1
+        P = zeros(T, 10, 10); P[j+1, j+1] = 1
         push!(terms, AxisTerm(c, [(1, DenseOp(X)), (2, DenseOp(P))]))
     end
     for (i, j, δ) in shifts
-        Pi = zeros(ComplexF64, 10, 10); Pi[i, i] = 1
-        Pj = zeros(ComplexF64, 10, 10); Pj[j+1, j+1] = 1
+        Pi = zeros(T, 10, 10); Pi[i, i] = 1
+        Pj = zeros(T, 10, 10); Pj[j+1, j+1] = 1
         push!(terms, AxisTerm(δ, [(1, DenseOp(Pi)), (2, DenseOp(Pj))]))
     end
     return KronFreeCircuits.KronFreeOperator([10, 10], terms)
@@ -1017,4 +1017,86 @@ end
     @test work[:product] < work[:random]
     check_eigenpairs(KronFreeCircuits.operator(sp), energies(sp), eigenvectors(sp); tol=1e-9)
     @test_throws ArgumentError LOBPCG(seed=:bogus)
+end
+
+@testset "solvers run in the operator's element type; real equals complex" begin
+    for (name, H) in (("three real oscillators", real_three_oscillators(6)),
+                      ("degenerate pair", two_identical_real_oscillators(12)))
+        Hc = complexified(H)
+        @test eltype(H) === Float64 && eltype(Hc) === ComplexF64
+        Ed, Vd = solve(Dense(), H, 0); Edc, Vdc = solve(Dense(), Hc, 0)
+        @test eltype(Vd) === Float64 && eltype(Vdc) === ComplexF64
+        @test Ed ≈ Edc atol=1e-12
+        for s in (Lanczos(), LOBPCG(), ShiftInvert(), ShiftInvert(block=2),
+                  ChebyshevFilter(extra=name == "degenerate pair" ? 10 : 40))
+            name == "degenerate pair" && s isa Lanczos && continue      # documented: single-vector Krylov misses copies
+            E, V = solve(s, H, 10)
+            @test eltype(V) === Float64
+            @test E ≈ Ed[1:10] atol=1e-8
+            check_eigenpairs(H, E, V; tol=1e-8)
+            Ec, Vc = solve(s, Hc, 10)
+            @test eltype(Vc) === ComplexF64
+            @test Ec ≈ E atol=1e-8
+            cut = findlast(<(Ed[10] + 1e-6), Ed)
+            name == "degenerate pair" && @test cut == 10                # the projector check below runs
+            cut == 10 && @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-6
+        end
+    end
+end
+
+@testset "real solvers: a 4-fold degenerate ground level" begin
+    w = [0.0 1 0 0 0; 1 0.5 1 0 0; 0 1 1.5 1 0; 0 0 1 1.0 1; 0 0 0 1 2.0]
+    h = zeros(10, 10); h[1:5, 1:5] = w; h[6:10, 6:10] = w                  # two identical decoupled wells
+    H = KronFreeCircuits.KronFreeOperator([10, 10], [AxisTerm(1.0, [(1, DenseOp(h))]), AxisTerm(1.0, [(2, DenseOp(h))])])
+    @test eltype(H) === Float64
+    Ed, Vd = solve(Dense(), H, 0)
+    @test Ed[4] - Ed[1] < 1e-12 && Ed[5] - Ed[4] > 0.1                      # exactly 4-fold, then a gap
+    for s in (ShiftInvert(), ShiftInvert(block=2), LOBPCG(), ChebyshevFilter(extra=10))
+        E, V = solve(s, H, 4)
+        @test eltype(V) === Float64
+        @test E ≈ Ed[1:4] atol=1e-8
+        check_eigenpairs(H, E, V; tol=1e-8)
+        @test V * V' ≈ Vd[:, 1:4] * Vd[:, 1:4]' atol=1e-6                  # all four copies
+    end
+end
+
+@testset "real ChebyshevFilter: the invariant product seed excludes the ground state" begin
+    H = _invariant_seed_trap(; T=Float64)
+    @test eltype(H) === Float64
+    Ed, Vd = solve(Dense(), H, 0)
+    P = KronFreeCircuits.product_seed(H, 43)
+    @test eltype(P) === Float64
+    @test norm(H * P - P * (P' * (H * P))) == 0
+    @test norm(P' * Vd[:, 1]) == 0
+    for m in (3, 6), seed in (:product, :random)
+        Random.seed!(94)
+        E, V = solve(ChebyshevFilter(seed=seed), H, m)
+        @test eltype(V) === Float64
+        @test E ≈ Ed[1:m] atol=1e-8
+        check_eigenpairs(H, E, V; tol=1e-8)
+        m == 3 && @test V * V' ≈ Vd[:, 1:3] * Vd[:, 1:3]' atol=1e-6
+    end
+end
+
+@testset "real solvers: a near crossing, two levels 1e-7 apart at m and m + 1" begin
+    Random.seed!(95)
+    Q = Matrix(qr(randn(10, 10)).Q)
+    a = Q * Diagonal(collect(0.0:9)) * Q'; a = (a + a') / 2                  # dense real, levels 0, 1, ..., 9
+    b = [0.0, 2 + 1e-7, 3.3, 4.9, 5.7, 6.1, 7.7, 8.3, 9.1, 10.4]
+    H = KronFreeCircuits.KronFreeOperator([10, 10], [AxisTerm(1.0, [(1, DenseOp(a))]), AxisTerm(1.0, [(2, DiagonalOp(b))])])
+    @test eltype(H) === Float64
+    Ed, Vd = solve(Dense(), H, 0)
+    @test Ed[4] - Ed[3] ≈ 1e-7 atol=1e-9
+    for s in (Lanczos(), ShiftInvert(), ShiftInvert(block=2), LOBPCG(), ChebyshevFilter())
+        E4, V4 = solve(s, H, 4)                                             # the whole cluster
+        @test eltype(V4) === Float64
+        @test E4 ≈ Ed[1:4] atol=1e-8
+        check_eigenpairs(H, E4, V4; tol=1e-8)
+        @test V4 * V4' ≈ Vd[:, 1:4] * Vd[:, 1:4]' atol=1e-6
+        E3, V3 = solve(s, H, 3)                                             # the cut inside the cluster
+        @test E3 ≈ Ed[1:3] atol=1e-6
+        check_eigenpairs(H, E3, V3; tol=1e-6)
+        @test norm(Vd[:, 1:2]' * V3) ≈ sqrt(2) atol=1e-6                      # the two levels below the cluster are in the span
+        @test norm(Vd[:, 5:end]' * V3) < 1e-6                               # nothing above the cluster
+    end
 end

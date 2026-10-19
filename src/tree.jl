@@ -88,8 +88,7 @@ LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:
 
 Leaf solver on the CPU (spec §20e decision 3): Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
 directly from the assembled sparse matrix `sparse(H; maxnnz)`.
-Arithmetic is real when the assembled matrix and the fused diagonal have exactly zero imaginary
-part ([`isreal_assembled`](@ref KronFreeCircuits.isreal_assembled)), and complex otherwise.
+Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, complex otherwise.
 
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. A pair above it raises an error

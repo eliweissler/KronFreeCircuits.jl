@@ -1,19 +1,7 @@
 # ShiftInvert leaf solver (spec §20e decision 3): KrylovKit Lanczos on (H − σI)⁻¹ with H − σI
 # factored directly (CHOLMOD Cholesky, or UMFPACK LU) from the assembled sparse matrix, in real
-# arithmetic when the assembled matrix is exactly real. The Krylov tolerance applies to the inverted
+# arithmetic when the operator is real (`eltype(H) <: Real`). The Krylov tolerance applies to the inverted
 # operator; acceptance is the true residual against the package operator.
-
-"""
-    isreal_assembled(H::KronFreeOperator; maxnnz=10^8) -> Bool
-
-Whether the assembled matrix `sparse(H; maxnnz)` and the fused diagonal `H.diag` have exactly zero
-imaginary part: an exact check on assembled data, never a threshold. [`ShiftInvert`](@ref) runs in
-real arithmetic exactly when this holds.
-"""
-isreal_assembled(H::KronFreeOperator; maxnnz::Integer=10^8) = _isreal_assembled(sparse(H; maxnnz=maxnnz), H.diag)
-
-_isreal_assembled(A::SparseMatrixCSC, diag::AbstractVector) =
-    all(x -> iszero(imag(x)), diag) && all(x -> iszero(imag(x)), nonzeros(A))
 
 # The tolerance of the short Lanczos estimate of the lowest eigenvalue that places the automatic shift.
 const _EMIN_TOL = 1e-6
@@ -264,13 +252,13 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     m <= n || throw(ArgumentError("ShiftInvert: m = $m exceeds the operator dimension $n"))
 
     A = sparse(H; maxnnz=s.maxnnz)
-    realpath = _isreal_assembled(A, H.diag)
+    realpath = eltype(H) <: Real
     realpath && (A = real(A))
     # One exactly Hermitian matrix for the estimate and every factorization: the assembled matrix is
     # Hermitian only up to the summation order of duplicate entries.
     A = (A + A') / 2
-    @debug(realpath ? "ShiftInvert: real arithmetic (the assembled matrix is exactly real)" :
-                      "ShiftInvert: complex arithmetic (the assembled matrix has a nonzero imaginary part)")
+    @debug(realpath ? "ShiftInvert: real arithmetic (the operator is real)" :
+                      "ShiftInvert: complex arithmetic (the operator is complex)")
 
     Emin = _lowest_estimate(A, s.maxiter)
     k = _nslices(s)
