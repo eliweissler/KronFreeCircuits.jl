@@ -253,7 +253,6 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
 
     A = sparse(H; maxnnz=s.maxnnz)
     realpath = eltype(H) <: Real
-    realpath && (A = real(A))
     # One exactly Hermitian matrix for the estimate and every factorization: the assembled matrix is
     # Hermitian only up to the summation order of duplicate entries.
     A = (A + A') / 2

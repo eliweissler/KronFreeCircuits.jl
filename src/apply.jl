@@ -227,8 +227,8 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
             throw(DimensionMismatch("KronFreeOperator: factor on axis $a has dimension $(dimension(op)), expected $(dims[a])"))
     end
     block_capacity >= 1 || throw(ArgumentError("KronFreeOperator: block_capacity must be positive"))
-    T = promote_type(typeof(constant), (typeof(t.coeff) for t in terms)...,
-                     (eltype(f[2]) for t in terms for f in t.factors)...)
+    T = float(promote_type(typeof(constant), (typeof(t.coeff) for t in terms)...,
+                     (eltype(f[2]) for t in terms for f in t.factors)...))
     D = fill(T(constant), dims...)
     kept = _OperatorTerm[]
     fused = AxisTerm[]
@@ -353,6 +353,7 @@ end
 # `mul!` for a real operator and complex vectors: `H` applied to `real(x)` and `imag(x)` through real
 # temporaries (allocating). A convenience path that solvers never take; they carry vectors of `eltype(H)`.
 function _mul_real_operator!(y::AbstractVecOrMat, H::KronFreeOperator, x::AbstractVecOrMat)
+    _check_mul_args(y, H, x)
     xr = real.(x)
     yr = similar(xr)
     mul!(yr, H, xr)
@@ -363,12 +364,17 @@ function _mul_real_operator!(y::AbstractVecOrMat, H::KronFreeOperator, x::Abstra
     return y
 end
 
-function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::AbstractVecOrMat)
-    eltype(H) <: Real && eltype(x) <: Complex && return _mul_real_operator!(y, H, x)
-    n = prod(H.dims)
-    size(x, 1) == n || throw(DimensionMismatch("KronFreeOperator of size $(size(H)) applied to x with $(size(x, 1)) rows"))
+function _check_mul_args(y, H::KronFreeOperator, x)
+    size(x, 1) == prod(H.dims) || throw(DimensionMismatch("KronFreeOperator of size $(size(H)) applied to x with $(size(x, 1)) rows"))
     size(y) == size(x) || throw(DimensionMismatch("mul!: size(y) = $(size(y)) differs from size(x) = $(size(x))"))
     Base.mightalias(y, x) && throw(ArgumentError("mul!: y must not alias x"))
+    return nothing
+end
+
+function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::AbstractVecOrMat)
+    eltype(H) <: Real && eltype(x) <: Complex && return _mul_real_operator!(y, H, x)
+    _check_mul_args(y, H, x)
+    n = prod(H.dims)
     shape = (H.dims..., size(x, 2))
     _ensure_buffers!(H, shape)
     X = reshape(x, shape)

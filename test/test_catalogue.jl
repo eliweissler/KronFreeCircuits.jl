@@ -502,13 +502,10 @@ if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 6 s; the defa
     @test eltype(Pr) === Float64
     # The exchange pairs of the two identical zero-pis are split by only 6e-8 to 3e-6, so the two paths' Dense solves rotate
     # within a pair by round-off over the gap (about 2e-8, as between any two equally valid solves; abs.(Pr) and abs.(Pc)
-    # differ by 2e-9 in norm): compare the rotation-invariant block norms over clusters of nearly degenerate levels,
-    # which are also invariant to the per-state signs.
+    # differ by 2e-9 in norm): compare ports through the physical overlap O of the two paths' kept states, Pr = O Pc O'.
     clusters(E) = (b = [0; findall(>(1e-4), diff(E)); length(E)]; [b[i]+1:b[i+1] for i in 1:length(b)-1])
-    blocknorms(P, cs) = [norm(P[a, b]) for a in cs, b in cs]
     cs = clusters(energies(sc))
     @test 6 <= length(cs) < 12                                                            # several clusters, some pairs
-    @test blocknorms(Pr, cs) ≈ blocknorms(Pc, cs) atol=1e-10
     # LOBPCG at the branch (Auto's branch solver) in real arithmetic equals Dense
     tl = mk(:auto); tl.solver = LOBPCG(); tl.compute = 12
     sl = @test_logs (:warn, r"edge") match_mode=:any materialize(tl, tz, θ)
@@ -523,6 +520,7 @@ if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 6 s; the defa
                   a.root.vectors' * kron(S[2], S[1]) * b.root.vectors)
     offcluster(O) = norm(O - cat((O[c, c] for c in cs)...; dims=(1, 2)))
     O = phys(sr, sc)
+    @test Pr ≈ O * Pc * O' atol=1e-10
     @test abs.(diag(O)) ≈ ones(12) atol=1e-12
     @test offcluster(O) < 1e-10
     # the operator rebuilt for the real root is real, and the stored eigenpairs are its eigenpairs
@@ -543,7 +541,8 @@ if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 6 s; the defa
     sm = @test_logs (:warn, r"edge") match_mode=:any materialize(tm, tz, θ)
     @test arithmetic(sm, q1c) === :complex && arithmetic(sm, q2r) === :real && arithmetic(sm) === :complex
     @test energies(sm) ≈ energies(sc) atol=1e-11
-    @test blocknorms(port(sm, :theta1, nport()), cs) ≈ blocknorms(Pc, cs) atol=1e-10
+    Om = phys(sm, sc)
+    @test port(sm, :theta1, nport()) ≈ Om * Pc * Om' atol=1e-10
     # Review Focus 4: a previous solution from the other arithmetic, at g = 0.06 with follow() on the root
     θ′ = two_zero_pi_params(g=0.06)
     fol(ar) = (t = mk(ar); t.keep = follow(); t.phase = :follow; t)                       # as Node(...; keep=follow()) sets them
@@ -559,8 +558,8 @@ if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 6 s; the defa
     # solution agree across arithmetics with their signs, whichever signs that solution's branch phase rule picked
     @test diag(phys(rc, cc)) ≈ ones(12) atol=1e-12
     @test diag(phys(rr, cr)) ≈ ones(12) atol=1e-12
-    cs′ = clusters(energies(cc))
-    @test blocknorms(port(rc, :theta1, nport()), cs′) ≈ blocknorms(port(cc, :theta1, nport()), cs′) atol=1e-10
+    Orc = phys(rc, cc)
+    @test port(rc, :theta1, nport()) ≈ Orc * port(cc, :theta1, nport()) * Orc' atol=1e-10
     # LOBPCG at the branch warm-started from the other arithmetic: complex into real dropped, real into complex converted
     @test _initial_block(sc.root, sc.root.dims, 12, Float64) === nothing
     @test _initial_block(sr.root, sr.root.dims, 12, ComplexF64) isa Matrix{ComplexF64}

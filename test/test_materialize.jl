@@ -911,4 +911,8 @@ end
     @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes) === Float64
     @test_throws ErrorException _check_eltype(mn.node, false, mn.vectors, mn.peak_amplitudes)    # a real leak into a complex node
     @test_throws ErrorException _check_eltype(mn.node, true, complex(mn.vectors), mn.peak_amplitudes)
+    leaves = KronFreeCircuits._mode_leaves(mn.node)
+    key = (:varphi_1, nport())                                  # a ChargeBasis n is a real-character port
+    @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)), leaves) === Float64
+    @test_throws ErrorException _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(ComplexF64, 2, 2)), leaves)
 end

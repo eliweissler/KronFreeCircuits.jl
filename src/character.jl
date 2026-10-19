@@ -135,15 +135,22 @@ _agree(a::Number, b::Number) = abs(a - b) <= _TEST_RTOL * max(abs(a), abs(b))
 # not an integer literal) where an argument can be complex-valued (branch cuts).
 # On real-valued arguments `sqrt`, `log` and `^` are analytic where defined and throw a `DomainError` elsewhere.
 
+# The calls the gate classifies: real-valued whatever their argument (`_REAL_VALUED_CALLS`), complex-valued when an argument
+# is (`_ANALYTIC_CALLS`), and the calls it always treats as complex-valued (`_COMPLEX_CALLS`).
+# Every allowed call (`_ALLOWED_CALLS`) must be listed, which the tests check.
+const _REAL_VALUED_CALLS = (:real, :imag, :abs, :sign)
+const _COMPLEX_CALLS = (:cis, :cispi)
+const _ANALYTIC_CALLS = (:+, :-, :*, :/, ://, :^, :sqrt, :exp, :log, :cos, :sin, :tan, :cosh, :sinh, :tanh, :conj)
+
 # Whether `ex` can be complex-valued with real parameters; anything unrecognized can (conservative).
 function _maybe_complex(ex)
     ex isa Real && return false
     ex isa Symbol && return ex === :im          # parameters are real (a non-Real θ is rejected); pi, π, ℯ
     (ex isa Expr && ex.head === :call && ex.args[1] isa Symbol) || return true
     f, args = ex.args[1], @view ex.args[2:end]
-    f in (:real, :imag, :abs, :sign) && return false
-    f in (:cis, :cispi) && return true
-    f in (:+, :-, :*, :/, ://, :^, :sqrt, :exp, :log, :cos, :sin, :tan, :cosh, :sinh, :tanh, :conj) &&
+    f in _REAL_VALUED_CALLS && return false
+    f in _COMPLEX_CALLS && return true
+    f in _ANALYTIC_CALLS &&
         return any(_maybe_complex, args)
     return true
 end

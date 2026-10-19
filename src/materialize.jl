@@ -340,9 +340,9 @@ end
 
 # The port `p` of `mode` on the columns of `V`, a node's vectors over its materialized `children`; its character is
 # the port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
-function _node_port(node::Node, children, dims::Vector{Int}, V::NodeMatrix, mode::Symbol, p::Port)
+function _node_port(node::Node, leaves, children, dims::Vector{Int}, V::NodeMatrix, mode::Symbol, p::Port)
     a = axis_of(node, mode)
-    return _port_matrix(V, dims, a, _childop(children[a], mode, p), _factor_character(_mode_leaves(node), Factor(mode, p)))
+    return _port_matrix(V, dims, a, _childop(children[a], mode, p), _factor_character(leaves, Factor(mode, p)))
 end
 
 # Per column of V, the 2-norm of its entries on the first and last `w` points of axis `axis`.
@@ -522,8 +522,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # vectors only (fixing them on every computed vector would cost a pass over all of them and
     # warn for high states with no weight on the mask), and the selection ports are rotated to match.
     ports = Dict{Tuple{Symbol,Port},NodeMatrix}()
+    leaves = _mode_leaves(node)
     for (mode, p) in ports_needed(node.keep)
-        ports[(mode, p)] = _node_port(node, children, dims, V, mode, p)
+        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
     end
     idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev, reference)), size(V, 2), node.keep)
     E, V = E[idx], V[:, idx]
@@ -586,7 +587,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # (8) The remaining required ports, on the kept vectors.
     for (mode, p) in needed[node]
         haskey(ports, (mode, p)) && continue
-        ports[(mode, p)] = _node_port(node, children, dims, V, mode, p)
+        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
     end
 
     # (9) Grid edge support of the kept states.
@@ -597,16 +598,17 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
-    T = _check_eltype(node, realnode, V, peak_amps, ports)
+    T = _check_eltype(node, realnode, V, peak_amps, ports, leaves)
     return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, children, peak, peak_amps)
 end
 
 # The element type a node is stored in, its classification's (`Float64` when `real`, else `ComplexF64`), asserted
-# against the data (vectors, peak amplitudes, and on a complex node every port), so that a type leak cannot change a
-# node's arithmetic silently in either direction.
-function _check_eltype(node::Node, real::Bool, V, peak_amps, ports=Dict())
+# against the data (vectors, peak amplitudes, and every port: `Float64` for a real-character port of a real node,
+# `ComplexF64` otherwise), so that a type leak cannot change a node's arithmetic silently in either direction.
+function _check_eltype(node::Node, real::Bool, V, peak_amps, ports=Dict(), leaves=nothing)
     T = real ? Float64 : ComplexF64
-    eltype(V) === T && eltype(peak_amps) === T && (real || all(P -> eltype(P) === T, values(ports))) ||
+    port_ok((key, P)) = eltype(P) === (real && _factor_character(leaves, Factor(key...)).kind === :real ? Float64 : ComplexF64)
+    eltype(V) === T && eltype(peak_amps) === T && all(port_ok, ports) ||
         error("internal error: the node on modes $(modes(node)) is classified $(real ? "real" : "complex"), but its " *
               "vectors are $(eltype(V)), its peak amplitudes $(eltype(peak_amps)) and its port types " *
               "$(unique(eltype.(values(ports))))")

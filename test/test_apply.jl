@@ -535,3 +535,22 @@ end
     Y = similar(X); mul!(Y, H, X); @test Y ≈ Matrix(H) * X atol=1e-13
     @test eltype(three_oscillators(4)) === ComplexF64                                                   # complex data stays complex
 end
+
+@testset "real operator on complex vectors: checks and values" begin
+    rng = MersenneTwister(7)
+    H = KronFreeOperator([3, 4], [AxisTerm(0.7, [(1, DenseOp(Matrix(Symmetric(randn(rng, 3, 3))))), (2, ShiftOp(4, 1, 1.0))]),
+                                   AxisTerm(0.3, [(2, DiagonalOp(randn(rng, 4)))])]; constant=0.1)
+    @test eltype(H) === Float64
+    x = randn(rng, ComplexF64, 12)
+    @test H * x ≈ Matrix(H) * x
+    X = randn(rng, ComplexF64, 12, 5)
+    y = zeros(ComplexF64, 12, 2)
+    mul!(y, H, view(X, :, 2:3)); @test y ≈ Matrix(H) * X[:, 2:3]                          # a block view
+    @test_throws DimensionMismatch mul!(zeros(ComplexF64, 12, 3), H, reshape(x, 12, 1))             # n×1 into n×3
+    @test_throws DimensionMismatch mul!(zeros(ComplexF64, 12), H, randn(rng, ComplexF64, 11))
+    @test_throws ArgumentError mul!(X, H, X)
+    # integer data gives a floating operator
+    Hi = KronFreeOperator([2], [AxisTerm(2, [(1, DenseOp([1 2; 2 1]))])]; constant=1)
+    v = [1.0, -2.0]
+    @test eltype(Hi) === Float64 && Hi * v ≈ Matrix(Hi) * v
+end

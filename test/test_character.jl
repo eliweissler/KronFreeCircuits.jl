@@ -229,3 +229,9 @@ end
     Ac = Matrix(KronFreeCircuits._node_operator(top, Dense(), sysc.root.children, rc[top], θc, c; real=false))
     @test maximum(abs, Ar - Ac) <= 1e-13 * max(1, maximum(abs, Ac))
 end
+
+@testset "the classification gate covers every allowed coefficient call" begin
+    using KronFreeCircuits: _ALLOWED_CALLS, _REAL_VALUED_CALLS, _COMPLEX_CALLS, _ANALYTIC_CALLS
+    classified = Set(Iterators.flatten((_REAL_VALUED_CALLS, _COMPLEX_CALLS, _ANALYTIC_CALLS)))
+    @test all(f -> f in classified, _ALLOWED_CALLS)
+end

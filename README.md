@@ -156,13 +156,13 @@ Each basis declares how complex conjugation acts on the ports it serves:
 | `PhaseGrid` | `n2`, `phi`, `phi2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
 | `PeriodicGrid` | `d2`, `d2wrap(±1)` | `d1`, `d1wrap(±1)` | `expiphi(k)` with `expiphi(-k)` |
 | `FockBasis` | `phi`, `phi2`, `n2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
-| `GivenSystem` | operator with real data | operator with purely imaginary data | none |
+| `GivenSystem` | operator with real data | operator with purely imaginary data | none (an operator with both real and imaginary parts nonzero is general and makes its node complex) |
 
 In practice the transmon and fluxonium leaves, the symmetric zero-pi at any flux and `n_g`, and the two-zero-pi parent are real.
 The asymmetric zero-pi and a `PeriodicGrid` mode whose `n_g` is a parameter are complex; a literal `"0.5"` in the spec is real.
 A circuit that is complex by structure but real at special parameter values (a charge-basis SQUID at zero flux) stays complex.
 
-`Node(...; arithmetic=:auto)` follows the classification; `:complex` forces complex arithmetic for the node and every ancestor, and `:real` asserts the classification and raises an `ArgumentError` naming the first term whose conjugate image is missing.
+`Node(...; arithmetic=:auto)` follows the classification; `:complex` forces complex arithmetic for the node and every ancestor, and `:real` asserts the classification and raises an `ArgumentError` naming the node's modes and the first reason it is not real (for example a term with no conjugate image, a general-character factor, a non-analytic or throwing coefficient, or a complex child).
 `arithmetic(sys, node)` returns `:real` or `:complex` for a materialized node.
 
 Outputs have the node's native type.
@@ -183,7 +183,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute.
+Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute, and also runs the two plan-3 real-versus-complex equivalence testsets.
 
 The [science reference catalogue](docs/science/README.md) maps package capabilities to
 versioned literature sources and reproduction targets. The default suite includes
