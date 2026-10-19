@@ -184,7 +184,7 @@ Applying the Hamiltonian to a state applies each term in sequence and accumulate
 A local operator carries its structure as its type.
 The first version has four:
 
-- `DenseOp`: a dense `ComplexF64` matrix. Always complex, never real, because BLAS has no mixed real-complex gemm and the generic fallback is tens of times slower.
+- `DenseOp`: a dense `ComplexF64` matrix. Always complex, never real, because BLAS has no mixed real-complex gemm and the generic fallback is tens of times slower. (Amended by §20f: real nodes hold real `DenseOp`s; complex nodes still convert every factor to complex.)
 - `DiagonalOp`: a vector.
 - `BandedOp`: a set of offset diagonals, each with its own weight vector. Constant-weight stencils are the special case where every weight vector is constant; the Fock $a$ and $a^\dagger$ with weights $\sqrt m$ are the general case. Periodic wrap-around is *not* supported (no periodic grid in this version).
 - `ShiftOp`: a shift by an integer number of positions with a scalar factor, truncating at the edges.
@@ -436,7 +436,7 @@ The one requirement on the first version is the one already stated in Section 13
 - Column-major, first axis fastest, matching `reshape`. Kronecker-product reference constructions in tests must therefore use `kron` in *reverse* axis order relative to QuantumToolbox's `tensor`.
 - Energies in GHz ($h=1$); phases dimensionless; charges in units of $2e$.
 - Grid stencils: thesis Table `tab:fd_stencils`; $n = -i\,\partial_\varphi$ uses the antisymmetric central first-derivative stencil of the same order.
-- All state and dense-operator element types are `ComplexF64`.
+- All state and dense-operator element types are `ComplexF64`. (Amended by §20f: `Float64` at nodes whose structure guarantees a real Hamiltonian.)
 
 ## 15. Packages (decided)
 
@@ -605,6 +605,87 @@ Source: the leaf-solver spike `docs/spikes/2026-10-17-leaf-solvers/results.md` (
 8. *3D leaves are tabled.* Best measured: one node per mode on the GPU 83 s, the filter 174 s, sparse Cholesky 254 s with an 11.6 GB factor. The first structural change to try when resumed is the (θ,φ)+ζ hierarchy, the plan-1 test tree, whose child is the 2D problem above.
 
 Plan 2b implements decisions 2–6 together with the periodic grid of Section 20d; real arithmetic follows as plan 3, then autodiff.
+
+### 20f. Real arithmetic by port character (decided 2026-10-18; plan 3)
+
+Source: the plan-3 brainstorm with Eli on 2026-10-18, refining Section 20c decision 7.
+Amends Sections 7.2, 9, 9.1, 10, 14 and 20e.
+The measured motivation is Section 20e decision 1 and the audit (Section 20c): real arithmetic is worth about 2× at the leaf (`ShiftInvert` 2.5 s against 4.9 s, `ChebyshevFilter` 1.2 s against 2.5 s on the 9 331-state zero-pi leaf) and 2.4–3.4× at the branch.
+`ShiftInvert` already factors in real arithmetic when the assembled matrix is exactly real, so on the benchmark leaf plan 3's gain is in `ChebyshevFilter`, `Dense`, the branch `LOBPCG`, port formation and the apply kernels, not in `ShiftInvert`.
+
+**The rule (decided).** A node runs in real arithmetic only when its structure guarantees that its Hamiltonian is real, at every θ.
+Realness is decided once from the term list and the tree, never from the parameter values at which a node is materialized, and never from small or exactly zero imaginary parts of evaluated data.
+A circuit that is complex by structure but real at special parameter values (a `PeriodicGrid` mode at a parameter `n_g` that equals 0 or ½, a charge-basis SQUID at zero flux) stays complex; using such special values is a recorded later item, not part of plan 3 (Eli: "a small benefit for what I see as a big headache").
+A spec literal is structure: a `PeriodicGrid` mode whose `n_g` entry is the number `"0.5"` has the constant twist phase −1 and qualifies.
+
+**Port character (decided).** Every basis declares, for every port it serves, how complex conjugation acts on its operator: `conj(O_p) = σ_p O_{π(p)}` with a sign `σ_p = ±1` and an involution `π` on ports.
+A port is *real* (`σ = +1`, `π(p) = p`), *imaginary* (`σ = −1`, `π(p) = p`), or *paired* (`σ = +1`, `π(p) ≠ p`, its conjugate partner); anything else is *general* and has no relation.
+Section 20c's three characters (real, imaginary, general) gain *paired*, because a single `expiphi(k)` on a grid is complex while the cosine it belongs to is real.
+
+| Basis | real | imaginary | paired (`p ↦ π(p)`) |
+|---|---|---|---|
+| `ChargeBasis` | `n`, `n2`, `expiphi(k)` | | `exp2pin(k) ↦ exp2pin(−k)` |
+| `PhaseGrid` | `n2`, `phi`, `phi2`, `exp2pin(k)` | `n` | `expiphi(k) ↦ expiphi(−k)` |
+| `PeriodicGrid` | `d2`, `d2wrap(±1)` | `d1`, `d1wrap(±1)` | `expiphi(k) ↦ expiphi(−k)` |
+| `FockBasis` | `phi`, `phi2`, `n2`, `exp2pin(k)` | `n` | `expiphi(k) ↦ expiphi(−k)` |
+| `GivenSystem` | an operator whose data is real | one whose data is purely imaginary | (none) |
+
+A `GivenSystem`'s operators are fixed data with no θ dependence, so their character is read from the data exactly; an operator with both parts nonzero is general.
+A test pins every declared character against the operator data exactly, for every basis and port.
+**(my call)** For this the Fock displacement matrix computes its phases exactly (`iᵃ` and `(−1)ᵃ` for imaginary and real `α`) instead of through `cis(a·angle(α))`, which today leaves imaginary residues near 1e-15 in `exp2pin` and breaks `conj(expiphi(k)) == expiphi(−k)` at the same level; the change moves Fock matrix elements by round-off only.
+Building a real operator still takes only the components a port's character declares nonzero.
+
+**The node test (decided).** Group a node's routed terms by their factor key (the sorted `(mode, port)` list) and sum the coefficient functions in each group, `C_K(θ)`; the root's constant is the group of the empty key.
+Conjugation maps key `K` to `π(K)` (each port to its partner) with sign `σ_K = Π σ_p`.
+The node is real when every factor has a real, imaginary or paired character and, for every key, `C_{π(K)}(θ) = σ_K conj(C_K(θ))` holds as an identity in θ.
+A node is real only when every node below it is real (decided in the brainstorm; the builder check showed that a real node over a complex child would need complex phases and would mislabel the characters of the ports it passes up).
+A real node child's ports carry the characters of the same ports in the leaf basis of their mode.
+**(my call)** The test assumes real parameters: when an entry of θ is not of a `Real` Julia type (a complex drive amplitude, say), every node of that materialization is complex, a rule on types rather than values.
+**(my call)** The identity is established by evaluating both sides at three fixed pseudo-random parameter points (each parameter drawn in [0.5, 2] from a fixed seed), never at the user's θ, with agreement required to 1e-12 relative to the larger modulus; a coefficient that throws at a test point fails the test (complex, safe).
+This is a test of an identity between functions, so its answer is the same at every θ.
+It finds the cross-cosine pairing that makes the symmetric zero-pi real: the conjugate of the `(θ: expiphi(1), φ: expiphi(1))` term, coefficient `−½E_J e^{−iφ_ext/2}`, is the `(θ: expiphi(1), φ: expiphi(−1))` term of the other cosine, coefficient `−½E_J e^{+iφ_ext/2}`.
+
+Consequences on the fixtures: the transmon, fluxonium, three-transmon and symmetric zero-pi leaves and the two-zero-pi parent are real at every flux and offset charge; the asymmetric zero-pi (`dE_J`, `dC_J`, `dC` terms with `sin θ sin φ` and `n_θ n_φ` structure) is complex; a `PeriodicGrid` mode whose `n_g` is a parameter is complex.
+
+**The `arithmetic` option (my call).** `Node(...; arithmetic=:auto)` follows the test.
+`:complex` forces complex arithmetic for that node (and so for every ancestor whose terms touch it), for comparisons against the complex path and for later autodiff checks.
+`:real` asserts the test and raises an `ArgumentError` naming the first term whose conjugate image is missing.
+On `:auto`, a node that tests complex logs that term at debug level.
+An accessor reports each materialized node's arithmetic (name left to the builder).
+
+**The real operator (decided in outline; details the builder's).** A real node's `KronFreeOperator` is built from real data only.
+Since `H = Re H` by structure, each term contributes `Re(c ⊗_a O_a)`: with `O_a = R_a + i I_a` split into real structured operators of the same type (an imaginary factor has `R_a = 0`, a real one `I_a = 0`), the product expands into the real terms `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a` over the subsets `S` of the factors with a nonzero imaginary part, dropping zero coefficients.
+A conjugate pair produces the same real terms twice, so pairs are merged (`2 Re(c P)` once); the imaginary parts of evaluated coefficients are never consulted beyond this expansion.
+Diagonal terms fuse into the real `diag` as today.
+The local operators become element-type parametric where they are not already: `DenseOp{T}` holds a real or complex matrix (Section 7.2's "always complex" stays true for complex nodes, which still convert every factor to `ComplexF64`, since BLAS has no mixed real–complex gemm), and `AxisTerm` keeps its coefficient's type.
+A `KronFreeOperator`'s element type is the promotion of its coefficients' and factors' element types, so an operator built by hand from real data is real (a rule on Julia types, not values).
+
+**Outputs (decided: native types).** A real node stores `Float64` eigenvectors, energies and peak amplitudes, and `eigenvectors(sys, node)` returns them as stored.
+Ports are returned in their natural type: a real-character port of a real node is a `Matrix{Float64}`; an imaginary or paired port (a grid charge, `expiphi(k)` on a grid) is a `Matrix{ComplexF64}`, because its matrix in the real eigenbasis is purely imaginary or general.
+Internally an imaginary port's matrix is formed from its real component and the parent uses that component directly; the stored complex matrix's real and imaginary parts are the components exactly, since they are computed separately.
+Port formation on a real node runs in real arithmetic (`Vᵀ R V` and `Vᵀ I V`).
+Complex nodes are unchanged: `ComplexF64` everywhere.
+The README documents the types.
+
+**Phases, selection and following (my call).** On real vectors both phase conventions reduce to signs: `:positive_sector` makes the peak entry positive (as before, since a real vector's peak angle is 0 or π), the branch rule multiplies by the sign of the real joint-peak amplitude, and `:follow` by the sign of the real overlap, so a real node never acquires complex vectors.
+Selection contexts, the `follow` reference and the transported previous vectors accept either element type and promote in overlaps.
+A warm start whose element type differs from the operator's (only possible when `arithmetic` or the term list changed between calls) is converted when real into complex and dropped (cold start) when complex into real.
+
+**Solvers (decided).** Every solver runs in the operator's element type and returns eigenvectors of that type; the `Solver` contract of Section 20e decision 6 is amended accordingly (`V` has `eltype(H)`; a user solver must accept real operators).
+`Dense` diagonalizes a real symmetric matrix; `Lanczos` starts from a random vector of the operator's type; `LOBPCG` and `ChebyshevFilter` are already type-generic and run real on the host and on the device.
+`ShiftInvert` follows the operator's element type only: its assembled-matrix realness check (`isreal_assembled`, value-based) is retired from the solver and from the exports (Eli, 2026-10-18), and tests that used it check the operator's element type instead.
+The CUDA extension needs no new device code beyond confirming the real path (cuTENSOR and cuBLAS real contractions, the expectation kernel already generic).
+
+**What stays complex.** Complex nodes; imaginary and paired ports in their natural type; `charge_port` on a `PeriodicGrid` mode; derivative operators and the autodiff pullbacks of plan 4, which promote to complex where a cotangent or a derivative operator is complex.
+
+**Validation (decided).** For every fixture with a real node, materializing with `arithmetic=:auto` and with `arithmetic=:complex` gives energies equal to about 1e-12 with `Dense` and to the solver tolerance otherwise, ports equal up to the per-state signs (inside an exactly degenerate level, where the two paths may pick different bases, the comparison uses rotation-invariant quantities such as the cluster projector and the port's block norms), and the expected arithmetic per node (the classification above is a test).
+Tests that relied on `isreal_assembled` change meaning: the `PeriodicGrid` transmon at a parameter `n_g` of 0 or ½ is now complex by structure, so those assertions become element-type checks (the exact-zero imaginary part of its assembled matrix can still be asserted as a property of the operator data).
+A solver change is reviewed with adversarial completeness probes compared against `Dense` (degenerate levels, invariant-seed traps, near crossings), not residual checks alone.
+The default, gated (`KRONFREE_SLOW_TESTS=1`) and device suites pass, and the plan-2b end-to-end benchmark reruns on ewdesktop in both arithmetics (a new `BENCH_ARITHMETIC=auto|complex` knob).
+
+**Later items.** Real arithmetic at special parameter values, or for parameters declared constant by a substitution helper; mixed real–complex trees where a real child feeds a complex parent without conversion.
+
+**Left to the builder.** Names (the character type, the accessor, internal helpers); where the characters are computed (once per `materialize` after routing is natural); the merge of conjugate pairs; the storage of a real node's `MaterializedNode` fields (parametric or abstractly typed); the test-point draw.
 
 ## 21. Builder check
 
