@@ -563,6 +563,7 @@ Source: Eli's audit spike `docs/spikes/2026-10-16-itensor-audit/` (REPORT.md, HA
 - *Test suite.* The default suite runs about 108 s (solver and extension compilation dominate), superseding the "about 60 s" target; the gated suite about 8.5 min; the device suite (`test/cuda/`, run on a CUDA machine) 303 assertions with zero device allocation after warm-up.
 
 Plan order after this amendment: 2 solver and ITensor parent backend with CUDA extension (this amendment); 3 real arithmetic; 4 automatic differentiation; 5 export, caching and NPZ; 6 Python exporter with `operators` and `noise_channels`; then the sweep layer and the noise plan. The two-zero-pi acceptance test and the tabled antisymmetric-state phase fallback are unchanged.
+Amended 2026-10-19 (Eli): the Python exporter (`export_julia_spec` in `circuit-quantization`) moves ahead of automatic differentiation and is the next plan after plan 3, for the provenance of the test fixtures, which are so far transcribed by hand from the scqubits source.
 
 ### 20d. Proposed design: a periodic phase grid for compact modes (2026-10-17, for Eli's review)
 

@@ -225,6 +225,6 @@ Plan 3 (real arithmetic by port character: `Float64` nodes, native output types,
 The next plan is automatic differentiation.
 Later plans:
 
-1. Automatic differentiation rules.
-2. Export, caching, and NPZ output.
-3. The Python exporter in `circuit-quantization`.
+1. The Python exporter in `circuit-quantization` (moved ahead of autodiff on 2026-10-19, so the test fixtures come from the exporter rather than by hand).
+2. Automatic differentiation rules.
+3. Export, caching, and NPZ output.
