@@ -86,23 +86,26 @@ end
     check_eigenpairs(H, energies(sc), eigenvectors(sc); tol=1e-8)
     E, V = solve(ChebyshevFilter(tol=1e-9, on=CuArray), H, 8)
     @test E ≈ energies(sd) atol=1e-7
-    @test E isa Vector{Float64} && V isa Matrix{ComplexF64}
+    @test E isa Vector{Float64} && V isa Matrix{eltype(H)}              # the zero-pi operator is real
     check_eigenpairs(H, E, V; tol=1e-8)
     # One filtered block apply (a step of the three-term recurrence), and a whole filter without
     # rescaling, on the solver's block (nb = 8 + 40 columns, and a prefix of active columns) with the
     # scratch reserved by with_block_capacity: no device allocation after warm-up.
     nb = 48
-    Hd = with_block_capacity(to_device(H), nb)
-    A, B, C, X = (CuArray(randn(ComplexF64, size(H, 1), nb)) for _ in 1:4)
-    λcut, λmax = 40.0, gershgorin_bound(H)
-    c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
-    for (a, b, cc, x) in ((A, B, C, X), (view(A, :, 1:30), view(B, :, 1:30), view(C, :, 1:30), view(X, :, 19:48)))
-        _chebyshev_step!(cc, Hd, b, a, c, e); _chebyshev_step!(cc, Hd, b, a, c, e)
-        CUDA.synchronize()
-        @test (CUDA.@allocated _chebyshev_step!(cc, Hd, b, a, c, e)) == 0
-        _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)
-        CUDA.synchronize()
-        @test (CUDA.@allocated _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)) == 0
+    for Hx in (H, complexified(H))                                          # the real operator and its complex copy
+        T = eltype(Hx)
+        Hd = with_block_capacity(to_device(Hx), nb)
+        A, B, C, X = (CuArray(randn(T, size(H, 1), nb)) for _ in 1:4)
+        λcut, λmax = 40.0, gershgorin_bound(Hx)
+        c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
+        for (a, b, cc, x) in ((A, B, C, X), (view(A, :, 1:30), view(B, :, 1:30), view(C, :, 1:30), view(X, :, 19:48)))
+            _chebyshev_step!(cc, Hd, b, a, c, e); _chebyshev_step!(cc, Hd, b, a, c, e)
+            CUDA.synchronize()
+            @test (CUDA.@allocated _chebyshev_step!(cc, Hd, b, a, c, e)) == 0
+            _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)
+            CUDA.synchronize()
+            @test (CUDA.@allocated _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)) == 0
+        end
     end
 end
 
@@ -432,4 +435,95 @@ end
     @test energies(sg) ≈ energies(sd) atol=1e-7
     @test eigenvectors(sg) * eigenvectors(sg)' ≈ eigenvectors(sd) * eigenvectors(sd)' atol=1e-6
     check_eigenpairs(KronFreeCircuits.operator(sg), energies(sg), eigenvectors(sg); tol=1e-8)
+end
+
+# ---- Real arithmetic on the device (plan 3, Task 8) ----
+
+@testset "real operator on the device equals host; no device allocation after warm-up" begin
+    rng = MersenneTwister(81)
+    dims = [40, 30, 3]
+    terms = [AxisTerm(1.0, [(1, DiagonalOp(collect(1.0:40)))]),
+             AxisTerm(0.2, [(1, DenseOp(randn(rng, 40, 40))), (2, DenseOp(randn(rng, 30, 30)))]),
+             AxisTerm(0.1, [(2, ShiftOp(30, 2, 0.5)), (3, BandedOp(3, [-1, 1], [ones(3), ones(3)]))])]
+    Hh = KronFreeOperator(dims, terms; block_capacity=6)
+    Hd = KronFreeOperator(dims, terms; block_capacity=6, on=CuArray)
+    @test eltype(Hh) === Float64 && eltype(Hd) === Float64
+    @test Hd.buf1 isa CuArray{Float64} && Hd.buf2 isa CuArray{Float64} && Hd.diag isa CuVector{Float64}
+    Xh = randn(rng, 3600, 6); Xd = CuArray(Xh)
+    Yd = similar(Xd); Yv = view(Yd, :, 2:5); Xv = view(Xd, :, 2:5)
+    Yfull = mul!(Yd, Hd, Xd)
+    @test eltype(Yfull) === Float64
+    @test Array(Yfull) ≈ mul!(similar(Xh), Hh, Xh)
+    @test Array(Hd * Xd[:, 1]) ≈ Hh * Xh[:, 1]
+    mul!(Yv, Hd, Xv); mul!(Yv, Hd, Xv)
+    @test Array(Yv) ≈ (Hh * Xh[:, 2:5])
+    CUDA.synchronize()
+    @test (CUDA.@allocated mul!(Yd, Hd, Xd)) == 0                        # a block
+    @test (CUDA.@allocated mul!(Yv, Hd, Xv)) == 0                        # an offset column view
+    @test diagonal(Hd) ≈ diagonal(Hh)
+    @test eltype(diagonal(Hd)) === Float64
+    @test_throws ArgumentError Matrix(Hd)
+    # The solver-facing path: the device copy of a host real operator keeps Float64.
+    Hc = with_block_capacity(to_device(Hh), 6)
+    @test eltype(Hc) === Float64 && Hc.buf1 isa CuArray{Float64}
+end
+
+@testset "LOBPCG and ChebyshevFilter on the device in real arithmetic equal Dense on the host" begin
+    Random.seed!(82)
+    for (name, H, m, extra) in (("three real oscillators", real_three_oscillators(6), 8, 40),
+                                ("degenerate pair", two_identical_real_oscillators(12), 10, 10))
+        @test eltype(H) === Float64
+        Ed, _ = solve(Dense(), H, 0)
+        for s in (LOBPCG(tol=1e-9, on=CuArray), LOBPCG(tol=1e-9, preconditioner=:ritz, on=CuArray),
+                  ChebyshevFilter(tol=1e-9, extra=extra, on=CuArray))
+            E, V = solve(s, H, m)
+            @test E isa Vector{Float64} && V isa Matrix{Float64}
+            @test E ≈ Ed[1:m] atol=1e-7
+            check_eigenpairs(H, E, V; tol=1e-8)
+        end
+    end
+    # A real device operator driven directly: the eigensolver's blocks stay Float64 on the device.
+    H = real_three_oscillators(6); m = 8
+    Hd = with_block_capacity(to_device(H), m)
+    D = CuArray(real.(diagonal(H)))
+    P = RitzJacobi(D, m; eta=0.05)
+    res = LOBPCGEigensolver.lobpcg(Hd, CuArray(randn(216, m)), I, P, 1e-10, 300)
+    @test eltype(res.X) === Float64 && res.X isa CuArray
+    @test Array(res.λ) ≈ solve(Dense(), H, m)[1] atol=1e-7
+    # The fused expectation kernel on a real block.
+    X = CuArray(randn(216, 4)); theta = CUDA.zeros(Float64, 4)
+    _diagonal_expectation!(theta, D, X)
+    @test Array(theta) ≈ vec(sum(Array(D) .* abs2.(Array(X)); dims=1) ./ sum(abs2.(Array(X)); dims=1))
+    # A filtered block apply and a whole filter allocate nothing on the device in real arithmetic.
+    nb = 48
+    Hd = with_block_capacity(to_device(H), nb)
+    A, B, C, Xc = (CuArray(randn(size(H, 1), nb)) for _ in 1:4)
+    λcut, λmax = 20.0, gershgorin_bound(H)
+    c, e = (λmax + λcut) / 2, (λmax - λcut) / 2
+    for (a, b, cc, x) in ((A, B, C, Xc), (view(A, :, 1:30), view(B, :, 1:30), view(C, :, 1:30), view(Xc, :, 19:48)))
+        _chebyshev_step!(cc, Hd, b, a, c, e); _chebyshev_step!(cc, Hd, b, a, c, e)
+        CUDA.synchronize()
+        @test (CUDA.@allocated _chebyshev_step!(cc, Hd, b, a, c, e)) == 0
+        _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)
+        CUDA.synchronize()
+        @test (CUDA.@allocated _chebyshev_filter!(a, b, cc, Hd, x, λcut, λmax, 10, 20)) == 0
+    end
+end
+
+@testset "F3 (real): small two-zero-pi tree, LOBPCG(on=CuArray) at the root, real equals arithmetic=:complex" begin
+    spec2 = load_spec(fixture("two_zero_pi.json"))
+    θ = two_zero_pi_params(; g=0.05)
+    function tree(ar)
+        leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)];
+                       solver=Dense(), compute=10, keep=lowest(10), arithmetic=ar)
+        return Node([leaf(1), leaf(2)]; solver=LOBPCG(tol=1e-10, on=CuArray), compute=12, keep=lowest(12), arithmetic=ar)
+    end
+    mat(ar) = (Random.seed!(83); @test_logs (:warn, r"edge") match_mode=:any materialize(tree(ar), spec2, θ))
+    sr, sc = mat(:auto), mat(:complex)
+    @test arithmetic(sr) === :real && arithmetic(sc) === :complex
+    @test eltype(eigenvectors(sr)) === Float64 && eltype(eigenvectors(sc)) === ComplexF64
+    @test energies(sr) ≈ energies(sc) atol=1e-8
+    check_eigenpairs(KronFreeCircuits.operator(sr), energies(sr), eigenvectors(sr); tol=1e-8)
+    sd = @test_logs (:warn, r"edge") match_mode=:any materialize(Node(tree(:auto).children; solver=Dense(), keep=lowest(12)), spec2, θ)
+    @test energies(sr) ≈ energies(sd) atol=1e-7
 end
