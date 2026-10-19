@@ -100,7 +100,28 @@ function _matrix(d, key::Symbol, N::Int, params)
     (rows isa AbstractVector && length(rows) == N &&
      all(r -> r isa AbstractVector && length(r) == N, rows)) ||
         _spec_error("$key must be a $N×$N array of arrays (the number of modes)")
-    return [_coefficient(rows[i][j], params, "$key[$i,$j]") for i in 1:N, j in 1:N]
+    M = [_coefficient(rows[i][j], params, "$key[$i,$j]") for i in 1:N, j in 1:N]
+    _check_symmetric(M, rows, key)
+    return M
+end
+
+# E_C and E_L are symmetric by construction (a scaled inverse capacitance and an inverse inductance matrix), and only
+# their symmetric part enters the Hamiltonian, so an asymmetric pair is a typo or an exporter bug: it is rejected, not
+# symmetrized (Eli, 2026-10-19).
+# Equal expressions pass; otherwise the pair is compared at the three test points of the node test (`_test_points`).
+function _check_symmetric(M::Matrix{Coefficient}, rows, key::Symbol)
+    shown(x) = x isa AbstractString ? "\"$x\"" : repr(x)
+    for i in axes(M, 1), j in i+1:size(M, 2)
+        a, b = M[i, j], M[j, i]
+        a.ex == b.ex && continue
+        points = _test_points((a, b), (;))
+        va, vb = _at_points(a, points), _at_points(b, points)
+        pair = "$key[$i,$j] = $(shown(rows[i][j])) and $key[$j,$i] = $(shown(rows[j][i]))"
+        (va === nothing || vb === nothing) &&
+            _spec_error("$key must be symmetric, but $pair cannot be evaluated at a test point to compare them")
+        all(_agree.(va, vb)) || _spec_error("$key must be symmetric, but $pair differ")
+    end
+    return nothing
 end
 
 function _numbers(v, key::AbstractString, N::Int)
@@ -122,6 +143,8 @@ Parse and validate a `kronfree-spec` version 1 JSON document.
 Keys starting with `_` are ignored; any other unknown key is an error.
 Every expression (`E_C`, `E_L`, `flux_linear`, `n_g`, cosine and charge-cosine `energy` and `offset`, `constant`) must be
 real-valued: one that uses `im` or calls `cis` or `cispi` is rejected.
+`E_C` and `E_L` must be symmetric: entries `[i,j]` and `[j,i]` that are not the same expression must agree at three
+fixed pseudo-random parameter points (to `1e-12` relative), as in the node test of `classify`.
 Throws `ArgumentError` on any invalid content.
 """
 function parse_spec(json::AbstractString)

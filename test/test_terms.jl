@@ -34,8 +34,8 @@ end
       "format": "kronfree-spec", "version": 1,
       "parameters": ["E", "x", "ng"],
       "modes": [{"name": "a", "type": "e"}, {"name": "b", "type": "e"}],
-      "E_C": [["1", "2"], ["3", "5"]],
-      "E_L": [["2", "1"], ["4", "0"]],
+      "E_C": [["1", "2.5"], ["2.5", "5"]],
+      "E_L": [["2", "2.5"], ["2.5", "0"]],
       "flux_linear": ["0", "0"],
       "n_g": ["ng", "0.5"],
       "cosines": [{"energy": "E", "omega": [1, -2], "offset": "x"},
@@ -50,12 +50,12 @@ end
     # diagonal and symmetrized off-diagonal charge/flux terms
     @test get([(:a, :n2, 0.0)]).coeff(θ) ≈ 4
     @test get([(:b, :n2, 0.0)]).coeff(θ) ≈ 20
-    @test get([(:a, :n, 0.0), (:b, :n, 0.0)]).coeff(θ) ≈ 4 * (2 + 3)
+    @test get([(:a, :n, 0.0), (:b, :n, 0.0)]).coeff(θ) ≈ 4 * (2.5 + 2.5)
     @test get([(:a, :phi2, 0.0)]).coeff(θ) ≈ 1
-    @test get([(:a, :phi, 0.0), (:b, :phi, 0.0)]).coeff(θ) ≈ (1 + 4) / 2
+    @test get([(:a, :phi, 0.0), (:b, :phi, 0.0)]).coeff(θ) ≈ (2.5 + 2.5) / 2
     # linear charge terms from n_g
-    @test get([(:a, :n, 0.0)]).coeff(θ) ≈ -4 * ((1 + 1) * 0.3 + (2 + 3) * 0.5)
-    @test get([(:b, :n, 0.0)]).coeff(θ) ≈ -4 * ((3 + 2) * 0.3 + (5 + 5) * 0.5)
+    @test get([(:a, :n, 0.0)]).coeff(θ) ≈ -4 * ((1 + 1) * 0.3 + (2.5 + 2.5) * 0.5)
+    @test get([(:b, :n, 0.0)]).coeff(θ) ≈ -4 * ((2.5 + 2.5) * 0.3 + (5 + 5) * 0.5)
     # identically zero terms are dropped (E_L[b,b] = 0, flux_linear = 0)
     @test !any(t -> sig(t) in ([(:b, :phi2, 0.0)], [(:a, :phi, 0.0)], [(:b, :phi, 0.0)]), ts)
 

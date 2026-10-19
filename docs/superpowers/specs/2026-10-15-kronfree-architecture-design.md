@@ -715,7 +715,7 @@ The spec exporter lives in `circuit-quantization` (`circuit_quantization.io`: `t
 **Parser.** The `Coefficient` allowlist accepts SymPy's dotted operators (`.+ .- .* ./ .^`), normalized at parse time, as well as two-argument `log`, scientific literals and `ℯ`.
 `Meta.parse` turns an integer literal beyond `typemax(Int64)` (SI-valued exports, loop fluxes in webers) into an `@int128_str` or `@big_str` macrocall; the parser folds exactly these, with a signed decimal string, into the `Int128` or `BigInt` value before the allowlist check, and every other macrocall stays rejected.
 A declared parameter name is normalized as a Julia identifier (`Meta.parse`), so `µ` (U+00B5) matches its use as `μ` (U+03BC).
-Nonsymmetric `E_C` and `E_L` matrices are accepted and only their symmetric part enters the Hamiltonian (pre-existing behaviour, left as is).
+Nonsymmetric `E_C` and `E_L` matrices are rejected (non-physical; Eli, 2026-10-19): `parse_spec` requires entries `[i,j]` and `[j,i]` to be the same expression or to agree at the three test points of the node test (Section 20f), and its `ArgumentError` names the matrix, the pair and both expressions.
 
 **Provenance test.** `test/fixtures/generate_specs.py` builds each hand fixture's Hamiltonian as a lumped circuit, exports it with `to_spec`, and writes `test/fixtures/generated/*.json`; `test/test_generated_specs.jl` shows that each pair defines the same Hamiltonian (coefficients at random real points, cosines up to the joint sign flip of `omega` and offset, energies on a small Dense tree).
 The cos2phi fixture has no generated counterpart, since it is not a lumped circuit (junctions with phases 2φ and φ have non-parallel incidence rows).

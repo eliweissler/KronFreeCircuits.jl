@@ -118,3 +118,33 @@ end
     @test s.E_C[1, 1]((; Symbol("μ") => 0.25)) == 0.25
     @test_throws ArgumentError parse_spec(replace(src, "\"E_J\"]" => "\"E_J\", \"μ\"]"))   # now duplicates
 end
+
+@testset "Spec: E_C and E_L must be symmetric" begin
+    # E_C and E_L are symmetric by construction (scaled inverse capacitance and inverse inductance matrices), so an
+    # asymmetric pair of entries is non-physical and is rejected rather than symmetrized.
+    spec(EC, EL) = """{"format": "kronfree-spec", "version": 1,
+      "parameters": ["a", "b", "c", "g", "x"],
+      "modes": [{"name": "p", "type": "e"}, {"name": "q", "type": "e"}],
+      "E_C": $EC, "E_L": $EL, "flux_linear": ["0", "0"], "n_g": ["0", "0"],
+      "cosines": [], "constant": "0"}"""
+    sym = """[["a", "0"], ["0", "a"]]"""
+    msg(src) = try parse_spec(src); nothing catch e; e isa ArgumentError ? e.msg : e end
+    m = msg(spec("""[["a", "b"], ["c", "a"]]""", sym))
+    @test m isa String && occursin("E_C", m) && occursin("E_C[1,2]", m) && occursin("E_C[2,1]", m) &&
+          occursin("\"b\"", m) && occursin("\"c\"", m) && occursin("symmetric", m)
+    m = msg(spec(sym, """[["a", "2*x"], ["x", "a"]]"""))
+    @test m isa String && occursin("E_L[1,2]", m) && occursin("E_L[2,1]", m) && occursin("\"2*x\"", m) && occursin("\"x\"", m)
+    # a comparison that cannot be evaluated (sqrt of a negative real at every test point) is rejected too
+    m = msg(spec("""[["a", "sqrt(-a)"], ["sqrt(-b)", "a"]]""", sym))
+    @test m isa String && occursin("E_C[1,2]", m) && occursin("cannot be evaluated", m)
+    # equal entries spelled differently pass
+    s = parse_spec(spec("""[["a", "g/8"], ["0.125*g", "a"]]""", """[["a", "2*x"], ["x+x", "a"]]"""))
+    @test s isa Spec && s.E_C[1, 2]((g=0.8,)) ≈ s.E_C[2, 1]((g=0.8,)) ≈ 0.1
+    @test parse_spec(spec("""[["a", 0.5], ["1/2", "a"]]""", sym)) isa Spec      # a number against an expression
+    # every hand-written and generated fixture is symmetric and loads
+    for dir in ("", "generated")
+        for f in filter(f -> endswith(f, ".json") && f != "scqubits_reference.json", readdir(joinpath(@__DIR__, "fixtures", dir)))
+            @test load_spec(fixture(joinpath(dir, f))) isa Spec
+        end
+    end
+end
