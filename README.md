@@ -56,7 +56,7 @@ A term whose factors all lie on the given mode (a drive or a Stark shift) is app
 Each node has a solver; the default, `Auto()`, picks one when the node is materialized.
 `Auto(; dense_cutoff=2500, on=Array)` resolves to `Dense()` for a node of at most 2 500 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
 An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node whose solver is, or resolves to, `Dense`.
-`ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in real arithmetic when the assembled matrix is exactly real; it offers spectrum slicing across threads and a completeness certificate by inertia counts, on by default with the automatic shift, which recovers the copies of a degenerate level single-vector Lanczos misses by deflation.
+`ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in the operator's element type (real for a real node, see "Real arithmetic" below); it offers spectrum slicing across threads and a completeness certificate by inertia counts, on by default with the automatic shift, which recovers the copies of a degenerate level single-vector Lanczos misses by deflation.
 `ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part (with a `1e-2` random admixture and guard columns, so a lower state outside the seed span usually surfaces; there is no completeness certificate, which `ShiftInvert` provides), with the filter's upper end from `gershgorin_bound(H)`.
 Its defaults were tested against invariant-seed traps, weak filters, crossing sweeps, degenerate blocks and deep references without a wrong result, but this is tested, not proven: a state outside the product-seed span is found only if the filter lifts its `1e-2/√N` admixture to O(1) before the wanted and guard columns lock, which can fail silently with a weak filter and a loose `tol`, or at a small `extra`.
 Use `tol ≤ 1e-6` and the default or a larger `extra`, and `ShiftInvert()` or `Dense()` when completeness matters.
@@ -74,7 +74,7 @@ Both preconditioners use only the diagonal of `H`.
 They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil puts the same large constant on every diagonal entry (spec §20e): in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
 When choosing explicitly, use `ShiftInvert` (CPU) or `ChebyshevFilter` (device) at a large, stiff leaf, `LOBPCG` for branches (and for leaves only with a warm start), `Dense` for nodes up to about 10 000 states, and `Lanczos` for a few states when neither leaf solver fits.
 
-A user-defined solver subtypes `Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors as host arrays, with true residuals below its tolerance.
+A user-defined solver subtypes `Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors of the operator's element type (`eltype(H)`, real for a real node) as host arrays, with true residuals below its tolerance.
 The `Solver` docstring states the full contract and what `H` provides (`mul!` on blocks, `diagonal`, `sparse`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`).
 
 ```julia
@@ -104,7 +104,7 @@ Use it for non-standard compact modes: a cos 2φ element, higher harmonics, or a
 The charge basis stays the default, and the better choice, for a single cos φ.
 The basis is parameter-free: the offset charge enters only through the coefficients `e^{±2πi n_g}` that term construction puts on the stencil's two wrap-corner pieces (the twisted boundary `ψ(φ + 2π) = e^{-2πi n_g} ψ(φ)`).
 `N` must be divisible by every integer harmonic of a cosine on the mode and by `sectors`, so that translations by `2π/ω` map the grid to itself and the charge-parity sectors are exact; a non-integer harmonic on a compact mode is rejected when the spec is loaded.
-The operators are complex except at `n_g ∈ {0, ½}`, where the twist phase is ±1.
+The operators are complex, except when the spec gives `n_g` as the literal `"0.5"` (the twist phase is then the constant −1; see "Real arithmetic").
 
 ```julia
 spec = load_spec("cos2phi.json")                     # 4 E_C (n - n_g)^2 - E_2 cos 2φ - E_1 cos φ, mode phi
@@ -138,6 +138,44 @@ coupling = [Term(c, [Factor(:phi, Port(:d1, 0)), A]),
 The automatic expansion of `nport()` in `ports=` and `extra_terms` is a planned follow-up.
 The design is in spec §20d.
 
+## Real arithmetic
+
+A node runs in `Float64` only when its structure guarantees a real Hamiltonian at every θ.
+This is decided once per `materialize` from the term list and the tree, never from parameter values or from the size of imaginary parts of evaluated data.
+A node is real when every factor port has a declared character and every coefficient function satisfies the conjugation identity of its factor key; the identity is checked at three fixed pseudo-random parameter points, and a coefficient that is not real-analytic in θ (for example one that calls `abs` or `sign`) makes the node complex.
+A node is real only when every node below it is real.
+
+All entries of θ must be `Real`; a complex entry raises an `ArgumentError`, so a complex amplitude is passed as two real parameters.
+The spec expressions for `E_C`, `E_L`, `flux_linear`, `n_g`, energies, offsets and `constant` may not use `im`, `cis` or `cispi`; the loader rejects them.
+
+Each basis declares how complex conjugation acts on the ports it serves:
+
+| Basis | real | imaginary | paired |
+|---|---|---|---|
+| `ChargeBasis` | `n`, `n2`, `expiphi(k)` | | `exp2pin(k)` with `exp2pin(-k)` |
+| `PhaseGrid` | `n2`, `phi`, `phi2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
+| `PeriodicGrid` | `d2`, `d2wrap(±1)` | `d1`, `d1wrap(±1)` | `expiphi(k)` with `expiphi(-k)` |
+| `FockBasis` | `phi`, `phi2`, `n2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
+| `GivenSystem` | operator with real data | operator with purely imaginary data | none |
+
+In practice the transmon and fluxonium leaves, the symmetric zero-pi at any flux and `n_g`, and the two-zero-pi parent are real.
+The asymmetric zero-pi and a `PeriodicGrid` mode whose `n_g` is a parameter are complex; a literal `"0.5"` in the spec is real.
+A circuit that is complex by structure but real at special parameter values (a charge-basis SQUID at zero flux) stays complex.
+
+`Node(...; arithmetic=:auto)` follows the classification; `:complex` forces complex arithmetic for the node and every ancestor, and `:real` asserts the classification and raises an `ArgumentError` naming the first term whose conjugate image is missing.
+`arithmetic(sys, node)` returns `:real` or `:complex` for a materialized node.
+
+Outputs have the node's native type.
+`eigenvectors` of a real node are `Matrix{Float64}`.
+`port` returns `Matrix{Float64}` for a real-character port of a real node and `Matrix{ComplexF64}` for an imaginary port (a grid or Fock `n`) or a paired port (`expiphi` on a grid).
+`charge_port` and `decompose` follow the node in the same way, and a complex node returns `ComplexF64` throughout.
+
+`ShiftInvert` follows the operator's element type (the value-based `isreal_assembled` test is gone).
+A direct `solve(LOBPCG(), H, m; X0)` with a complex `X0` on a real `H` converts an exactly real block and raises an `ArgumentError` for a complex one.
+
+In the benchmark (`docs/spikes/2026-10-18-plan3-benchmark/results.md`), the full two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×).
+The `ShiftInvert` leaf on CPU gains nothing against plan 2b, which already factored the assembled real matrix; the gains are in the parent solve (2.5× CPU, 3.3× A4500), the device leaf (2.5×) and port formation (about 4×).
+
 ## Tests
 
 ```bash
@@ -167,6 +205,7 @@ julia --project=test/cuda test/cuda/runtests.jl
 Two benchmark scripts take their settings from environment variables, documented at the top of each file.
 `bench/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
 Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`, and the rerun with the plan-2b leaf solvers (`BENCH_LEAF_SOLVER=shiftinvert`, `chebyshev` or `auto`) is in `docs/spikes/2026-10-17-plan2b-benchmark/results.md`.
+`BENCH_ARITHMETIC=auto|complex` sets `arithmetic=` on every node of `bench/end_to_end.jl`'s tree; the plan-3 results and commands are in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 
 ```bash
 BENCH_SMOKE=1 julia --project=. -t 1 bench/end_to_end.jl                                  # reduced sizes, CPU
@@ -182,6 +221,8 @@ Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi precond
 Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
 `Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
+Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
+The next plan is automatic differentiation.
 Later plans:
 
 1. Automatic differentiation rules.

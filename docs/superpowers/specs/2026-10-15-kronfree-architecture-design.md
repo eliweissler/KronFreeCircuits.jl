@@ -690,6 +690,18 @@ The default, gated (`KRONFREE_SLOW_TESTS=1`) and device suites pass, and the pla
 
 **Left to the builder.** Names (the character type, the accessor, internal helpers); where the characters are computed (once per `materialize` after routing is natural); the merge of conjugate pairs; the storage of a real node's `MaterializedNode` fields (parametric or abstractly typed); the test-point draw.
 
+**Execution notes (plan 3, 2026-10-19).**
+The analyticity gate came from the Task 3 review, whose probes found false-real classifications with coefficients that call `abs` or `sign` and with complex branch cuts of `sqrt`, `log` and non-integer powers; the gate is a conservative syntactic check in `classify`, and it over-rejects the analytic `(E + im*x)^0.5` (pinned by a test).
+Eli's real-inputs rule is enforced in two places: `materialize` and `classify` raise an `ArgumentError` for a non-`Real` entry of θ (`_check_real_parameters`), and the spec loader rejects `im`, `cis` and `cispi` in the listed expressions.
+The merge of conjugate pairs in the real operator is keyed on (axis, mode, canonical port, component); the plan's key omitted the mode, so in the Task 4 review a multi-mode node child collapsed couplings from different modes onto one operator (0.1 GHz errors on a three-transmon chain), and a regression test pins it.
+`lobpcg_solve` converts a complex `X0` whose imaginary parts are all exactly zero to the real operator's type and raises an `ArgumentError` for any other complex `X0`, rather than silently dropping imaginary parts or restarting at random; `materialize` already drops such a block itself.
+`ShiftInvert(block=2)` intermittently raises a KrylovKit block-Lanczos breakdown ("blocklength must be >(0)") on small operators with few distinct levels, in both arithmetics; this predates plan 3 and is an open item (the failure is loud, and a deflation fallback is the likely fix).
+On exchange-symmetric trees (the symmetric two-zero-pi) the branch peak argmax ties between exchange-symmetric components, so the global signs of some root states differ between arithmetics; energies and port magnitudes agree, and the tests compare rotation-invariant quantities there (cluster block norms, the physical overlap).
+Measured gains (`docs/spikes/2026-10-18-plan3-benchmark/results.md`): the two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic of the same plan (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×); the parent solve gains 2.5× on CPU and 3.3× on the A4500, port formation about 4×, and the `ShiftInvert` leaf on CPU nothing against plan 2b.
+Default-suite cost: the default suite takes 178 s against 139 s for the base tree `b92bce0` (two alternating runs each, 178.1 and 178.5 s against 138.4 and 138.8 s, at load about 4–7; +40 s against the +15 s budget).
+A second pass of the same files in one process takes 50.4 s against 50.6 s, so the whole excess is compilation of the `Float64` methods (the operator, the solvers, port formation and the ITensor paths) in addition to the complex ones, not steady-state cost.
+The two slowest new real-against-complex equivalence testsets (the two-zero-pi real branch, about 6 s, and the solver element-type equivalence, about 3 s) moved to the gated suite, which keeps them; moving them saved only about 3 s of wall time because their compilation then falls to the next test that exercises those methods.
+
 ## 21. Builder check
 
 A fresh reviewer read the document as a builder on 2026-10-15.
