@@ -306,7 +306,7 @@ def full_zero_pi():
     scqubits documents dEJ = (EJ1-EJ2)/EJavg and dCJ = (CJ1-CJ2)/CJavg on the same
     junction 1 (here J1a), so relative to dE_J this dC_J has the opposite sign to that
     definition (the docstring's +2 E_CS dC_J d_phi d_theta is the consistent sign).
-    The sign is observable when dE_J != 0; the choice is pending Eli.
+    The sign is observable when dE_J != 0; keeping it is deliberate (Eli, 2026-10-19).
     """
     EJ, EL, ECJ, ECS = pos("E_J E_L E_CJ E_CS")
     dEJ, dCJ, dC, dEL = real("dE_J dC_J dC dE_L")
@@ -332,8 +332,9 @@ def full_zero_pi():
         "Z_full as zero_pi.json (zeta is scqubits' FullZeroPi coordinate). " + ZP_GAUGE,
         "E_C is the circuit's exact inverse capacitance: it matches scqubits' first-order FullZeroPi model at dC_J = dC = 0"
         " and differs from it at second order in (dC_J, dC). E_Cz is not independent: E_Cz = E_CS*E_CJ/(E_CJ - E_CS).",
-        "dC_J sign: as in full_zero_pi.json (scqubits 4.3.1 source), J1a carries E_J (1 + dE_J/2) but C_J (1 - dC_J/2), so relative to"
-        " dE_J this dC_J has the opposite sign to scqubits' documented dCJ = (CJ1 - CJ2)/CJavg; the choice is pending Eli.",
+        "dC_J sign (deliberate, Eli 2026-10-19): as in full_zero_pi.json, scqubits 4.3.1's source sign, opposite to Groszkowski et al.,"
+        " arXiv:1708.02886v1, eq:Hzeropi1 (+2 E_CS dC_J d_phi d_theta, dX = (X1 - X2)/X): J1a carries E_J (1 + dE_J/2) but"
+        " C_J (1 - dC_J/2), so dC_J here = -dC_J of the paper and of circuit-quantization; dE_J agrees.",
         "constant 0: no 2 E_J (scqubits' potential), no -E_zeta/2 (FullZeroPi's E_zeta a^dag a), no offset-charge correction.",
     ], subs=subs)
 

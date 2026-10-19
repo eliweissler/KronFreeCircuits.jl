@@ -10,6 +10,7 @@
     "ZeroPi kinetic, -2 ECJ d^2/dphi^2 -> 2 E_CJ n_phi^2 -> E_C[phi,phi] = E_CJ/2.",
     "ZeroPi kinetic, 2 ECS (n_theta + ng)^2 -> 2 E_CS n_theta^2 -> E_C[theta,theta] = E_CS/2, plus the offset (see n_g below).",
     "ZeroPi kinetic, -2 ECS dCJ (i d/dphi) n_theta = +2 E_CS dC_J n_phi n_theta -> 8 E_C[theta,phi] = 2 E_CS dC_J -> E_C[theta,phi] = E_C[phi,theta] = E_CS*dC_J/4 (the source sign; the class docstring writes +2 ECS dCJ d_phi d_theta, which is the opposite sign).",
+    "dC_J sign (deliberate, Eli 2026-10-19): this file keeps scqubits 4.3.1's source sign, opposite to Groszkowski et al., arXiv:1708.02886v1, eq:Hzeropi1 (+2 E_CS dC_J d_phi d_theta, dX = (X1 - X2)/X), so dC_J here = -dC_J of the paper and of circuit-quantization; dE_J agrees.",
     "ZeroPi potential, EL phi^2 -> E_L[phi,phi] = 2*E_L.",
     "ZeroPi potential, -2 EJ cos(theta) cos(phi - x), x = varphi_ext/2 -> -E_J cos(theta + phi - x) - E_J cos(theta - phi + x): cosines 1 and 2.",
     "ZeroPi potential, +EJ dEJ sin(theta) sin(phi - x) = (E_J dE_J/2) cos(theta - phi + x) - (E_J dE_J/2) cos(theta + phi - x): cosines 3 (energy E_J*dE_J/2, omega [1,1,0], offset -x) and 4 (energy -E_J*dE_J/2, omega [1,-1,0], offset +x). The source has EJ*dEJ, not 2*EJ*dEJ; cosines 1+3 and 2+4 give junction energies E_J(1 +- dE_J/2).",

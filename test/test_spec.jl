@@ -90,3 +90,31 @@ end
     e2 = energies(materialize(leaf, parse_spec(dotted), θ))
     @test e1 ≈ e2
 end
+
+@testset "Spec: SI-valued coefficients with integer literals beyond Int64" begin
+    # A transmon in SI units, as circuit-quantization exports it with element values in farads and joules:
+    # E_C = e²/(2C h) in GHz, with integer literals beyond typemax(Int64).
+    src = """{"format": "kronfree-spec", "version": 1, "units": "GHz",
+      "parameters": ["C_J", "E_J"],
+      "modes": [{"name": "varphi_1", "type": "c"}],
+      "E_C": [["(345107820312500000000 // 213914163877964163) ./ (100000000000000000000 * C_J)"]],
+      "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["0"],
+      "cosines": [{"energy": "E_J", "omega": [1], "offset": "0"}], "constant": "0"}"""
+    s = parse_spec(src)
+    C_J = 1.2e-14
+    exact = (big(345107820312500000000) // 213914163877964163) / (big(10)^20 * big(C_J))
+    @test abs(real(s.E_C[1, 1]((C_J=C_J, E_J=10.0))) - Float64(exact)) <= 4eps(Float64(exact))
+end
+
+@testset "Spec: parameter names are normalized like Julia identifiers" begin
+    # µ (U+00B5, micro sign) and μ (U+03BC, Greek mu) are the same Julia identifier; a declared name must match its use.
+    src = """{"format": "kronfree-spec", "version": 1,
+      "parameters": ["µ", "E_J"],
+      "modes": [{"name": "varphi_1", "type": "c"}],
+      "E_C": [["μ"]], "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["0"],
+      "cosines": [{"energy": "E_J", "omega": [1], "offset": "0"}], "constant": "0"}"""
+    s = parse_spec(src)
+    @test s.parameters == [Symbol("μ"), :E_J]
+    @test s.E_C[1, 1]((; Symbol("μ") => 0.25)) == 0.25
+    @test_throws ArgumentError parse_spec(replace(src, "\"E_J\"]" => "\"E_J\", \"μ\"]"))   # now duplicates
+end

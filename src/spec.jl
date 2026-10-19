@@ -109,6 +109,12 @@ function _numbers(v, key::AbstractString, N::Int)
     return Float64.(v)
 end
 
+# A declared parameter name as the Julia identifier an expression's use of it parses to (e.g. µ U+00B5 is μ U+03BC).
+function _identifier(name::AbstractString)
+    ex = Meta.parse(name; raise=false)
+    return ex isa Symbol ? ex : Symbol(name)
+end
+
 """
     parse_spec(json::AbstractString) -> Spec
 
@@ -133,7 +139,7 @@ function parse_spec(json::AbstractString)
 
     (d[:parameters] isa AbstractVector && all(p -> p isa AbstractString, d[:parameters])) ||
         _spec_error("parameters must be an array of strings")
-    params = Symbol[Symbol(p) for p in d[:parameters]]
+    params = Symbol[_identifier(p) for p in d[:parameters]]
     allunique(params) || _spec_error("parameters must be unique")
     try
         check_parameter_names(params)

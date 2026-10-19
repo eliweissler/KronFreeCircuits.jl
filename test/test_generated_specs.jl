@@ -171,8 +171,10 @@ end
     Ecz(θ) = θ.E_CS * θ.E_CJ / (θ.E_CJ - θ.E_CS)
     # Conventions: scqubits' potential adds 2 E_J, and FullZeroPi writes the zeta oscillator as E_zeta a^dag a without
     # its zero-point energy E_zeta/2 = sqrt(2 E_Cz E_L) (full_zero_pi.json's comment).
-    # The fixture's offset-charge correction 2 E_CS n_g^2 (1 - 1/D) vanishes at dC_J = dC = 0 (D = 1).
-    Δ(θ) = 2θ.E_J - sqrt(2θ.E_Cz * θ.E_L)
+    # The fixture's offset-charge correction 2 E_CS n_g^2 (1 - 1/D) (its constant, against 4 nu^T E_C nu = 2 E_CS n_g^2/D)
+    # vanishes at dC_J = dC = 0 (D = 1).
+    D(θ) = 1 - θ.E_CS * θ.dC_J^2 / (4θ.E_CJ) - θ.E_CS * θ.dC^2 / (4θ.E_Cz)
+    Δ(θ) = 2θ.E_J - sqrt(2θ.E_Cz * θ.E_L) + 2θ.E_CS * θ.n_g^2 * (1 - 1 / D(θ))
     rng = MersenneTwister(66)
     function pt(; dC_J=0.0, dC=0.0)
         p = (E_J=u(rng, 5, 15), E_L=u(rng, 0.1, 1), E_CJ=u(rng, 10, 30), E_CS=u(rng, 0.2, 1), varphi_ext=u(rng, -π, π),
@@ -206,6 +208,21 @@ end
     gapn(ε) = real(gen.n_g[1](at(ε)) - hand.n_g[1](at(ε)))
     @test 3.99 < gapn(1e-3) / gapn(5e-4) < 4.01
     @test abs(gapn(ε) / ε^2 + θ.n_g * (S * a^2 + (J - S) * b^2) / (4J)) <= 1e-4 * abs(θ.n_g) * S
+    # At an asymmetric point everything outside that second-order gap is still compared.
+    θa = pt(dC_J=0.05, dC=0.045)
+    N = 3
+    @test all(_close(gen.E_L[i, j](θa), hand.E_L[i, j](θa)) for i in 1:N, j in 1:N)
+    @test all(_close(gen.flux_linear[i](θa), hand.flux_linear[i](θa)) for i in 1:N)
+    @test same_cosines(gen, hand, θa; merge=true)
+    # Only the symmetric part of E_C enters the Hamiltonian, so the gaps above (upper triangle) cover E_C only if both
+    # files' matrices are symmetric.
+    @test all(s.E_C[i, j](θa) == s.E_C[j, i](θa) for s in (gen, hand), i in 1:N, j in 1:N)
+    # The fixture's offset vector nu solves E_C nu = (E_CS n_g/2, 0, 0) (its comment), so that its linear charge term
+    # is scqubits' -4 E_CS n_g n_theta: this checks all of nu, of which only nu[theta] is compared with the circuit.
+    EC = [real(hand.E_C[i, j](θa)) for i in 1:N, j in 1:N]
+    ν = [real(hand.n_g[i](θa)) for i in 1:N]
+    @test all(_close.(EC * ν, [θa.E_CS * θa.n_g / 2, 0, 0]))
+    @test abs(1 - D(θa)) > 1e-4 && _close(hand.constant(θa) - gen.constant(θa), Δ(θa))
     θ = pt()
     zp = Node([:theta => ChargeBasis(3), :phi => PhaseGrid(-4π, 4π, 31)]; solver=Dense(), keep=lowest(8))
     zeta = Node([:zeta => FockBasis(5; phi_zpf=(2θ.E_Cz / θ.E_L)^(1 / 4))]; solver=Dense(), keep=lowest(5))
@@ -227,6 +244,12 @@ end
         θ = pt()
         # zeta1, zeta2 are exactly decoupled harmonic modes (two_zero_pi.json, like zero_pi.json, has none).
         @test [m.name for m in gen6.modes] == [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]
+        # Their energies, from two_zero_pi() in generate_specs.py: zeta_q (node amplitudes +-1/(2 sqrt 2)) sees the large
+        # capacitors, 1/x_B, and the four coupler capacitors, 4/(8 x_c), and only the inductors, so
+        # E_C = 1/((E_CS'/4 + 3g/16)/D - 1/E_CJq), E_CS' the other qubit's, D = E_CS1 E_CS2/4 - g^2/64, and E_L = E_Lq.
+        Dq = θ.E_CS1 * θ.E_CS2 / 4 - θ.g^2 / 64
+        @test _close(gen6.E_C[5, 5](θ), 1 / ((θ.E_CS2 / 4 + 3θ.g / 16) / Dq - 1 / θ.E_CJ1)) && _close(gen6.E_L[5, 5](θ), θ.E_L1)
+        @test _close(gen6.E_C[6, 6](θ), 1 / ((θ.E_CS1 / 4 + 3θ.g / 16) / Dq - 1 / θ.E_CJ2)) && _close(gen6.E_L[6, 6](θ), θ.E_L2)
         same_hamiltonian(decoupled_restriction(gen6, [1, 2, 3, 4], θ), hand, θ; Δconstant=Δ)
     end
     θ = pt()

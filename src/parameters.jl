@@ -72,11 +72,26 @@ function check_parameter_names(params)
 end
 
 # SymPy's Julia printer emits the dotted operators; for scalars they mean the plain operators.
-# Normalize them at parse time so everything downstream sees only scalar call heads.
+# Normalize them at parse time so everything downstream sees only scalar call heads (and integer literals, below).
 const _DOTTED_OPS = Dict(:.+ => :+, :.- => :-, :.* => :*, :./ => :/, :.^ => :^)
+
+# Meta.parse turns an integer literal beyond typemax(Int64) into a macrocall of @int128_str or @big_str (e.g. the
+# SI-valued constants of an exported circuit); fold exactly those, with a decimal-integer string, into the integer.
+const _BIG_INT_MACROS = Dict(Symbol("@int128_str") => Int128, Symbol("@big_str") => BigInt)
+
+function _big_int_literal(ex::Expr)
+    (ex.head === :macrocall && length(ex.args) == 3) || return nothing
+    m, s = ex.args[1], ex.args[3]
+    name = m isa GlobalRef ? m.name : m
+    (name isa Symbol && haskey(_BIG_INT_MACROS, name)) || return nothing
+    (s isa String && occursin(r"^[+-]?[0-9]+$", s)) || return nothing   # the parser folds a leading sign in
+    return parse(_BIG_INT_MACROS[name], s)
+end
 
 _normalize_dots(ex) = ex
 function _normalize_dots(ex::Expr)
+    n = _big_int_literal(ex)
+    n === nothing || return n
     ex.head === :call || return ex
     f = ex.args[1]
     f = get(_DOTTED_OPS, f, f)
@@ -111,7 +126,8 @@ end
 Compile the expression `src` of the declared `params`.
 `src` may use numeric literals, the parameters, the constants `pi, π, im, ℯ`, and calls of
 `+ - * / ^ // sqrt exp cos sin tan cosh sinh tanh log abs cis cispi sign conj real imag`;
-the dotted operators `.+ .- .* ./ .^` mean the scalar operators; anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
+the dotted operators `.+ .- .* ./ .^` mean the scalar operators;
+integer literals beyond `typemax(Int64)` are `Int128` or `BigInt` values; anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
 """
 function Coefficient(src::AbstractString, params::AbstractVector{Symbol})
     isempty(strip(src)) && throw(ArgumentError("coefficient expression is empty"))

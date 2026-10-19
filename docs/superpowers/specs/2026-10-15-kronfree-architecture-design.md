@@ -86,6 +86,7 @@ Ports are inferred (decided): a node materializes a port for every operator that
 ### 5.1 Source
 
 `circuit-quantization` gets one new function, `export_julia_spec(result, path)`, that writes a JSON file.
+As built (plan 4, Section 20g), the exporter is `circuit-quantization`'s `to_spec` and `save_spec` (`circuit_quantization.io`), which supersede `export_julia_spec`.
 This is in scope for this project even though the Python package otherwise stays as it is.
 Coefficients are written as Julia source strings produced by SymPy's Julia code printer, so they remain symbolic in the circuit parameters.
 The function must refuse to export if any cosine coefficient vector (Section 5.2, `omega`) or any charge-cosine vector (`kappa`) contains a free symbol, because parameter-dependent vectors would put parameters into local operators (Section 11).
@@ -451,6 +452,7 @@ Test-only: `ITensors` (reference apply), `FiniteDifferences` and `ChainRulesTest
 Deliberately absent: `NNlib` (the batched gemm is ten lines in the CUDA extension), `ITensors` at runtime, `PythonCall`, `IterativeSolvers` (unmaintained), `Symbolics`, `QuantumToolbox` as the operator container.
 
 Python side: `circuit-quantization` gains `export_julia_spec`, using the standard-library `json` module and SymPy's `julia_code` printer.
+As built, that exporter is `to_spec` and `save_spec` (Section 20g), superseding `export_julia_spec`.
 
 ## 16. Testing strategy (decided)
 
@@ -566,6 +568,7 @@ Source: Eli's audit spike `docs/spikes/2026-10-16-itensor-audit/` (REPORT.md, HA
 
 Plan order after this amendment: 2 solver and ITensor parent backend with CUDA extension (this amendment); 3 real arithmetic; 4 automatic differentiation; 5 export, caching and NPZ; 6 Python exporter with `operators` and `noise_channels`; then the sweep layer and the noise plan. The two-zero-pi acceptance test and the tabled antisymmetric-state phase fallback are unchanged.
 Amended 2026-10-19 (Eli): the Python exporter (`export_julia_spec` in `circuit-quantization`) moves ahead of automatic differentiation and is the next plan after plan 3, for the provenance of the test fixtures, which are so far transcribed by hand from the scqubits source.
+That exporter became `circuit-quantization`'s `to_spec` and `save_spec` (Section 20g), superseding `export_julia_spec`.
 
 ### 20d. Proposed design: a periodic phase grid for compact modes (2026-10-17, for Eli's review)
 
@@ -710,6 +713,9 @@ The two slowest new real-against-complex equivalence testsets (the two-zero-pi r
 The spec exporter lives in `circuit-quantization` (`circuit_quantization.io`: `to_spec`, `save_spec`, `load_spec`); the Julia side adds provenance tests.
 
 **Parser.** The `Coefficient` allowlist accepts SymPy's dotted operators (`.+ .- .* ./ .^`), normalized at parse time, as well as two-argument `log`, scientific literals and `ℯ`.
+`Meta.parse` turns an integer literal beyond `typemax(Int64)` (SI-valued exports, loop fluxes in webers) into an `@int128_str` or `@big_str` macrocall; the parser folds exactly these, with a signed decimal string, into the `Int128` or `BigInt` value before the allowlist check, and every other macrocall stays rejected.
+A declared parameter name is normalized as a Julia identifier (`Meta.parse`), so `µ` (U+00B5) matches its use as `μ` (U+03BC).
+Nonsymmetric `E_C` and `E_L` matrices are accepted and only their symmetric part enters the Hamiltonian (pre-existing behaviour, left as is).
 
 **Provenance test.** `test/fixtures/generate_specs.py` builds each hand fixture's Hamiltonian as a lumped circuit, exports it with `to_spec`, and writes `test/fixtures/generated/*.json`; `test/test_generated_specs.jl` shows that each pair defines the same Hamiltonian (coefficients at random real points, cosines up to the joint sign flip of `omega` and offset, energies on a small Dense tree).
 The cos2phi fixture has no generated counterpart, since it is not a lumped circuit (junctions with phases 2φ and φ have non-parallel incidence rows).
@@ -721,15 +727,18 @@ The test asserts these convention differences:
 - two zero-pi: the constant `2E_J1 + 2E_J2` and two decoupled ζ modes.
 
 **full_zero_pi finding.** scqubits' FullZeroPi charging matrix is a first-order model in the capacitive asymmetries, and no circuit with nonnegative capacitances reproduces it for any nonzero (dC_J, dC), since an exact realization needs a negative capacitance in a b→c or d→a branch.
-The two specs agree exactly at zero capacitive asymmetry; at nonzero asymmetry the test asserts the exact second-order coefficients of the difference in `E_C`.
+The two specs agree exactly at zero capacitive asymmetry; at nonzero asymmetry the test asserts the exact second-order coefficients of the difference in `E_C`, and the second-order difference of the θ offset charge (`n_g/D` in the hand spec against the circuit's `n_g`, coefficient `−n_g (E_CS a² + (E_CJ − E_CS) b²)/(4E_CJ)` along (dC_J, dC) = ε (a, b)).
+At an asymmetric point the test also asserts that `E_L`, `flux_linear` and the merged cosines are equal, that both `E_C` matrices are symmetric, that the hand spec's offset vector ν solves `E_C ν = (E_CS n_g/2, 0, 0)`, and that the constants differ by exactly `2E_CS n_g² (1 − 1/D)` in addition to the symmetric-point conventions.
 
-**Open question: sign of dC_J (pending Eli).** scqubits 4.3.1's source sign (`−2 E_CΣ dC_J (i∂φ) n_θ`) contradicts its documented definitions of dE_J and dC_J, which refer to the same junction; the docstring's `+2E_CΣ dC_J ∂φ∂θ` is the consistent one.
+**Sign of dC_J (decided by Eli, 2026-10-19).** scqubits 4.3.1's source sign (`−2 E_CΣ dC_J (i∂φ) n_θ`) contradicts its documented definitions of dE_J and dC_J, which refer to the same junction; the docstring's `+2E_CΣ dC_J ∂φ∂θ` is the consistent one.
 With the source sign, the junction with the larger E_J has the smaller C_J when dE_J and dC_J have the same sign.
 The effect is observable, about 0.02 GHz at dE_J = dC_J = 0.3, and vanishes at dE_J = 0.
 The fixtures keep the source sign.
+Decision (Eli, 2026-10-19): `full_zero_pi.json` keeps scqubits 4.3.1's dC_J sign, which is opposite to Groszkowski et al., arXiv:1708.02886v1, eq. `eq:Hzeropi1` (`H_0π = H_sym + 2E_CΣ dC_J ∂φ∂θ + E_J dE_J sin θ sin(φ − φ_ext/2)`, `dX = (X1 − X2)/X`), so dC_J(fixture) = −dC_J(paper, `circuit-quantization`); dE_J agrees.
 
 **Performance workaround.** `to_spec(res, subs=...)` does not finish on two_zero_pi (over 10 minutes), because `sympy.cancel` stalls on the substituted expression, while `sympy.cancel(sympy.together(expr))` takes 0.05 s.
-The generator applies `together` to every expression before `to_spec(res)` for that fixture only; a one-line fix in `io.py` would remove the need.
+The generator applies `together` to every expression before `to_spec(res)` for that fixture only.
+`circuit-quantization`'s fix (`together` before `cancel` in `to_spec`) is written but not yet committed as of 2026-10-19; once it is committed, the generator can drop the workaround and regenerate every file against the new commit.
 
 ## 21. Builder check
 

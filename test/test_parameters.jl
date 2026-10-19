@@ -69,3 +69,24 @@ end
     @test Coefficient("ℯ", Symbol[])(NamedTuple()) ≈ exp(1)
     @test Coefficient("ℯ^x", [:x])((x=2.0,)) ≈ exp(2)
 end
+
+@testset "Coefficient folds integer literals beyond Int64" begin
+    # Meta.parse turns them into @int128_str / @big_str macrocalls (SI-valued exports, loop fluxes in webers).
+    ulps(v, t) = abs(real(v) - Float64(t)) / eps(Float64(t))
+    @test ulps(Coefficient("(9223372036854775808 // 3) * x", [:x])((x=1.7,)), (big(9223372036854775808) // 3) * big(1.7)) <= 4
+    @test ulps(Coefficient("100000000000000000000 * x", [:x])((x=1.7,)), big(10)^20 * big(1.7)) <= 4
+    y = 2.3e-9
+    @test ulps(Coefficient("(345107820312500000000 // 213914163877964163) ./ (pi ^ 2 * y)", [:y])((y=y,)),
+               (big(345107820312500000000) // 213914163877964163) / (big(pi)^2 * big(y))) <= 4
+    big40 = "1" * "0"^39 * "1"   # beyond Int128: a @big_str literal, Rational{BigInt} arithmetic
+    @test ulps(Coefficient("($big40 // 3) * x", [:x])((x=1.7,)), (parse(BigInt, big40) // 3) * big(1.7)) <= 4
+    @test ulps(Coefficient("(-42724710240000000000000 * pi * x - 1) ./ (44173801 * x)", [:x])((x=0.3,)),
+               (-big(42724710240000000000000) * big(pi) * big(0.3) - 1) / (44173801 * big(0.3))) <= 4   # a negative literal
+    @test Coefficient("100000000000000000000 * x", [:x]).ex == :($(Int128(10)^20) * x)
+    @test imag(Coefficient("100000000000000000000 * x", [:x])((x=1.7,))) == 0
+    # any other macrocall, or a string macro that is not a decimal integer, is still rejected
+    for src in ("@show x", "@eval 1", "x * @show(x)", "big\"1.5\"", "int128\"x\"", "big\"0x10\"", "r\"1\"",
+                "@int128_str(\"1\", \"2\")")
+        @test_throws ArgumentError Coefficient(src, [:x])
+    end
+end

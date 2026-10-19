@@ -235,7 +235,7 @@ Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` le
 `Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
-Plan 4 (the spec exporter in `circuit-quantization`, with the Julia loader and generated cross-check fixtures) is done on the Julia side once this branch merges.
+Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
 The next plan is automatic differentiation.
 Later plans:
 
