@@ -235,7 +235,7 @@
       "L2a",
       "L2b"
     ],
-    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "commit": "58ee6efec7ac0c1fb1465fba68e2a612314ad651",
     "dirty": false,
     "script": "test/fixtures/generate_specs.py"
   },
@@ -246,7 +246,6 @@
     "Z_full: each qubit's columns as zero_pi.json, ordered theta1, phi1, theta2, phi2, zeta1, zeta2; non-dynamical: Sigma1 - Sigma2, the coupler-island directions (free), all-ones (cyclic).",
     "zeta1, zeta2 are decoupled harmonic modes (two_zero_pi.json has none). Ring flux on the junctions: custom B with +1/2 of the ring flux on each junction and capacitor entries solving G B = I (static flux: a gauge choice; the irrotational B would put it on L<q>b instead, giving flux_linear on phi and zeta).",
     "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.",
-    "The substitution is applied before to_spec (substituted() in generate_specs.py, numerify plus sympy.together), because to_spec's cancel of the substituted E_C does not finish; the coefficients are the same.",
     "constant 0: scqubits' potential adds 2 E_J1 + 2 E_J2 (two_zero_pi.json keeps them)."
   ]
 }

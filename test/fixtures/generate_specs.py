@@ -13,9 +13,8 @@ Run from the repository root, only to regenerate the committed files:
 
 Python is never a test-time dependency of KronFreeCircuits.
 
-What the script adds to circuit_quantization.to_spec's output:
-- mode names: to_spec labels modes varphi_1..varphi_N; they are renamed to the
-  hand fixture's names (labels only, the format calls them descriptive);
+What the script adds to circuit_quantization.to_spec's output (mode names are
+passed as to_spec's mode_names, the hand fixture's labels):
 - `_generator.commit`, `.dirty`, `.script`: the circuit-quantization git commit,
   whether its tracked files had local changes, and this script, next to the
   `version` to_spec records;
@@ -30,7 +29,7 @@ Conventions shared by all circuits:
   element value that produces the fixture's matrix; the relation is derived
   next to each builder.
 - Each compact mode's offset charge is circuit-quantization's sector label
-  n_g<k> (k the mode index); `subs` renames it to the fixture's name.
+  n_g<k> (k the index among all retained modes); `subs` renames it to the fixture's name.
 - Explicit Z_full fixes the fixture's coordinates; its column order is the mode order.
 
 The cos2phi fixture is not generated: see `cos2phi_not_expressible` below.
@@ -38,7 +37,6 @@ The cos2phi fixture is not generated: see `cos2phi_not_expressible` below.
 
 import json
 import subprocess
-from dataclasses import fields, is_dataclass, replace
 from pathlib import Path
 
 import sympy as sym
@@ -65,11 +63,8 @@ def cq_commit():
 
 
 def save(name, res, mode_names, comment, subs=None):
-    """Export res like save_spec, rename the modes, record provenance, validate, write."""
-    data = cq.to_spec(res, subs=subs)
-    assert len(mode_names) == len(data["modes"])
-    for mode, label in zip(data["modes"], mode_names):
-        mode["name"] = label
+    """Export res like save_spec with the given mode names, record provenance, validate, write."""
+    data = cq.to_spec(res, subs=subs, mode_names=mode_names)
     commit, dirty = cq_commit()
     data["_generator"]["commit"] = commit
     data["_generator"]["dirty"] = dirty
@@ -81,29 +76,6 @@ def save(name, res, mode_names, comment, subs=None):
     (OUT / f"{name}.json").write_text(text, encoding="utf-8")
     print(f"wrote {name}.json: modes {[(m['name'], m['type']) for m in data['modes']]}, parameters {data['parameters']}")
     return data
-
-
-def substituted(obj, subs):
-    """circuit_quantization.numerify(obj, subs), with every substituted expression put over one denominator.
-
-    Used instead of to_spec(res, subs=subs) where that is impractically slow: sympy.cancel, which to_spec
-    applies to each coefficient, does not finish in minutes on E_C[theta1,theta1] of two_zero_pi after
-    substitution, while sympy.cancel(sympy.together(...)) of the same expression takes milliseconds.
-    sympy.together is an identity, so the exported coefficients are those of to_spec(res, subs=subs).
-    The Hamiltonian expression H, which to_spec does not read, is only substituted.
-    """
-    if isinstance(obj, (Circuit, Loops)):
-        return obj
-    if is_dataclass(obj):
-        return replace(obj, **{f.name: (getattr(obj, f.name).subs(subs) if f.name == "H" else substituted(getattr(obj, f.name), subs))
-                               for f in fields(obj) if f.init})
-    if isinstance(obj, tuple):
-        return tuple(substituted(x, subs) for x in obj)
-    if isinstance(obj, sym.MatrixBase):
-        return sym.ImmutableMatrix(obj.shape[0], obj.shape[1], [sym.together(v.subs(subs)) for v in obj])
-    if isinstance(obj, sym.Basic):
-        return sym.together(obj.subs(subs))
-    return obj
 
 
 def junction_flux_B(res, rings):
@@ -392,7 +364,7 @@ def two_zero_pi():
             aux[1][0]: 1 / (1 / ECJ1 - g / (8 * D)), aux[1][1]: 1 / ((ECS2 / 4 + g / 16) / D - 1 / ECJ1),
             aux[2][0]: 1 / (1 / ECJ2 - g / (8 * D)), aux[2][1]: 1 / ((ECS1 / 4 + g / 16) / D - 1 / ECJ2),
             real("n_g3"): real("n_g2")}
-    save("two_zero_pi", substituted(res, subs), ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
+    save("two_zero_pi", res, ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
         "Two symmetric zero-pis (nodes 1-4 and 5-8, branches J<q>a, J<q>b, L<q>a, L<q>b, C<q>a, C<q>b as in zero_pi.json)"
         " coupled by scheme (a) of circuit-quantization tests/circuits.py coupled_zero_pis: Cc<q>_<n> from nodes 1, 4, 5, 8 to"
         " island 10 and from nodes 2, 3, 6, 7 to island 9; no capacitance to ground (floating).",
@@ -403,10 +375,8 @@ def two_zero_pi():
         " non-dynamical: Sigma1 - Sigma2, the coupler-island directions (free), all-ones (cyclic).",
         "zeta1, zeta2 are decoupled harmonic modes (two_zero_pi.json has none). " + ZP_GAUGE,
         "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.",
-        "The substitution is applied before to_spec (substituted() in generate_specs.py, numerify plus sympy.together),"
-        " because to_spec's cancel of the substituted E_C does not finish; the coefficients are the same.",
         "constant 0: scqubits' potential adds 2 E_J1 + 2 E_J2 (two_zero_pi.json keeps them).",
-    ])
+    ], subs=subs)
 
 
 def cos2phi_not_expressible():

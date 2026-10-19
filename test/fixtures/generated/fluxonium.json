@@ -47,7 +47,7 @@
       "J",
       "L"
     ],
-    "commit": "8bef4e72bd433eb594b3afcb9a19bfcd23b2ec47",
+    "commit": "58ee6efec7ac0c1fb1465fba68e2a612314ad651",
     "dirty": false,
     "script": "test/fixtures/generate_specs.py"
   },

@@ -736,9 +736,9 @@ The effect is observable, about 0.02 GHz at dE_J = dC_J = 0.3, and vanishes at d
 The fixtures keep the source sign.
 Decision (Eli, 2026-10-19): `full_zero_pi.json` keeps scqubits 4.3.1's dC_J sign, which is opposite to Groszkowski et al., arXiv:1708.02886v1, eq. `eq:Hzeropi1` (`H_0π = H_sym + 2E_CΣ dC_J ∂φ∂θ + E_J dE_J sin θ sin(φ − φ_ext/2)`, `dX = (X1 − X2)/X`), so dC_J(fixture) = −dC_J(paper, `circuit-quantization`); dE_J agrees.
 
-**Performance workaround.** `to_spec(res, subs=...)` does not finish on two_zero_pi (over 10 minutes), because `sympy.cancel` stalls on the substituted expression, while `sympy.cancel(sympy.together(expr))` takes 0.05 s.
-The generator applies `together` to every expression before `to_spec(res)` for that fixture only.
-`circuit-quantization`'s fix (`together` before `cancel` in `to_spec`) is written but not yet committed as of 2026-10-19; once it is committed, the generator can drop the workaround and regenerate every file against the new commit.
+**Performance workaround (removed).** `to_spec(res, subs=...)` did not finish on two_zero_pi (over 10 minutes), because `sympy.cancel` stalled on the substituted expression, while `sympy.cancel(sympy.together(expr))` takes 0.05 s.
+The generator applied `together` to every expression before `to_spec(res)` for that fixture only.
+`circuit-quantization` commit 58ee6ef applies `together` before `cancel` in `to_spec` (0.3 s on two_zero_pi), so the generator now calls `to_spec(res, subs=..., mode_names=...)` for every fixture; the regenerated files differ from the previous ones only in `_generator.commit` and in two_zero_pi's `_comment`.
 
 ## 21. Builder check
 
