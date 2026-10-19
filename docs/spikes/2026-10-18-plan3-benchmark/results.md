@@ -2,12 +2,14 @@
 
 Date: 2026-10-19 (runs from 23:39 on 2026-10-18 to about 00:15 on 2026-10-19, `ewdesktop` local time).
 Machine: `ewdesktop` (i7-11700K, 8 physical cores / 16 logical; NVIDIA RTX A4500).
-Package source and benchmark script: commit `e7317ed` (plan 3 through Task 8, plus the `BENCH_ARITHMETIC` knob in `bench/end_to_end.jl`); every JSON file records it as `commit`.
+Package source and benchmark script as measured: commit `e7317ed` (plan 3 through Task 8, plus the `BENCH_ARITHMETIC` knob in `bench/end_to_end.jl`); every JSON file records it as `commit`.
+Later commits (the results commit `b581216` and the fix commit after it) do not touch `src/`; the fix commit changes only the unmeasured `f8` stage and the formatting of `bench/end_to_end.jl`, so the timed code paths are those of `e7317ed`.
 The comparison column "plan 2b" is `../2026-10-17-plan2b-benchmark/results.md` (package source `0b70c8b`).
 
 ## Summary
 
 - **In real arithmetic the full tree takes 9.9 s on CPU and 5.0 s on the A4500, against 15.4 s and 12.6 s in plan 2b** (1.55× and 2.5×).
+  These plan 2b to plan 3 deltas also include post-2b solver changes: `ChebyshevFilter` takes 5 iterations instead of 4, and `ShiftInvert` now certifies (about +4 %); see Notes.
   With the default `Auto()` leaves the full tree takes 9.9 s on CPU and 5.1 s on the A4500, against 15.7 s and 12.4 s.
 - **Real against complex arithmetic in plan 3, same tree and solvers: 2.2–2.3× on CPU and 2.6× on the A4500 for the full tree.**
   The parent solve gains 2.5× on CPU (8.59 s to 3.47 s) and 3.3× on the A4500 (5.08 s to 1.53 s).
@@ -17,7 +19,8 @@ The comparison column "plan 2b" is `../2026-10-17-plan2b-benchmark/results.md` (
   Plan 2b's `ShiftInvert` already ran the leaf in real arithmetic by testing whether the assembled matrix is exactly real (`leaf_assembled_real: true`); plan 3 replaces that test by the structural rule, and `BENCH_ARITHMETIC=complex` is the only way to get complex arithmetic back.
   The plan 3 complex leaf (6.2 s) is therefore slower than plan 2b's.
   So the real-vs-complex column for the full CPU tree (2.3×) overstates the gain against plan 2b (1.55×).
-- **A CPU `ChebyshevFilter` leaf, where the leaf was complex in plan 2b, gains only 1.27×** (43.7 s to 34.3 s), as the filter is bound by the sparse apply, not by dense arithmetic; `ShiftInvert` (2.9 s) remains 12× faster there.
+- **A CPU `ChebyshevFilter` leaf gains 1.27× from real arithmetic** (plan 3 complex 43.7 s, plan 3 real 34.3 s); plan 2b had no CPU `ChebyshevFilter` run.
+  `ShiftInvert` (2.9 s real) remains 12× faster there.
 - **Every timed solve validates** (largest true residual 9.31e-9, largest orthonormality error 2.4e-12 over all runs).
   Energies agree across arithmetics, solvers and devices: the 120 root energies of all eight tree runs, and of plan 2b's CPU tree, agree to 1.9e-12 (1.7e-12 against plan 2b).
 

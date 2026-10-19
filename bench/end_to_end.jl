@@ -205,9 +205,10 @@ if "leaf" in STAGES
         node, c = getfield(T, Symbol(name)), T.counters[name]
         attempt("leaf_materialize_$name", Dict(name => c)) do
             samples = repeated(() -> (reset!(c); materialize_leaf(node, θ)),
-                               s -> Dict{String,Any}("node_arithmetic" => string(arithmetic(s, node)), "work" => work(c), "validation" => check(s, node),
-                                                      "resolved_solver" => string(nameof(typeof(resolved(s, node)))),
-                                                      "energies" => energies(s, node));
+                               s -> Dict{String,Any}("node_arithmetic" => string(arithmetic(s, node)),
+                                                     "work" => work(c), "validation" => check(s, node),
+                                                     "resolved_solver" => string(nameof(typeof(resolved(s, node)))),
+                                                     "energies" => energies(s, node));
                                warmup=WARMUP, n=LEAF_REPEATS)
             stages["leaf_materialize_$name"] = samples
             report("leaf materialize ($name)", samples; extra="H columns $(samples[end]["work"]["n_matvec"]) iters $(samples[end]["work"]["iterations"])")
@@ -221,7 +222,8 @@ if "tree" in STAGES
                            function (s)
                                global sys = s
                                note_arithmetic!(s, T)
-                               Dict{String,Any}("node_arithmetic" => node_arithmetics(s, T), "work" => Dict(k => work(c) for (k, c) in T.counters),
+                               Dict{String,Any}("node_arithmetic" => node_arithmetics(s, T),
+                                                "work" => Dict(k => work(c) for (k, c) in T.counters),
                                                 "validation" => Dict(k => check(s, n) for (k, n) in nodes(T)),
                                                 "resolved_solvers" => Dict(k => string(nameof(typeof(resolved(s, n)))) for (k, n) in nodes(T)),
                                                 "energies" => energies(s))
@@ -366,15 +368,17 @@ end
     rootmn = materialized(syss, T.root)
     routed = route(T.root, syss.terms)
     cS = constant_term(spec)(θs)
-    truncated_child(mn::MaterializedNode, k) =
-        MaterializedNode(mn.node, mn.dims, mn.energies[1:k], mn.vectors[:, 1:k], mn.kept[1:k],
+    truncated_child(mn::MaterializedNode{T}, k) where {T} =
+        MaterializedNode{T}(mn.node, mn.dims, mn.energies[1:k], mn.vectors[:, 1:k], mn.kept[1:k],
                          Dict(key => P[1:k, 1:k] for (key, P) in mn.ports), mn.children, mn.peak_component[1:k],
                          mn.peak_amplitudes[1:k, 1:k])
     s20 = LOBPCG(; on=ON)
     cut = Any[]
     Efull = nothing
     for k in sort(collect(KS); rev=true)
-        H = _node_operator(T.root, Any[truncated_child(c, k) for c in rootmn.children], routed[T.root], θs, cS)
+        kids = Any[truncated_child(c, k) for c in rootmn.children]
+        H = _node_operator(T.root, _resolve_node_solver(T.root, kids), kids, routed[T.root], θs, cS;
+                           real=rootmn isa MaterializedNode{Float64})
         tk, (E, V, res) = timed(() -> lobpcg_solve(s20, H, NF8))
         Efull === nothing && (Efull = E)
         row = Dict{String,Any}("k" => k, "seconds" => tk, "n_matvec" => res.n_matvec, "iterations" => iterations(res),
