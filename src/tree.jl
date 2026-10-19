@@ -104,6 +104,8 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
   acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
 - `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated
   eigenvalues). Block size 4 reported false convergence in KrylovKit 0.10.4 and is not offered.
+  A block run that KrylovKit breaks off (the square root of a negative residual norm, on a nearly
+  rank-deficient residual block) repeats as single-vector Lanczos.
 - `slices`: spectrum slicing across threads. `1` is the single-shift solve above. An integer `k > 1`
   locates the range `[E_min, E_m]` by inertia counts (bisection on the negative pivots of
   `LDLᵀ(H − τI)`), cuts it into `k` contiguous intervals holding about `m / k` eigenvalues each, and
@@ -126,8 +128,11 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
   return a 4-fold ground level as two copies, with passing residuals; the certificate detects the
   shortfall. With `σ` below the spectrum (Cholesky), the missing states (plus one) are then found by
   Lanczos on the inverse deflated against every computed vector, `x ↦ P (H − σI)⁻¹ P x` with
-  `P = I − V V'`, merged with the computed ones by Rayleigh–Ritz, and the count repeats, at most 3
-  rounds before an error; with `σ` not below the spectrum (LU) a short count raises at once. The
+  `P = I − V V'`, merged with the computed ones by Rayleigh–Ritz, and the count repeats while each
+  round recovers a state (a level with `c` copies takes about `c / block` rounds; a round that
+  converges none raises); with `σ` not below the spectrum (LU) a short count raises at once. A
+  certified solve also starts from fewer than `m + 1` converged pairs, when a few distinct levels
+  exhaust the Krylov space, and recovers the rest the same way. The
   certificate costs one `LDLᵀ` factorization and one more Lanczos pair when it passes (two
   factorizations if the first breaks down; about +5 % on the 9331-state zero-pi leaf at m = 300), and
   one more Lanczos run and one or two factorizations per recovery round.
