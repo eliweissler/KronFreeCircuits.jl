@@ -154,8 +154,7 @@ end
 function _solve_slice(s::ShiftInvert, A::SparseMatrixCSC, a::Real, b::Real, c::Int, x0)
     σ = (a + b) / 2
     F, _ = _factor_shifted(A, σ, true)
-    vals, vecs, info = KrylovKit.eigsolve(x -> F \ x, x0, c, :LM; ishermitian=true, tol=s.inner_tol,
-                                          krylovdim=max(2c + 10, s.krylovdim), maxiter=s.maxiter, verbosity=0)
+    vals, vecs, info = _eigsolve(s, x -> F \ x, x0, c, max(2c + 10, s.krylovdim))
     nconv = min(info.converged, length(vals))
     E = σ .+ inv.(real.(vals[1:nconv]))
     keep = findall(e -> a <= e < b, E)
@@ -306,6 +305,30 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     return E, V
 end
 
+# The tolerance below which KrylovKit's block QR drops a vector of the block Lanczos residual (its default).
+const _BLOCK_QR_TOL = 1e-12
+
+# KrylovKit Lanczos for the `howmany` eigenpairs of largest magnitude of the Hermitian `op`, from `x0` (a vector,
+# or a `KrylovKit.Block`). Block Lanczos (KrylovKit 0.10.4) stops at an invariant subspace only when the residual
+# norm falls to tol, but its block QR drops every residual vector below `_BLOCK_QR_TOL`: a residual between the
+# two (a few distinct levels exhaust the block Krylov space below krylovdim) leaves an empty block, an
+# ArgumentError. The run then repeats from `x0` with tol raised to √b·`_BLOCK_QR_TOL` for a block of b vectors:
+# every residual vector below `_BLOCK_QR_TOL` puts the residual norm below that tol, so it stops there.
+function _eigsolve(s::ShiftInvert, op, x0, howmany::Int, krylovdim::Int)
+    lanczos(tol) = KrylovKit.eigsolve(op, deepcopy(x0), howmany, :LM; ishermitian=true, tol=tol, qr_tol=_BLOCK_QR_TOL,
+                                      krylovdim=krylovdim, maxiter=s.maxiter, verbosity=0)
+    x0 isa KrylovKit.Block || return lanczos(s.inner_tol)
+    try
+        return lanczos(s.inner_tol)
+    catch err
+        (err isa ArgumentError && occursin("blocklength", err.msg)) || rethrow()
+        tol = max(s.inner_tol, sqrt(length(x0)) * _BLOCK_QR_TOL)
+        @debug "ShiftInvert: the block Krylov space became invariant with a residual between inner_tol and the " *
+               "block QR tolerance; repeating the block Lanczos run with tol = $tol"
+        return lanczos(tol)
+    end
+end
+
 # `howmany` eigenpairs of largest magnitude of (H − σI)⁻¹ = F⁻¹ by KrylovKit, restricted to the orthogonal
 # complement of the orthonormal columns of `D` (`nothing`: the whole space): there the deflated operator
 # P F⁻¹ P, P = I − D D', has the eigenpairs of F⁻¹ off span(D), and zero on it.
@@ -314,8 +337,7 @@ function _si_eigsolve(s::ShiftInvert, F, howmany::Int, D, n::Int, T)
     krylovdim = max(2howmany + 10, s.krylovdim)
     x0 = s.block == 1 ? proj(randn(T, n)) : KrylovKit.Block([proj(randn(T, n)) for _ in 1:s.block])
     op = D === nothing ? (x -> F \ x) : (x -> proj(F \ proj(x)))
-    vals, vecs, info = KrylovKit.eigsolve(op, x0, howmany, :LM; ishermitian=true, tol=s.inner_tol,
-                                          krylovdim=krylovdim, maxiter=s.maxiter, verbosity=0)
+    vals, vecs, info = _eigsolve(s, op, x0, howmany, krylovdim)
     length(vals) >= howmany && info.converged >= howmany ||
         error("ShiftInvert: only $(info.converged) of $howmany eigenpairs of the inverted operator converged " *
               "(inner_tol = $(s.inner_tol), maxiter = $(s.maxiter))" *

@@ -207,6 +207,30 @@ end
     end
 end
 
+@testset "ShiftInvert block = 2: an exhausted block Krylov space is not a breakdown" begin
+    # 64 states in 15 distinct levels, every level above the ground degenerate: two start vectors span an invariant
+    # block Krylov space of dimension at most 30, below the Krylov dimension. KrylovKit's block Lanczos stops there
+    # only when the residual falls below tol; one between tol and its block-QR tolerance emptied the next block
+    # (ArgumentError: blocklength must be >(0)) on about one seed in four.
+    H = two_identical_real_oscillators(8)
+    for Hx in (H, complexified(H))
+        Ed, Vd = solve(Dense(), Hx, 0)
+        # m = 10 tops levels 0–3 (1 + 2 + 3 + 4 states); m = 8 cuts the 4-fold level 3, leaving 6 in complete levels
+        for (s, m) in ((ShiftInvert(block=2), 10), (ShiftInvert(block=2), 8), (ShiftInvert(block=2, slices=2), 10)),
+            seed in 1:40
+            Random.seed!(seed)
+            r = try solve(s, Hx, m) catch e; e end
+            @test !(r isa Exception)
+            r isa Exception && continue
+            E, V = r
+            @test E ≈ Ed[1:m] atol=1e-8
+            check_eigenpairs(Hx, E, V; tol=1e-8)
+            c = m == 10 ? 10 : 6
+            @test V[:, 1:c] * V[:, 1:c]' ≈ Vd[:, 1:c] * Vd[:, 1:c]' atol=1e-8
+        end
+    end
+end
+
 @testset "ShiftInvert slicing equals the single-shift solve" begin
     Random.seed!(82)
     H = three_oscillators(7)                                   # 343 states
