@@ -27,6 +27,10 @@ Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which n
 7. Pre-existing: `_primitive(Any)` is defined in both test/helpers.jl and test/test_selection.jl (method-overwrite warning); a Cholesky failure at the automatic shift falls back to LU with a warning rather than retrying a lower shift; `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
 8. The cos 2φ fixture has no generated counterpart (one compact mode with junction harmonics 2 and 1 is not a lumped circuit).
 
+9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the twisted `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
+   The gap is the one recorded in §20a: a data-valued operator (the surface fed back as a potential) has no entry into a `Term`, so stage 2 cannot go through `materialize`; it should be designed with plan 5, since autodiff wraps `materialize`.
+   The promotion transformation itself is not in the package yet (§13.1 requires only that nothing makes it hard).
+
 ## Decisions still Eli's
 
 - Default-suite time budget (item 1 above).
