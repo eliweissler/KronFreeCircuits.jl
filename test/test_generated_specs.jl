@@ -144,6 +144,7 @@ end
     @test Set(gen3.parameters) == Set(hand.parameters)
     # Convention: scqubits' ZeroPi.sparse_potential_mat adds 2 E_J to the potential (zero_pi.json's comment); the
     # circuit has no such constant.
+    # zero_pi.json already uses circuit-quantization's (n - n_g) convention (not scqubits' (n + n_g)), so n_g must be equal.
     Δ(θ) = 2θ.E_J
     rng = MersenneTwister(65)
     pt() = (E_J=u(rng, 5, 15), E_L=u(rng, 0.1, 1), E_CJ=u(rng, 10, 30), E_CS=u(rng, 0.2, 1),
@@ -186,11 +187,25 @@ end
     for _ in 1:3
         same_hamiltonian(gen, hand, pt(); Δconstant=Δ, merge=true)
     end
-    # Away from dC_J = dC = 0 the charging matrices differ at second order: halving the asymmetries quarters the gap.
+    # Away from dC_J = dC = 0 the charging matrices differ at second order, with the coefficients of (generated - hand)
+    # derived by series in sympy from the two files: checked as the limit of the gap over ε² along (dC_J, dC) = ε (a, b).
     θ = pt()
-    gap(ε) = (q = merge(θ, (dC_J=0.7ε, dC=-0.9ε)); maximum(abs(gen.E_C[i, j](q) - hand.E_C[i, j](q)) for i in 1:3, j in 1:3))
-    @test 3.9 < gap(1e-3) / gap(5e-4) < 4.1
-    @test gap(1e-3) < 1e-5 * θ.E_CS
+    a, b = 0.7, -0.9
+    at(ε) = merge(θ, (dC_J=a * ε, dC=b * ε))
+    gapC(i, j, ε) = real(gen.E_C[i, j](at(ε)) - hand.E_C[i, j](at(ε)))
+    S, J = θ.E_CS, θ.E_CJ
+    second = Dict((1, 1) => S * ((J - S) * b^2 + S * a^2) / (8J), (2, 2) => S * a^2 / 8, (3, 3) => S * b^2 / 4,
+                  (2, 3) => -sqrt(2) * S * a * b / 8, (1, 2) => 0.0, (1, 3) => 0.0)
+    ε = 1e-4
+    for ((i, j), c) in second
+        @test abs(gapC(i, j, ε) / ε^2 - c) <= 1e-4 * S   # observed residual (third order) up to 3e-6
+    end
+    # The fixture's θ offset charge n_g/D, D = 1 - E_CS dC_J²/(4E_CJ) - E_CS dC²/(4E_Cz), differs from the circuit's
+    # island offset n_g at second order: halving the asymmetries quarters the gap, with coefficient
+    # -n_g (E_CS a² + (E_CJ - E_CS) b²)/(4E_CJ).
+    gapn(ε) = real(gen.n_g[1](at(ε)) - hand.n_g[1](at(ε)))
+    @test 3.99 < gapn(1e-3) / gapn(5e-4) < 4.01
+    @test abs(gapn(ε) / ε^2 + θ.n_g * (S * a^2 + (J - S) * b^2) / (4J)) <= 1e-4 * abs(θ.n_g) * S
     θ = pt()
     zp = Node([:theta => ChargeBasis(3), :phi => PhaseGrid(-4π, 4π, 31)]; solver=Dense(), keep=lowest(8))
     zeta = Node([:zeta => FockBasis(5; phi_zpf=(2θ.E_Cz / θ.E_L)^(1 / 4))]; solver=Dense(), keep=lowest(5))

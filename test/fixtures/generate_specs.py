@@ -57,6 +57,8 @@ S2 = sym.sqrt(2)
 def cq_commit():
     git = ["git", "-C", str(CQ_DIR)]
     commit = subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    # Tracked files only: circuit-quantization keeps untracked notebooks and notes, so an uncommitted *new*
+    # module that the package imports would not set `dirty`.
     dirty = subprocess.run(git + ["status", "--porcelain", "--untracked-files=no"],
                            capture_output=True, text=True, check=True).stdout.strip()
     return commit, bool(dirty)
@@ -295,9 +297,16 @@ def full_zero_pi():
     with C_J = ghz_to_farad(E_CJ) and C = ghz_to_farad(E_CS E_CJ/(E_CJ - E_CS)).
     E_L, the junction energies and the offsets are exact (linear in dE_L, dE_J);
     E_C is the exact inverse capacitance matrix, which differs from scqubits' model
-    at second order in (dC_J, dC): no lumped circuit has the fixture's E_C when
-    dC_J dC != 0 (the fixture's E_C[phi,zeta] = 0 would need C~^-1[phi,zeta] = 0).
+    at second order in (dC_J, dC): no lumped circuit has the fixture's E_C for any
+    (dC_J, dC) != 0 (an exact realization needs a negative capacitance in a
+    b->c or d->a branch, and the diagonal entries differ even with one asymmetry).
     E_Cz is not a circuit parameter: the circuit fixes it as E_CS E_CJ/(E_CJ - E_CS).
+    Sign of dC_J: the fixture follows scqubits 4.3.1's source (-2 ECS dCJ (i d/dphi) n_theta),
+    which this mapping reproduces with J1a carrying E_J (1 + dE_J/2) but C_J (1 - dC_J/2);
+    scqubits documents dEJ = (EJ1-EJ2)/EJavg and dCJ = (CJ1-CJ2)/CJavg on the same
+    junction 1 (here J1a), so relative to dE_J this dC_J has the opposite sign to that
+    definition (the docstring's +2 E_CS dC_J d_phi d_theta is the consistent sign).
+    The sign is observable when dE_J != 0; the choice is pending Eli.
     """
     EJ, EL, ECJ, ECS = pos("E_J E_L E_CJ E_CS")
     dEJ, dCJ, dC, dEL = real("dE_J dC_J dC dE_L")
@@ -323,6 +332,8 @@ def full_zero_pi():
         "Z_full as zero_pi.json (zeta is scqubits' FullZeroPi coordinate). " + ZP_GAUGE,
         "E_C is the circuit's exact inverse capacitance: it matches scqubits' first-order FullZeroPi model at dC_J = dC = 0"
         " and differs from it at second order in (dC_J, dC). E_Cz is not independent: E_Cz = E_CS*E_CJ/(E_CJ - E_CS).",
+        "dC_J sign: as in full_zero_pi.json (scqubits 4.3.1 source), J1a carries E_J (1 + dE_J/2) but C_J (1 - dC_J/2), so relative to"
+        " dE_J this dC_J has the opposite sign to scqubits' documented dCJ = (CJ1 - CJ2)/CJavg; the choice is pending Eli.",
         "constant 0: no 2 E_J (scqubits' potential), no -E_zeta/2 (FullZeroPi's E_zeta a^dag a), no offset-charge correction.",
     ], subs=subs)
 

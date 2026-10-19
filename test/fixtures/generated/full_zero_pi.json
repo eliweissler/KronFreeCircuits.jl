@@ -113,6 +113,7 @@
     "J1a (theta + phi): EJ = E_J (1 + dE_J/2), C = C_J (1 - dC_J/2); J1b (-theta + phi): EJ = E_J (1 - dE_J/2), C = C_J (1 + dC_J/2); C1a = C (1 + dC/2), C1b = C (1 - dC/2); L1a energy E_L (1 - dE_L/2), L1b energy E_L (1 + dE_L/2); C_J = ghz_to_farad(E_CJ), C = ghz_to_farad(E_CS*E_CJ/(E_CJ - E_CS)).",
     "Z_full as zero_pi.json (zeta is scqubits' FullZeroPi coordinate). Ring flux on the junctions: custom B with +1/2 of the ring flux on each junction and capacitor entries solving G B = I (static flux: a gauge choice; the irrotational B would put it on L<q>b instead, giving flux_linear on phi and zeta).",
     "E_C is the circuit's exact inverse capacitance: it matches scqubits' first-order FullZeroPi model at dC_J = dC = 0 and differs from it at second order in (dC_J, dC). E_Cz is not independent: E_Cz = E_CS*E_CJ/(E_CJ - E_CS).",
+    "dC_J sign: as in full_zero_pi.json (scqubits 4.3.1 source), J1a carries E_J (1 + dE_J/2) but C_J (1 - dC_J/2), so relative to dE_J this dC_J has the opposite sign to scqubits' documented dCJ = (CJ1 - CJ2)/CJavg; the choice is pending Eli.",
     "constant 0: no 2 E_J (scqubits' potential), no -E_zeta/2 (FullZeroPi's E_zeta a^dag a), no offset-charge correction."
   ]
 }
