@@ -71,6 +71,18 @@ function check_parameter_names(params)
     return nothing
 end
 
+# SymPy's Julia printer emits the dotted operators; for scalars they mean the plain operators.
+# Normalize them at parse time so everything downstream sees only scalar call heads.
+const _DOTTED_OPS = Dict(:.+ => :+, :.- => :-, :.* => :*, :./ => :/, :.^ => :^)
+
+_normalize_dots(ex) = ex
+function _normalize_dots(ex::Expr)
+    ex.head === :call || return ex
+    f = ex.args[1]
+    f = get(_DOTTED_OPS, f, f)
+    return Expr(:call, f, map(_normalize_dots, ex.args[2:end])...)
+end
+
 # Accept only numeric literals, symbols, and calls of allowlisted functions on such expressions.
 function _check_expr(ex, src::AbstractString)
     bad(what) = throw(ArgumentError("coefficient \"$src\": $what is not allowed"))
@@ -99,12 +111,12 @@ end
 Compile the expression `src` of the declared `params`.
 `src` may use numeric literals, the parameters, the constants `pi, π, im, ℯ`, and calls of
 `+ - * / ^ // sqrt exp cos sin tan cosh sinh tanh log abs cis cispi sign conj real imag`;
-anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
+the dotted operators `.+ .- .* ./ .^` mean the scalar operators; anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
 """
 function Coefficient(src::AbstractString, params::AbstractVector{Symbol})
     isempty(strip(src)) && throw(ArgumentError("coefficient expression is empty"))
     check_parameter_names(params)
-    ex = Meta.parse(src; raise=false)
+    ex = _normalize_dots(Meta.parse(src; raise=false))
     _check_expr(ex, src)
     deps = free_symbols(ex)
     for d in deps

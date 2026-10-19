@@ -25,7 +25,7 @@ end
     @test Coefficient("cis(x) * conj(im) + 1//2 - abs(-x)", [:x])((x=0.0,)) ≈ 1/2 - im
     for src in ("E_J + (println(\"x\"); 0)", "E_J +", "", "  ", "E_J )", "x; y", "begin E_J end",
                 "@show E_J", "E_J = 1", "x -> x", "E_J.f", "E_J::Float64", "\"E_J\"", "eval(E_J)",
-                "E_J .+ 1", "E_J[1]", "cos(E_J; k=1)", "e*E_J")
+                "E_J .// 1", "E_J[1]", "sqrt.(E_J)", "E_J .< 1", "cos(E_J; k=1)", "e*E_J")
         @test_throws ArgumentError Coefficient(src, [:E_J])
     end
     err = try Coefficient("E_J + (println(\"x\"); 0)", [:E_J]); nothing catch e e end
@@ -37,4 +37,35 @@ end
     @test_throws ArgumentError Coefficient("cos", [:x])               # a function name is not a parameter
     bad = replace(read(fixture("transmon.json"), String), "\"E_J\"" => "\"e\"")
     @test_throws ArgumentError KronFreeCircuits.parse_spec(bad)
+end
+
+@testset "Coefficient accepts SymPy's dotted operators and grammar items" begin
+    pts = [(x=0.7, y=1.3), (x=2.0, y=-0.4), (x=1.1, y=3.0)]
+    pairs = [("x .^ 2 .* y / 3 + x / 2 + pi * sqrt(x)", "x ^ 2 * y / 3 + x / 2 + pi * sqrt(x)"),
+             ("x .+ y", "x + y"), ("x ./ y", "x / y"), ("x .- y", "x - y"), ("x .* y", "x * y"),
+             ("-x .^ 2 .- .-y", "-x ^ 2 - -y"), ("sqrt(x .+ 1) .^ 2", "sqrt(x + 1) ^ 2")]
+    for (d, s) in pairs
+        cd, cs = Coefficient(d, [:x, :y]), Coefficient(s, [:x, :y])
+        @test cd.deps == cs.deps
+        @test all(θ -> cd(θ) == cs(θ), pts)
+    end
+    # the stored expression contains no dotted heads at any depth
+    function heads(ex)
+        ex isa Expr || return Symbol[]
+        return vcat(ex.args[1] isa Symbol ? [ex.args[1]] : Symbol[], reduce(vcat, heads.(ex.args[2:end]); init=Symbol[]))
+    end
+    @test !any(h -> startswith(string(h), "."), heads(Coefficient("x .^ 2 .* y .+ x ./ 2", [:x, :y]).ex))
+    @test KronFreeCircuits.free_symbols(Coefficient("x .+ y", [:x, :y])) == [:x, :y]
+    @test_throws ArgumentError Coefficient("x .+ foo(y)", [:x, :y])
+    @test_throws ArgumentError Coefficient("foo.(x)", [:x])
+    @test_throws ArgumentError Coefficient("x .+ cos.(y)", [:x, :y])
+    @test_throws ArgumentError Coefficient("x .< y", [:x, :y])
+    # log with a base, scientific literals, Euler's number
+    @test Coefficient("log(2, x)", [:x])((x=8.0,)) ≈ 3
+    @test Coefficient("1.5e-3", Symbol[])(NamedTuple()) ≈ 1.5e-3
+    @test Coefficient("2E9", Symbol[])(NamedTuple()) ≈ 2e9
+    @test Coefficient("2e9", Symbol[]).deps == Symbol[]
+    @test Coefficient("2e9 * x", [:x])((x=1.0,)) ≈ 2e9
+    @test Coefficient("ℯ", Symbol[])(NamedTuple()) ≈ exp(1)
+    @test Coefficient("ℯ^x", [:x])((x=2.0,)) ≈ exp(2)
 end

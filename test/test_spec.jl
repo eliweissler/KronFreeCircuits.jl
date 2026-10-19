@@ -1,4 +1,5 @@
 using KronFreeCircuits: Spec, ModeSpec, CosineSpec, ChargeCosineSpec, parse_spec, load_spec
+using KronFreeCircuits: Node, Dense, lowest, PhaseGrid, materialize, energies
 
 @testset "Spec" begin
     zp_src = read(fixture("zero_pi.json"), String)
@@ -72,4 +73,20 @@ end
     # every spec fixture still loads
     specs = filter(f -> endswith(f, ".json") && f != "scqubits_reference.json", readdir(joinpath(@__DIR__, "fixtures")))
     @test length(specs) == 8 && all(f -> load_spec(fixture(f)) isa Spec, specs)
+end
+
+@testset "Spec: the format document's fluxonium, dotted operators" begin
+    src = """{"format": "kronfree-spec", "version": 1, "units": "GHz",
+      "parameters": ["E_C", "E_L", "varphi_ext", "E_J"],
+      "modes": [{"name": "varphi_1", "type": "e"}],
+      "E_C": [["E_C"]], "E_L": [["E_L"]], "flux_linear": ["E_L * varphi_ext"], "n_g": ["0"],
+      "cosines": [{"energy": "E_J", "omega": [1], "offset": "0"}], "constant": "0"}"""
+    dotted = replace(src, "\"E_L * varphi_ext\"" => "\"E_L .* varphi_ext .^ 1\"", "[[\"E_C\"]]" => "[[\"E_C .+ 0\"]]",
+                     "\"E_J\"}" => "\"E_J ./ 1 .- 0\"}")
+    @test dotted != src
+    θ = (E_C=1.0, E_L=0.5, varphi_ext=0.3, E_J=4.0)
+    leaf = Node([:varphi_1 => PhaseGrid(-6π, 6π, 121; order=6)]; solver=Dense(), keep=lowest(4))
+    e1 = energies(materialize(leaf, parse_spec(src), θ))
+    e2 = energies(materialize(leaf, parse_spec(dotted), θ))
+    @test e1 ≈ e2
 end
