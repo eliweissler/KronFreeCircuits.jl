@@ -254,3 +254,58 @@ function classify(root::Node, routed::IdDict, constant::Coefficient, @nospeciali
     visit(root)
     return out
 end
+
+# ---- The real operator of a real node (spec Section 20f, "The real operator") ----
+
+# The canonical port of a factor's conjugation orbit and the sign `s` with `imagpart(O_p) = s · imagpart(O_canonical)`.
+# A paired port's orbit is `{Port(kind, k), Port(kind, -k)}` and its canonical port the one with `k > 0`, since
+# `realpart(O_{π(p)}) = realpart(O_p)` and `imagpart(O_{π(p)}) = −imagpart(O_p)`; any other port is its own canonical port.
+function _canonical_port(c::PortCharacter)
+    c.kind === :paired || return c.partner, 1
+    return c.partner.k < 0 ? (Port(c.partner.kind, -c.partner.k), 1) : (c.partner, -1)
+end
+
+# `Re(c · i^m)`, exactly.
+function _re_ipow(c::Number, m::Int)
+    r = mod(m, 4)
+    return Float64(r == 0 ? real(c) : r == 1 ? -imag(c) : r == 2 ? -real(c) : imag(c))
+end
+
+# The expansion of `Re(c ⊗_a O_a)` with `O_a = R_a + i I_a`: one real term `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a` per
+# subset `S` of the factors whose character is `:imaginary` (always in `S`) or `:paired`, a zero coefficient dropped.
+# Each is `(coeff, sign, key, factors)`: `factors` are this term's own components, `coeff` its coefficient on them, and
+# `key[a] = (axis, canonical port, a ∈ S)`.
+# On the canonical ports' components the coefficient is `coeff * sign`, with `sign` the product of the factors' signs
+# `s` over `S`, so expansions of different terms add by key: a conjugate pair's terms land on the same keys.
+function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}})
+    comps = map(factors) do (a, op, ch)
+        ch.kind === :general &&
+            error("internal error: the factor $(_portname(ch.partner)) on axis $a of a real node has a :general character")
+        port, s = _canonical_port(ch)
+        R = ch.kind === :imaginary ? nothing : realpart(op)
+        I = ch.kind === :real ? nothing : imagpart(op)
+        choices = ch.kind === :real ? (false,) : ch.kind === :imaginary ? (true,) : (false, true)
+        (a, port, s, R, I, choices)
+    end
+    out = NamedTuple{(:coeff, :sign, :key, :factors),Tuple{Float64,Int,Vector{Tuple{Int,Port,Bool}},Vector{Tuple{Int,LocalOp}}}}[]
+    for S in Iterators.product((x[6] for x in comps)...)
+        coeff = _re_ipow(c, count(S))
+        iszero(coeff) && continue
+        sign = prod((x[3] for (x, inS) in zip(comps, S) if inS); init=1)
+        key = Tuple{Int,Port,Bool}[(x[1], x[2], inS) for (x, inS) in zip(comps, S)]
+        ops = Tuple{Int,LocalOp}[(x[1], inS ? x[5] : x[4]) for (x, inS) in zip(comps, S)]
+        push!(out, (coeff=coeff, sign=sign, key=key, factors=ops))
+    end
+    return out
+end
+
+"""
+    _real_axisterms(c, factors) -> Vector{AxisTerm{Float64}}
+
+The real terms of `Re(c ⊗_a O_a)` for `factors = [(axis, O_a, character), ...]`: `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a`
+over the subsets `S` of the `:imaginary` (always in `S`) and `:paired` factors, with `R_a`, `I_a` the real and
+imaginary components (`realpart`, `imagpart`) of `O_a`; terms with a zero coefficient are dropped.
+A `:general` factor is an internal error: classification admits none on a real node.
+"""
+_real_axisterms(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}}) =
+    AxisTerm{Float64}[AxisTerm(r.coeff, r.factors) for r in _real_expansion(c, factors)]

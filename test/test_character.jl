@@ -137,3 +137,57 @@ end
     pair(δ) = [n2, T(C("E", :E), expiphi(1)), T(C("E*(1 + $δ)", :E), expiphi(-1))]
     @test !leafreal(pair(1e-10); b=pg) && leafreal(pair(1e-14); b=pg)
 end
+
+@testset "real node operator equals the complex one" begin
+    zp = load_spec(fixture("zero_pi.json")); θ = zero_pi_params()
+    children = Any[:theta => ChargeBasis(4), :phi => PhaseGrid(-6π, 6π, 41; order=6)]
+    for (spec, ch, θ_) in ((zp, children, θ),
+                           (load_spec(fixture("fluxonium.json")), Any[:varphi_1 => FockBasis(14; phi_zpf=0.6)], (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)),
+                           (load_spec(fixture("transmon.json")), Any[:varphi_1 => ChargeBasis(8)], (E_J=20.0, E_C=1.0, n_g=0.3)))
+        node = Node(ch; solver=Dense(), keep=lowest(4))
+        b = KronFreeCircuits._tree_bases(node); terms = circuit_terms(spec, b); r = KronFreeCircuits.route(node, terms)
+        Hr = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec, b)(θ_); real=true)
+        Hc = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec, b)(θ_); real=false)
+        @test eltype(Hr) === Float64 && eltype(Hc) === ComplexF64
+        A, B = Matrix(Hr), Matrix(Hc)
+        @test maximum(abs, A - B) <= 1e-13 * max(1, maximum(abs, B))
+        @test length(Hr.terms) <= length(Hc.terms)                                     # conjugate pairs merged
+    end
+end
+
+@testset "real node operator: three paired dense factors, every subset" begin
+    C(s, ps...) = Coefficient(s, collect(Symbol, ps))
+    ms = (:a, :b, :c)
+    ch = Any[m => FockBasis(6; phi_zpf=0.5) for m in ms]
+    node = Node(ch; solver=Dense(), keep=lowest(4))
+    # cos(φa + φb − φc + δ) as two conjugate expiphi products, the first written on the non-canonical ports of :c
+    terms = vcat([Term(C("$(0.3 + 0.1i)*E", :E), [Factor(m, n2port())]) for (i, m) in enumerate(ms)],
+                 [Term(C("-0.5*E*cis(delta)", :E, :delta), [Factor(:a, expiphi(1)), Factor(:b, expiphi(1)), Factor(:c, expiphi(-1))]),
+                  Term(C("-0.5*E*cis(-delta)", :E, :delta), [Factor(:a, expiphi(-1)), Factor(:b, expiphi(-1)), Factor(:c, expiphi(1))])])
+    θ = (E=1.3, delta=0.37)
+    @test KronFreeCircuits.classify(node, KronFreeCircuits.route(node, terms), Coefficient(0), θ)[node]
+    Hr = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], terms, θ, 0.2 + 0.0im; real=true)
+    Hc = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], terms, θ, 0.2 + 0.0im; real=false)
+    @test eltype(Hr) === Float64 && all(t -> t.coeff isa Float64, Hr.terms)
+    @test count(t -> length(t.factors) == 3, Hr.terms) == 8                               # 2 × 8 subsets merged pairwise
+    A, B = Matrix(Hr), Matrix(Hc)
+    @test maximum(abs, A - B) <= 1e-13 * max(1, maximum(abs, B))
+end
+
+@testset "_real_axisterms: Re(c ⊗ O) over the imaginary and paired factors" begin
+    fb = FockBasis(5; phi_zpf=0.5)
+    P = KronFreeCircuits.PortCharacter
+    fs(ports) = Tuple{Int,KronFreeCircuits.LocalOp,P}[(a, localop(fb, p), character(fb, p)) for (a, p) in enumerate(ports)]
+    c = 0.7 - 1.9im
+    full(ts) = Matrix(KronFreeOperator([5, 5, 5], ts))
+    for ports in ((phiport(), nport(), expiphi(-1)), (expiphi(1), expiphi(-2), expiphi(1)))
+        ts = KronFreeCircuits._real_axisterms(c, fs(ports))
+        @test ts isa Vector{KronFreeCircuits.AxisTerm{Float64}}
+        Oc = full([KronFreeCircuits.AxisTerm(c, Tuple{Int,KronFreeCircuits.LocalOp}[(a, localop(fb, p)) for (a, p) in enumerate(ports)])])
+        @test maximum(abs, full(ts) - real(Oc)) <= 1e-14 * maximum(abs, Oc)
+    end
+    @test length(KronFreeCircuits._real_axisterms(c, fs((phiport(), nport(), expiphi(-1))))) == 2     # n always in S, phi never
+    @test length(KronFreeCircuits._real_axisterms(2.0, fs((nport(),)))) == 0                          # Re(2i) = 0 is dropped
+    g = Tuple{Int,KronFreeCircuits.LocalOp,P}[(1, localop(fb, phiport()), P(:general, phiport()))]
+    @test_throws ErrorException KronFreeCircuits._real_axisterms(c, g)
+end

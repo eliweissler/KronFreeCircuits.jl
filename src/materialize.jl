@@ -354,19 +354,26 @@ end
 
 # (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
 # child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
+# With `real` (a node classified real) it is built from real data only: `Float64` terms from
+# `_real_node_terms` and `real(constant)`.
 # Scratch is reserved for the resolved `solver`'s full block (LOBPCG: the computed pairs and its guard
 # columns; ChebyshevFilter: the computed pairs and its extra columns), on the solver's storage.
-function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term}, θ::NamedTuple, constant)
+function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term}, θ::NamedTuple, constant; real::Bool)
     dims = Int[_childdim(c) for c in children]
-    axisterms = AxisTerm[]
-    for t in terms
-        fs = Tuple{Int,LocalOp}[]
-        for f in t.factors
-            a = axis_of(node, f.mode)
-            push!(fs, (a, _childop(children[a], f.mode, f.port)))
+    if real
+        axisterms = AxisTerm[t for t in _real_node_terms(node, children, terms, θ)]
+        constant = Base.real(constant)
+    else
+        axisterms = AxisTerm[]
+        for t in terms
+            fs = Tuple{Int,LocalOp}[]
+            for f in t.factors
+                a = axis_of(node, f.mode)
+                push!(fs, (a, _childop(children[a], f.mode, f.port)))
+            end
+            sort!(fs; by=first)          # one factor per axis: checked by _check_composite
+            push!(axisterms, AxisTerm(t.coeff(θ), fs))
         end
-        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
-        push!(axisterms, AxisTerm(t.coeff(θ), fs))
     end
     for (a, c) in enumerate(children)
         c isa MaterializedNode && push!(axisterms, AxisTerm(1.0, Tuple{Int,LocalOp}[(a, DiagonalOp(c.energies))]))
@@ -375,6 +382,35 @@ function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term
     capacity = solver isa LOBPCG ? m + solver.guard :
                solver isa ChebyshevFilter ? min(m + solver.extra, prod(dims)) : 1
     return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(solver))
+end
+
+# The real terms of a real node: each routed term's expansion of `Re(c ⊗ O)` (`_real_expansion`), with the real terms
+# on equal `(axis, canonical port, component)` keys summed, so a conjugate pair contributes its real terms once, doubled.
+# A summed term keeps the components of the first term on its key, its coefficient mapped onto them by that term's sign.
+# A factor's character is its port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
+function _real_node_terms(node::Node, children, terms::Vector{Term}, θ::NamedTuple)
+    leaves = _mode_leaves(node)
+    index = Dict{Vector{Tuple{Int,Port,Bool}},Int}()
+    sums = Float64[]                       # summed coefficient on the canonical components
+    firsts = Tuple{Int,Vector{Tuple{Int,LocalOp}}}[]   # the first term's sign and components
+    for t in terms
+        fs = Tuple{Int,LocalOp,PortCharacter}[]
+        for f in t.factors
+            a = axis_of(node, f.mode)
+            push!(fs, (a, _childop(children[a], f.mode, f.port), _factor_character(leaves, f)))
+        end
+        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
+        for r in _real_expansion(t.coeff(θ), fs)
+            i = get!(index, r.key, length(sums) + 1)
+            if i > length(sums)
+                push!(sums, r.coeff * r.sign)
+                push!(firsts, (r.sign, r.factors))
+            else
+                sums[i] += r.coeff * r.sign
+            end
+        end
+    end
+    return AxisTerm{Float64}[AxisTerm(s * sign, ops) for (s, (sign, ops)) in zip(sums, firsts) if !iszero(s)]
 end
 
 # The initial block of an LOBPCG node: `nothing` without a previous solution of the same `dims`,
@@ -417,7 +453,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
 
     # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
     solver = _resolve_node_solver(node, children)
-    H = _node_operator(node, solver, children, routed[node], θ, constant)
+    H = _node_operator(node, solver, children, routed[node], θ, constant; real=false)   # every node still runs complex
 
     # (4) Diagonalize.
     _dense_too_large(solver, prod(dims)) &&
@@ -538,7 +574,7 @@ function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
     mn = materialized(sys, node)
     routed = route(sys.root.node, sys.terms)
     c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
-    return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c)
+    return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c; real=false)
 end
 
 """
