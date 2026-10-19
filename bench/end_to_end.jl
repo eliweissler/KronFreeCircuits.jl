@@ -36,6 +36,12 @@
 #   BENCH_SLICES        with shiftinvert: ShiftInvert(slices=BENCH_SLICES) (spectrum slicing over
 #                       Julia threads, so run julia -t N; unset: one slice)
 #   BENCH_LEAF_MAXITER  LOBPCG maxiter at the leaves (default 1000, the solver default)
+#   BENCH_ARITHMETIC    auto (default) | complex: the `arithmetic=` option of every node of the tree
+#                       (leaves and parent). `auto` runs the nodes the structure guarantees real in
+#                       Float64 (both leaves and the parent here); `complex` forces ComplexF64
+#                       throughout. The JSON records the knob ("arithmetic") and the arithmetic each
+#                       materialized node actually ran in (`arithmetic(sys, node)`, per sample in the
+#                       leaf and tree stages and once as "node_arithmetic").
 #   BENCH_LEAVES        which leaves the `leaf` stage times (default "1,2")
 #   BENCH_WARMUP        1: one untimed full-size run before the samples of the leaf-dominated
 #                       stages (leaf, tree, leaf solve alone; default); 0: none (the small-tree
@@ -63,6 +69,8 @@ LEAF_SOLVER in ("lobpcg", "lanczos", "dense", "shiftinvert", "chebyshev", "auto"
 const SLICES = haskey(ENV, "BENCH_SLICES") ? parse(Int, ENV["BENCH_SLICES"]) : nothing
 SLICES === nothing || LEAF_SOLVER == "shiftinvert" || error("BENCH_SLICES needs BENCH_LEAF_SOLVER=shiftinvert")
 const LEAF_MAXITER = parse(Int, get(ENV, "BENCH_LEAF_MAXITER", "1000"))
+const ARITH = Symbol(get(ENV, "BENCH_ARITHMETIC", "auto"))
+ARITH in (:auto, :complex) || error("BENCH_ARITHMETIC must be auto or complex")
 const LEAVES = parse.(Int, split(get(ENV, "BENCH_LEAVES", "1,2"), ","))
 const WARMUP = get(ENV, "BENCH_WARMUP", "1") == "1"
 const LEAF_REPEATS = parse(Int, get(ENV, "BENCH_LEAF_REPEATS", string(REPEATS)))
@@ -97,22 +105,21 @@ function leaf_solver(c::Counter)
     LEAF_SOLVER == "auto" && return Auto(; on=ON)
     return counted(c; maxiter=LEAF_MAXITER)
 end
-# The solver `materialize` ran at `node` (Auto() resolved by the node's shape), and whether the
-# leaf's assembled matrix is exactly real (ShiftInvert's arithmetic; recorded once per run, untimed).
+# The solver `materialize` ran at `node` (Auto() resolved by the node's shape), and the arithmetic
+# each node of the tree materialized in (recorded once per run, untimed).
 resolved(s::System, node) = _resolve_node_solver(node, materialized(s, node).children)
-function note_leaf_arithmetic!(s::System, node)
-    haskey(record, "leaf_assembled_real") && return
-    resolved(s, node) isa ShiftInvert || return
-    record["leaf_assembled_real"] = isreal_assembled(operator(s, node))
+node_arithmetics(s::System, T) = Dict(k => string(arithmetic(s, n)) for (k, n) in nodes(T))
+function note_arithmetic!(s::System, T)
+    haskey(record, "node_arithmetic") || (record["node_arithmetic"] = node_arithmetics(s, T))
 end
 
 function build_tree(; grid=(-6π, 6π, NPTS))
     cs = Dict("leaf1" => Counter(LEAF_KIND), "leaf2" => Counter(LEAF_KIND), "root" => Counter(:lobpcg))
     leaf(i) = Node([Symbol("theta$i") => ChargeBasis(NCUT), Symbol("phi$i") => PhaseGrid(grid...; order=8)];
-                   solver=leaf_solver(cs["leaf$i"]), compute=KEEP, keep=lowest(KEEP))
+                   solver=leaf_solver(cs["leaf$i"]), compute=KEEP, keep=lowest(KEEP), arithmetic=ARITH)
     l1, l2 = leaf(1), leaf(2)
     root = Node([l1, l2]; solver=counted(cs["root"]), compute=NEV, keep=lowest(NEV),
-                ports=[(:theta1, nport()), (:theta2, nport())])
+                ports=[(:theta1, nport()), (:theta2, nport())], arithmetic=ARITH)
     return (root=root, leaf1=l1, leaf2=l2, counters=cs)
 end
 nodes(T) = ("leaf1" => T.leaf1, "leaf2" => T.leaf2, "root" => T.root)
@@ -166,7 +173,7 @@ function attempt(f, name, counters=Dict{String,Counter}())
     end
 end
 
-record = Dict{String,Any}("part" => "B", "environment" => environment(), "g" => G, "ncut" => NCUT,
+record = Dict{String,Any}("part" => "B", "arithmetic" => string(ARITH), "environment" => environment(), "g" => G, "ncut" => NCUT,
                           "points" => NPTS, "leaf_keep" => KEEP, "nev" => NEV, "tol" => TOL,
                           "leaf_solver" => LEAF_SOLVER, "leaf_slices" => something(SLICES, 1),
                           "leaf_maxiter" => LEAF_MAXITER, "warmup" => WARMUP,
@@ -182,8 +189,8 @@ let
         ls = LEAF_SOLVER == "lobpcg" ? s1 : LEAF_SOLVER == "auto" ? (ON === Array ? ShiftInvert() : ChebyshevFilter(; on=ON)) :
              LEAF_SOLVER == "shiftinvert" ? ShiftInvert() : leaf_solver(Counter(LEAF_KIND))
         lf(i) = Node([Symbol("theta$i") => ChargeBasis(3), Symbol("phi$i") => PhaseGrid(-6π, 6π, 41; order=8)];
-                     solver=ls, compute=8, keep=lowest(8))
-        r = Node([lf(1), lf(2)]; solver=s1, compute=6, keep=lowest(6), ports=[(:theta1, nport()), (:theta2, nport())])
+                     solver=ls, compute=8, keep=lowest(8), arithmetic=ARITH)
+        r = Node([lf(1), lf(2)]; solver=s1, compute=6, keep=lowest(6), ports=[(:theta1, nport()), (:theta2, nport())], arithmetic=ARITH)
         materialize(r, spec, θ)
     end
     @printf("compilation warm-up (small tree) %.1f s\n", tsmall)
@@ -198,10 +205,9 @@ if "leaf" in STAGES
         node, c = getfield(T, Symbol(name)), T.counters[name]
         attempt("leaf_materialize_$name", Dict(name => c)) do
             samples = repeated(() -> (reset!(c); materialize_leaf(node, θ)),
-                               s -> (note_leaf_arithmetic!(s, node);
-                                     Dict{String,Any}("work" => work(c), "validation" => check(s, node),
+                               s -> Dict{String,Any}("node_arithmetic" => string(arithmetic(s, node)), "work" => work(c), "validation" => check(s, node),
                                                       "resolved_solver" => string(nameof(typeof(resolved(s, node)))),
-                                                      "energies" => energies(s, node)));
+                                                      "energies" => energies(s, node));
                                warmup=WARMUP, n=LEAF_REPEATS)
             stages["leaf_materialize_$name"] = samples
             report("leaf materialize ($name)", samples; extra="H columns $(samples[end]["work"]["n_matvec"]) iters $(samples[end]["work"]["iterations"])")
@@ -214,8 +220,8 @@ if "tree" in STAGES
         samples = repeated(() -> (foreach(reset!, values(T.counters)); materialize(T.root, spec, θ)),
                            function (s)
                                global sys = s
-                               note_leaf_arithmetic!(s, T.leaf1)
-                               Dict{String,Any}("work" => Dict(k => work(c) for (k, c) in T.counters),
+                               note_arithmetic!(s, T)
+                               Dict{String,Any}("node_arithmetic" => node_arithmetics(s, T), "work" => Dict(k => work(c) for (k, c) in T.counters),
                                                 "validation" => Dict(k => check(s, n) for (k, n) in nodes(T)),
                                                 "resolved_solvers" => Dict(k => string(nameof(typeof(resolved(s, n)))) for (k, n) in nodes(T)),
                                                 "energies" => energies(s))
@@ -238,7 +244,7 @@ sys === nothing && any(in(STAGES), ("parts", "f3", "f8")) &&
 
 "parts" in STAGES && sys !== nothing && attempt("parts", T.counters) do
     leafsolver, rootsolver = resolved(sys, T.leaf1), T.root.solver     # Auto() as materialize resolved it
-    note_leaf_arithmetic!(sys, T.leaf1)
+    note_arithmetic!(sys, T)
     # Operator construction on the solver's storage (includes the transfer of its data on the GPU).
     Hl = operator(sys, T.leaf1)
     s = repeated(() -> operator(sys, T.leaf1))
