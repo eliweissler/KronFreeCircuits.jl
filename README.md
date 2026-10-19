@@ -1,3 +1,7 @@
+# Status
+
+This is a personal research project and largely implemented using Claude Code. Use at your own risk!
+
 # KronFreeCircuits.jl
 
 Kron-free hierarchical diagonalization of superconducting circuits.
