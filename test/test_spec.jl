@@ -137,6 +137,10 @@ end
     # a comparison that cannot be evaluated (sqrt of a negative real at every test point) is rejected too
     m = msg(spec("""[["a", "sqrt(-a)"], ["sqrt(-b)", "a"]]""", sym))
     @test m isa String && occursin("E_C[1,2]", m) && occursin("cannot be evaluated", m)
+    # a non-analytic pair cannot be proven equal at three points (abs(x) = x on all of them); identical text passes
+    m = msg(spec("""[["a", "abs(x)"], ["x", "a"]]""", sym))
+    @test m isa String && occursin("E_C[1,2]", m) && occursin("\"abs(x)\"", m) && occursin("not real-analytic", m)
+    @test parse_spec(spec("""[["a", "abs(x)"], ["abs(x)", "a"]]""", sym)) isa Spec
     # equal entries spelled differently pass
     s = parse_spec(spec("""[["a", "g/8"], ["0.125*g", "a"]]""", """[["a", "2*x"], ["x+x", "a"]]"""))
     @test s isa Spec && s.E_C[1, 2]((g=0.8,)) ≈ s.E_C[2, 1]((g=0.8,)) ≈ 0.1
