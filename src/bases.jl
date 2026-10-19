@@ -305,6 +305,14 @@ function localop(b::FockBasis, p::Port)
     throw(_unavailable(b, p))
 end
 
+# `(α/|α|)^a` exactly for purely real or purely imaginary `α` (a power of ±1 or ±i), so that the
+# phases of `displacement` carry no round-off and conjugation relations between ports hold exactly.
+function _unit_power(α::Number, a::Int)
+    iszero(imag(α)) && return ComplexF64(real(α) > 0 || iseven(a) ? 1 : -1)
+    s = imag(α) > 0 ? 1 : -1                                 # α/|α| = s i
+    return (ComplexF64(1), ComplexF64(0, s), ComplexF64(-1), ComplexF64(0, -s))[mod(a, 4)+1]
+end
+
 """
     displacement(N, α) -> Matrix{ComplexF64}
 
@@ -320,6 +328,7 @@ function displacement(N::Int, α::Number)
     end
     lf = cumsum([0.0; log.(1:N-1)])                         # lf[j+1] = log(j!)
     logr, θ = log(abs(α)), angle(α)
+    exact = iszero(imag(α)) || iszero(real(α))
     for a in 0:N-1                                           # a = n - m >= 0
         Lprev, L = 0.0, 1.0                                  # L_{-1}, L_0 of L^{(a)}
         for m in 0:N-1-a
@@ -330,8 +339,8 @@ function displacement(N::Int, α::Number)
             end
             n = m + a
             mag = exp(0.5 * (lf[m+1] - lf[n+1]) + a * logr - x / 2) * L
-            D[n+1, m+1] = mag * cis(a * θ)                   # ⟨n|D(α)|m⟩
-            a > 0 && (D[m+1, n+1] = mag * cis(-a * (θ + π)))  # conj(⟨n|D(-α)|m⟩)
+            D[n+1, m+1] = mag * (exact ? _unit_power(α, a) : cis(a * θ))                 # ⟨n|D(α)|m⟩
+            a > 0 && (D[m+1, n+1] = mag * (exact ? conj(_unit_power(-α, a)) : cis(-a * (θ + π))))  # conj(⟨n|D(-α)|m⟩)
         end
     end
     return D
