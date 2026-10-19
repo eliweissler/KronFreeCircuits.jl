@@ -6,9 +6,6 @@
 └ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:597
 ┌ Warning: PhaseGrid on mode :phi2 is too small: kept states [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] have edge support up to 0.016194240835756313 > 1.0e-6; enlarge the grid
 └ @ KronFreeCircuits ~/kronfree-plan2-ci/src/materialize.jl:597
-┌ Warning: LOBPCG: the eigensolver failed on the warm-start block; retrying once from a random block
-│   exception = InexactError: Float64(-0.7122635556499632 - 1.7358699878070467im)
-└ @ KronFreeCircuits ~/kronfree-plan2-ci/src/lobpcg.jl:274
 [ Info: S1, H = c I warm start on the device: converged
 ┌ Error: Ortho(X) is failing badly, falling back to SVD
 │   estimated_error = 1.0
@@ -21,19 +18,19 @@
 [ Info: S3, H = 0.0 I cold start on the device: rejected
 [ Info: S3, H = 2.5 I cold start on the device: converged
 Test Summary:                                                                                        | Pass  Total     Time
-CUDA device                                                                                          |  456    456  2m39.0s
-  operator on the device equals host; no device allocation after warm-up                             |    4      4    17.0s
+CUDA device                                                                                          |  457    457  2m38.7s
+  operator on the device equals host; no device allocation after warm-up                             |    4      4    16.8s
   fused diagonal expectation                                                                         |    6      6     2.1s
   LOBPCG on the device equals Dense on the host                                                      |   25     25  1m22.6s
-  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing               |   33     33    11.5s
+  ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing               |   34     34    11.5s
   O1: axis identity, equal sizes, and complex factor order (ITensor dense path)                      |   27     27     2.1s
   O2: shrinking/growing blocks, views, and stale scratch (ITensor dense path)                        |   38     38     0.9s
   O4: fused diagonal and cancellation                                                                |   13     13     3.1s
-  S1: exact and wrong-subspace seeds; bounded recovery                                               |   29     29     4.4s
-  S3: H = 0, H = cI, tight clusters and a cutoff inside a cluster                                    |   44     44     3.4s
+  S1: exact and wrong-subspace seeds; bounded recovery                                               |   29     29     4.5s
+  S3: H = 0, H = cI, tight clusters and a cutoff inside a cluster                                    |   44     44     3.7s
   S5: no locking, several locks at once, one active column, complete locking                         |   52     52     2.4s
-  F3: identical uncoupled zero-pis (small fixture)                                                   |   38     38     5.6s
+  F3: identical uncoupled zero-pis (small fixture)                                                   |   38     38     5.2s
   F7: complex three-mode cosine as an adjoint pair (device operator and LOBPCG on the flat tree)     |   27     27     4.1s
-  real operator on the device equals host; no device allocation after warm-up                        |   12     12     7.7s
+  real operator on the device equals host; no device allocation after warm-up (real)                 |   12     12     7.7s
   LOBPCG and ChebyshevFilter on the device in real arithmetic equal Dense on the host                |   87     87     5.0s
-  F3 (real): small two-zero-pi tree, LOBPCG(on=CuArray) at the root, real equals arithmetic=:complex |   21     21     6.2s
+  F3 (real): small two-zero-pi tree, LOBPCG(on=CuArray) at the root, real equals arithmetic=:complex |   21     21     6.1s

@@ -1100,3 +1100,23 @@ end
         @test norm(Vd[:, 5:end]' * V3) < 1e-6                               # nothing above the cluster
     end
 end
+
+@testset "LOBPCG warm start: complex block on a real operator" begin
+    H = real_three_oscillators(6); m = 4
+    Ed, _ = solve(Dense(), H, 0)
+    _, V0 = solve(LOBPCG(tol=1e-9), H, m)
+    # An exactly real complex block is converted and used (no retry warning), and the result stays real.
+    E, V = @test_logs solve(LOBPCG(tol=1e-9), H, m; X0=ComplexF64.(V0))
+    @test eltype(V) === Float64
+    @test E ≈ Ed[1:m] atol=1e-7
+    check_eigenpairs(H, E, V; tol=1e-8)
+    # A genuinely complex block is rejected, naming both types.
+    X0 = ComplexF64.(V0); X0[1, 1] += 0.1im
+    err = try solve(LOBPCG(tol=1e-9), H, m; X0=X0); nothing catch e; e end
+    @test err isa ArgumentError && occursin("ComplexF64", err.msg) && occursin("Float64", err.msg) && occursin("real", err.msg)
+    # A real block on a complex operator still converts.
+    Hc = complexified(H)
+    Ec, Vc = solve(LOBPCG(tol=1e-9), Hc, m; X0=V0)
+    @test eltype(Vc) === ComplexF64
+    @test Ec ≈ Ed[1:m] atol=1e-7
+end

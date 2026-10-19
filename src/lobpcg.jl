@@ -232,6 +232,13 @@ function lobpcg_solve(s::LOBPCG, H::KronFreeOperator, m::Int; X0=nothing)
         end
     end
     T = eltype(H)
+    if X0 !== nothing && T <: Real && eltype(X0) <: Complex
+        # A complex warm start on a real operator: exactly real data converts losslessly, anything else is rejected.
+        all(iszero, imag.(X0)) ||
+            throw(ArgumentError("LOBPCG: the warm-start block X0 is complex ($(eltype(X0))) but the operator is real ($T); " *
+                                "pass a real block or complexify the operator"))
+        X0 = real.(X0)
+    end
     rng = Random.default_rng()
     g = min(s.guard, (N - 5) ÷ 3 - m)
     w = m + g

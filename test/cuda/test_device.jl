@@ -86,7 +86,8 @@ end
     check_eigenpairs(H, energies(sc), eigenvectors(sc); tol=1e-8)
     E, V = solve(ChebyshevFilter(tol=1e-9, on=CuArray), H, 8)
     @test E ≈ energies(sd) atol=1e-7
-    @test E isa Vector{Float64} && V isa Matrix{eltype(H)}              # the zero-pi operator is real
+    @test eltype(H) === Float64                                             # the zero-pi operator is real by structure
+    @test E isa Vector{Float64} && V isa Matrix{Float64}
     check_eigenpairs(H, E, V; tol=1e-8)
     # One filtered block apply (a step of the three-term recurrence), and a whole filter without
     # rescaling, on the solver's block (nb = 8 + 40 columns, and a prefix of active columns) with the
@@ -266,7 +267,7 @@ LinearAlgebra.mul!(Y::AbstractVecOrMat, W::WidthRecorder, X::AbstractVecOrMat) =
     # Device adjustment: in device arithmetic the eigensolver can converge on H = c I (every block is
     # exact) where the host one fails; the outcome must be an informative rejection or valid pairs.
     Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5)
-    out = try solve(LOBPCG(on=CuArray), Hc, 3; X0=randn(ComplexF64, 30, 3)) catch e; e end
+    out = try solve(LOBPCG(on=CuArray), Hc, 3; X0=randn(eltype(Hc), 30, 3)) catch e; e end
     @info "S1, H = c I warm start on the device: " * (out isa Exception ? "rejected" : "converged")
     if out isa Exception
         @test out isa ErrorException && occursin("Dense", out.msg)
@@ -439,7 +440,7 @@ end
 
 # ---- Real arithmetic on the device (plan 3, Task 8) ----
 
-@testset "real operator on the device equals host; no device allocation after warm-up" begin
+@testset "real operator on the device equals host; no device allocation after warm-up (real)" begin
     rng = MersenneTwister(81)
     dims = [40, 30, 3]
     terms = [AxisTerm(1.0, [(1, DiagonalOp(collect(1.0:40)))]),
