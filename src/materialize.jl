@@ -385,23 +385,26 @@ function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term
 end
 
 # The real terms of a real node: each routed term's expansion of `Re(c ⊗ O)` (`_real_expansion`), with the real terms
-# on equal `(axis, canonical port, component)` keys summed, so a conjugate pair contributes its real terms once, doubled.
+# on equal keys summed, so a conjugate pair contributes its real terms once, doubled.
+# A key lists, per factor, `(axis, mode, canonical port, component)`: the mode is needed because a node child's axis
+# carries several modes, whose ports on that axis are different operators.
 # A summed term keeps the components of the first term on its key, its coefficient mapped onto them by that term's sign.
 # A factor's character is its port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
 function _real_node_terms(node::Node, children, terms::Vector{Term}, θ::NamedTuple)
     leaves = _mode_leaves(node)
-    index = Dict{Vector{Tuple{Int,Port,Bool}},Int}()
+    index = Dict{Vector{Tuple{Int,Symbol,Port,Bool}},Int}()
     sums = Float64[]                       # summed coefficient on the canonical components
     firsts = Tuple{Int,Vector{Tuple{Int,LocalOp}}}[]   # the first term's sign and components
     for t in terms
-        fs = Tuple{Int,LocalOp,PortCharacter}[]
+        fs = Tuple{Int,Symbol,LocalOp,PortCharacter}[]
         for f in t.factors
             a = axis_of(node, f.mode)
-            push!(fs, (a, _childop(children[a], f.mode, f.port), _factor_character(leaves, f)))
+            push!(fs, (a, f.mode, _childop(children[a], f.mode, f.port), _factor_character(leaves, f)))
         end
         sort!(fs; by=first)          # one factor per axis: checked by _check_composite
-        for r in _real_expansion(t.coeff(θ), fs)
-            i = get!(index, r.key, length(sums) + 1)
+        for r in _real_expansion(t.coeff(θ), Tuple{Int,LocalOp,PortCharacter}[(a, op, ch) for (a, _, op, ch) in fs])
+            key = Tuple{Int,Symbol,Port,Bool}[(a, m, first(_canonical_port(ch)), inS) for ((a, m, _, ch), inS) in zip(fs, r.S)]
+            i = get!(index, key, length(sums) + 1)
             if i > length(sums)
                 push!(sums, r.coeff * r.sign)
                 push!(firsts, (r.sign, r.factors))

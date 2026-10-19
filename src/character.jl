@@ -273,28 +273,28 @@ end
 
 # The expansion of `Re(c ⊗_a O_a)` with `O_a = R_a + i I_a`: one real term `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a` per
 # subset `S` of the factors whose character is `:imaginary` (always in `S`) or `:paired`, a zero coefficient dropped.
-# Each is `(coeff, sign, key, factors)`: `factors` are this term's own components, `coeff` its coefficient on them, and
-# `key[a] = (axis, canonical port, a ∈ S)`.
-# On the canonical ports' components the coefficient is `coeff * sign`, with `sign` the product of the factors' signs
-# `s` over `S`, so expansions of different terms add by key: a conjugate pair's terms land on the same keys.
+# Each is `(coeff, sign, S, factors)`: `factors` are this term's own components, `coeff` its coefficient on them, and
+# `S[a]` whether factor `a` takes its imaginary component.
+# On the components of the canonical ports (`_canonical_port`) the coefficient is `coeff * sign`, with `sign` the product
+# of the factors' signs `s` over `S`, so expansions of different terms on the same modes, canonical ports and components
+# add by their coefficients: a conjugate pair's real terms coincide.
 function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}})
     comps = map(factors) do (a, op, ch)
         ch.kind === :general &&
             error("internal error: the factor $(_portname(ch.partner)) on axis $a of a real node has a :general character")
-        port, s = _canonical_port(ch)
+        s = last(_canonical_port(ch))
         R = ch.kind === :imaginary ? nothing : realpart(op)
         I = ch.kind === :real ? nothing : imagpart(op)
         choices = ch.kind === :real ? (false,) : ch.kind === :imaginary ? (true,) : (false, true)
-        (a, port, s, R, I, choices)
+        (a, s, R, I, choices)
     end
-    out = NamedTuple{(:coeff, :sign, :key, :factors),Tuple{Float64,Int,Vector{Tuple{Int,Port,Bool}},Vector{Tuple{Int,LocalOp}}}}[]
-    for S in Iterators.product((x[6] for x in comps)...)
+    out = NamedTuple{(:coeff, :sign, :S, :factors),Tuple{Float64,Int,Vector{Bool},Vector{Tuple{Int,LocalOp}}}}[]
+    for S in Iterators.product((x[5] for x in comps)...)
         coeff = _re_ipow(c, count(S))
         iszero(coeff) && continue
-        sign = prod((x[3] for (x, inS) in zip(comps, S) if inS); init=1)
-        key = Tuple{Int,Port,Bool}[(x[1], x[2], inS) for (x, inS) in zip(comps, S)]
-        ops = Tuple{Int,LocalOp}[(x[1], inS ? x[5] : x[4]) for (x, inS) in zip(comps, S)]
-        push!(out, (coeff=coeff, sign=sign, key=key, factors=ops))
+        sign = prod((x[2] for (x, inS) in zip(comps, S) if inS); init=1)
+        ops = Tuple{Int,LocalOp}[(x[1], inS ? x[4] : x[3]) for (x, inS) in zip(comps, S)]
+        push!(out, (coeff=coeff, sign=sign, S=collect(Bool, S), factors=ops))
     end
     return out
 end
@@ -305,6 +305,8 @@ end
 The real terms of `Re(c ⊗_a O_a)` for `factors = [(axis, O_a, character), ...]`: `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a`
 over the subsets `S` of the `:imaginary` (always in `S`) and `:paired` factors, with `R_a`, `I_a` the real and
 imaginary components (`realpart`, `imagpart`) of `O_a`; terms with a zero coefficient are dropped.
+No terms are merged here: a node merges the real terms of all its routed terms by `(axis, mode, canonical port,
+component)` keys, the mode included because a node child's axis carries several modes (`_real_node_terms`).
 A `:general` factor is an internal error: classification admits none on a real node.
 """
 _real_axisterms(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}}) =

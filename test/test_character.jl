@@ -151,7 +151,7 @@ end
         @test eltype(Hr) === Float64 && eltype(Hc) === ComplexF64
         A, B = Matrix(Hr), Matrix(Hc)
         @test maximum(abs, A - B) <= 1e-13 * max(1, maximum(abs, B))
-        @test length(Hr.terms) <= length(Hc.terms)                                     # conjugate pairs merged
+        @test length(Hr.terms) <= length(Hc.terms)    # holds on these fixtures (not in general: a term can expand to 2^p real terms)
     end
 end
 
@@ -190,4 +190,36 @@ end
     @test length(KronFreeCircuits._real_axisterms(2.0, fs((nport(),)))) == 0                          # Re(2i) = 0 is dropped
     g = Tuple{Int,KronFreeCircuits.LocalOp,P}[(1, localop(fb, phiport()), P(:general, phiport()))]
     @test_throws ErrorException KronFreeCircuits._real_axisterms(c, g)
+end
+
+@testset "real node operator: a node child carrying several modes on one axis" begin
+    C(s, ps...) = Coefficient(s, collect(Symbol, ps))
+    T(c, fs...) = Term(c, Factor[Factor(m, p) for (m, p) in fs])
+    # n_x ⊗ n_z and n_y ⊗ n_z share the child's axis: their real terms must not merge
+    child = Node(Any[:x => ChargeBasis(3), :y => ChargeBasis(3)]; solver=Dense(), keep=lowest(6))
+    root = Node(Any[child, :z => ChargeBasis(3)]; solver=Dense(), keep=lowest(2))
+    terms = [T(C("E", :E), (:x, n2port())), T(C("F", :F), (:y, n2port())), T(C("0.4"), (:x, nport()), (:y, nport())),
+             T(C("E", :E), (:z, n2port())), T(C("0.3*E", :E), (:x, nport()), (:z, nport())), T(C("0.9*F", :F), (:y, nport()), (:z, nport()))]
+    θ = (E=1.3, F=0.7)
+    sys = materialize(root, terms, θ)                    # children through the (complex) materialize path
+    routed = KronFreeCircuits.route(root, terms)
+    @test KronFreeCircuits.classify(root, routed, Coefficient(0), θ)[root]
+    Hr = KronFreeCircuits._node_operator(root, Dense(), sys.root.children, routed[root], θ, 0.0; real=true)
+    Hc = KronFreeCircuits._node_operator(root, Dense(), sys.root.children, routed[root], θ, 0.0; real=false)
+    A, B = Matrix(Hr), Matrix(Hc)
+    @test maximum(abs, A - B) <= 1e-13 * max(1, maximum(abs, B))
+    # the spec path: a transmon chain coupled 1–3 and 2–3, tree ((1, 2), 3)
+    chain = parse_spec(replace(read(fixture("three_transmons.json"), String),
+                               "[[\"E_C1\", \"g/8\", \"0\"], [\"g/8\", \"E_C2\", \"0\"], [\"0\", \"0\", \"E_C3\"]]" =>
+                               "[[\"E_C1\", \"g/8\", \"g/8\"], [\"g/8\", \"E_C2\", \"g/4\"], [\"g/8\", \"g/4\", \"E_C3\"]]"))
+    θc = three_transmons_params(g=0.4)
+    pair = Node(Any[:varphi_1 => ChargeBasis(6), :varphi_2 => ChargeBasis(6)]; solver=Dense(), keep=lowest(8))
+    top = Node(Any[pair, :varphi_3 => ChargeBasis(6)]; solver=Dense(), keep=lowest(4))
+    sysc = materialize(top, chain, θc)
+    b = KronFreeCircuits._tree_bases(top); rc = KronFreeCircuits.route(top, circuit_terms(chain, b))
+    @test any(t -> any(f -> f.mode === :varphi_1, t.factors), rc[top]) && any(t -> any(f -> f.mode === :varphi_2, t.factors), rc[top])
+    c = constant_term(chain, b)(θc)
+    Ar = Matrix(KronFreeCircuits._node_operator(top, Dense(), sysc.root.children, rc[top], θc, c; real=true))
+    Ac = Matrix(KronFreeCircuits._node_operator(top, Dense(), sysc.root.children, rc[top], θc, c; real=false))
+    @test maximum(abs, Ar - Ac) <= 1e-13 * max(1, maximum(abs, Ac))
 end
