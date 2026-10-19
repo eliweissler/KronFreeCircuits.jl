@@ -236,8 +236,11 @@ Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` le
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
-The next plan is automatic differentiation.
+The next plan (5) is automatic differentiation rules.
 Later plans:
 
-1. Automatic differentiation rules.
-2. Export, caching, and NPZ output.
+1. Export, caching, and NPZ output.
+2. The sweep layer (aligned secant prediction along parameter sweeps).
+3. The noise plan, which needs the spec format's `operators` and `noise_channels` sections on both the Python and the Julia side.
+
+Current state, open items and decisions pending are in `docs/superpowers/STATUS.md`.

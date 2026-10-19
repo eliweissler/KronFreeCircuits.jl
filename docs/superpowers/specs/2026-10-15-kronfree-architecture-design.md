@@ -568,6 +568,7 @@ Source: Eli's audit spike `docs/spikes/2026-10-16-itensor-audit/` (REPORT.md, HA
 
 Plan order after this amendment: 2 solver and ITensor parent backend with CUDA extension (this amendment); 3 real arithmetic; 4 automatic differentiation; 5 export, caching and NPZ; 6 Python exporter with `operators` and `noise_channels`; then the sweep layer and the noise plan. The two-zero-pi acceptance test and the tabled antisymmetric-state phase fallback are unchanged.
 Amended 2026-10-19 (Eli): the Python exporter (`export_julia_spec` in `circuit-quantization`) moves ahead of automatic differentiation and is the next plan after plan 3, for the provenance of the test fixtures, which are so far transcribed by hand from the scqubits source.
+Plan order as of 2026-10-19 (after plan 4): 1, 1b, 2, 2b, 3 (real arithmetic) and 4 (spec files from `circuit-quantization`: its `to_spec`/`save_spec`/`load_spec`, with generated cross-check fixtures) are done; next is 5, automatic differentiation; then 6, export, caching and NPZ; then the sweep layer and the noise plan, which needs the format's later `operators` and `noise_channels` sections (§20b) on both sides.
 That exporter became `circuit-quantization`'s `to_spec` and `save_spec` (Section 20g), superseding `export_julia_spec`.
 
 ### 20d. Proposed design: a periodic phase grid for compact modes (2026-10-17, for Eli's review)
