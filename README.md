@@ -4,7 +4,7 @@ Kron-free hierarchical diagonalization of superconducting circuits.
 A circuit is a tree of nodes: each leaf diagonalizes a few modes (charge basis, phase grid, or Fock basis), and each parent combines its children's kept eigenstates.
 Operators are never assembled as Kronecker products; they are applied axis by axis on the tensor of the mode basis, so composite systems with large Hilbert spaces stay tractable.
 Hamiltonian terms come from a JSON circuit spec, which is exported by the `circuit-quantization` package.
-Until that exporter exists, the specs in `test/fixtures` are written by hand.
+The hand-written specs in `test/fixtures` remain as the test inputs.
 
 ## Sketch
 
@@ -96,6 +96,19 @@ Only kept vectors are stored, so a node with `compute > keep` fills its other `c
 On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` or `ChebyshevFilter(on=CuArray)` stores a node's operator and block on the device.
 `Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (2 500) states resolves to `Dense()` on the host.
 Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
+
+## Spec files
+
+Specs come from `circuit-quantization`'s `save_spec`, which writes a `kronfree-spec` version 1 file; its `docs/spec-format.md` is the authority on the format.
+
+```python
+from circuit_quantization.io import save_spec
+save_spec(res, "my_circuit.json")   # res: a quantization result
+```
+
+The hand-written fixtures are cross-checked against specs generated from the corresponding lumped circuits (`test/test_generated_specs.jl`, using the committed files in `test/fixtures/generated/`).
+`test/fixtures/generate_specs.py` regenerates them; run it with circuit-quantization's Python environment only when regenerating, since Python is not a test dependency.
+The documented convention differences between the two sets are asserted in the test (spec §20g).
 
 ## Periodic phase grid
 
@@ -222,9 +235,9 @@ Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` le
 `Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
+Plan 4 (the spec exporter in `circuit-quantization`, with the Julia loader and generated cross-check fixtures) is done on the Julia side once this branch merges.
 The next plan is automatic differentiation.
 Later plans:
 
-1. The Python exporter in `circuit-quantization` (moved ahead of autodiff on 2026-10-19, so the test fixtures come from the exporter rather than by hand).
-2. Automatic differentiation rules.
-3. Export, caching, and NPZ output.
+1. Automatic differentiation rules.
+2. Export, caching, and NPZ output.

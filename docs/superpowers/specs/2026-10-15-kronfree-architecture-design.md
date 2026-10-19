@@ -92,6 +92,8 @@ The function must refuse to export if any cosine coefficient vector (Section 5.2
 
 ### 5.2 Content
 
+The shared format document is `circuit-quantization`'s `docs/spec-format.md` (kronfree-spec version 1).
+
 The Hamiltonian produced by `circuit-quantization` always has the form
 
 $$
@@ -702,6 +704,32 @@ Measured gains (`docs/spikes/2026-10-18-plan3-benchmark/results.md`): the two-ze
 Default-suite cost: the default suite takes 178 s against 139 s for the base tree `b92bce0` (two alternating runs each, 178.1 and 178.5 s against 138.4 and 138.8 s, at load about 4–7; +40 s against the +15 s budget).
 A second pass of the same files in one process takes 50.4 s against 50.6 s, so the whole excess is compilation of the `Float64` methods (the operator, the solvers, port formation and the ITensor paths) in addition to the complex ones, not steady-state cost.
 The two slowest new real-against-complex equivalence testsets (the two-zero-pi real branch, about 6 s, and the solver element-type equivalence, about 3 s) moved to the gated suite, which keeps them; moving them saved only about 3 s of wall time because their compilation then falls to the next test that exercises those methods.
+
+### 20g. Execution notes (plan 4, 2026-10-19)
+
+The spec exporter lives in `circuit-quantization` (`circuit_quantization.io`: `to_spec`, `save_spec`, `load_spec`); the Julia side adds provenance tests.
+
+**Parser.** The `Coefficient` allowlist accepts SymPy's dotted operators (`.+ .- .* ./ .^`), normalized at parse time, as well as two-argument `log`, scientific literals and `ℯ`.
+
+**Provenance test.** `test/fixtures/generate_specs.py` builds each hand fixture's Hamiltonian as a lumped circuit, exports it with `to_spec`, and writes `test/fixtures/generated/*.json`; `test/test_generated_specs.jl` shows that each pair defines the same Hamiltonian (coefficients at random real points, cosines up to the joint sign flip of `omega` and offset, energies on a small Dense tree).
+The cos2phi fixture has no generated counterpart, since it is not a lumped circuit (junctions with phases 2φ and φ have non-parallel incidence rows).
+Python is not a test dependency: the generated files are committed.
+The test asserts these convention differences:
+- fluxonium: the hand spec keeps the constant `E_L varphi_ext²/2`, which circuit-quantization omits;
+- zero-pi: the constant `2E_J` (scqubits' potential), and a decoupled ζ mode in the generated spec that scqubits' ZeroPi drops;
+- full zero-pi: the constant `2E_J − sqrt(2 E_Cz E_L)`, and 4 cosines in the hand spec against 2 in the generated one;
+- two zero-pi: the constant `2E_J1 + 2E_J2` and two decoupled ζ modes.
+
+**full_zero_pi finding.** scqubits' FullZeroPi charging matrix is a first-order model in the capacitive asymmetries, and no circuit with nonnegative capacitances reproduces it for any nonzero (dC_J, dC), since an exact realization needs a negative capacitance in a b→c or d→a branch.
+The two specs agree exactly at zero capacitive asymmetry; at nonzero asymmetry the test asserts the exact second-order coefficients of the difference in `E_C`.
+
+**Open question: sign of dC_J (pending Eli).** scqubits 4.3.1's source sign (`−2 E_CΣ dC_J (i∂φ) n_θ`) contradicts its documented definitions of dE_J and dC_J, which refer to the same junction; the docstring's `+2E_CΣ dC_J ∂φ∂θ` is the consistent one.
+With the source sign, the junction with the larger E_J has the smaller C_J when dE_J and dC_J have the same sign.
+The effect is observable, about 0.02 GHz at dE_J = dC_J = 0.3, and vanishes at dE_J = 0.
+The fixtures keep the source sign.
+
+**Performance workaround.** `to_spec(res, subs=...)` does not finish on two_zero_pi (over 10 minutes), because `sympy.cancel` stalls on the substituted expression, while `sympy.cancel(sympy.together(expr))` takes 0.05 s.
+The generator applies `together` to every expression before `to_spec(res)` for that fixture only; a one-line fix in `io.py` would remove the need.
 
 ## 21. Builder check
 
