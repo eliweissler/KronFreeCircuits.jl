@@ -1019,6 +1019,7 @@ end
     @test_throws ArgumentError LOBPCG(seed=:bogus)
 end
 
+if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 3 s; the default suite runs every solver in real arithmetic in the degenerate and invariant-seed probes below
 @testset "solvers run in the operator's element type; real equals complex" begin
     for (name, H) in (("three real oscillators", real_three_oscillators(6)),
                       ("degenerate pair", two_identical_real_oscillators(12)))
@@ -1042,6 +1043,7 @@ end
             cut == 10 && @test V * V' ≈ Vd[:, 1:10] * Vd[:, 1:10]' atol=1e-6
         end
     end
+end
 end
 
 @testset "real solvers: a 4-fold degenerate ground level" begin
