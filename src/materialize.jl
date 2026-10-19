@@ -89,6 +89,10 @@ a `ChargeBasis` or `PeriodicGrid`, an extended (`:e`) or harmonic (`:h`) mode a 
 The spec form takes the types from the spec; the term-list form from `modetypes` (mode => type),
 skipping modes absent from it (an empty dictionary skips the check).
 
+Every node is classified once, from the term list and the tree, as real or complex arithmetic (its `arithmetic`
+option; see [`Node`](@ref)); a node with `arithmetic = :real` whose structure does not guarantee a real Hamiltonian
+throws an `ArgumentError`.
+
 A term routed to a branch node with two or more factors inside the same child would need a
 composite (multi-mode) port of that child; these are not supported and throw an `ArgumentError`.
 """
@@ -98,11 +102,12 @@ function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::
     _check_bases(root, modetypes)
     _check_periodic_harmonics(root, terms)
     routed = route(root, terms)
+    realnodes = classify(root, routed, constant, θ)
     _check_composite(routed)
     needed = required_ports(root, routed)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, c, prev)
+    mroot = _materialize(root, θ, routed, needed, c, prev, realnodes)
     return System(mroot, nothing, terms, θ, constant)
 end
 
@@ -390,10 +395,10 @@ end
 _solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
 _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
 
-function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev)
+function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev, realnodes)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i)) :
+        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i), realnodes) :
                         ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
@@ -533,6 +538,13 @@ function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
     c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
     return _node_operator(node, _resolve_node_solver(node, mn.children), mn.children, routed[node], sys.θ, c)
 end
+
+"""
+    arithmetic(sys, node=root) -> Symbol
+
+The arithmetic `node` was materialized in: `:real` when its stored eigenvectors are real, else `:complex`.
+"""
+arithmetic(sys::System, node::Node=sys.root.node) = eltype(materialized(sys, node).vectors) <: Real ? :real : :complex
 
 "Kept energies of `node` (default: the root), absolute, GHz."
 energies(sys::System, node::Node=sys.root.node) = materialized(sys, node).energies

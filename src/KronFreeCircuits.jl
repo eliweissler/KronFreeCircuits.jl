@@ -21,7 +21,7 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
        bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm, twist_factor,
-       PortCharacter, character
+       PortCharacter, character, arithmetic
 
 include("parameters.jl")
 include("spec.jl")

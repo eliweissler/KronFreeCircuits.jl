@@ -332,7 +332,7 @@ lowest(k::Int) = Lowest(k)
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 
 """
-    Node(children; solver=Auto(), compute=0, keep=lowest(0), phase, ports=[])
+    Node(children; solver=Auto(), compute=0, keep=lowest(0), phase, ports=[], arithmetic=:auto)
 
 A hierarchical unit.
 Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
@@ -357,6 +357,12 @@ subsystem); a node's product basis has one axis per child.
   first point of a sweep, with none, `:positive_sector` is used.
 - `ports`: extra `(mode, port)` operators to form in this node's kept eigenbasis, beyond those
   its ancestors need (which are inferred).
+- `arithmetic`: `:auto` (the default) runs the node in real arithmetic when its structure guarantees a
+  real Hamiltonian at every θ (the node test of the architecture spec, Section 20f), else complex.
+  `:complex` forces complex arithmetic for this node and so for every ancestor.
+  `:real` asserts the node test: `materialize` throws an `ArgumentError` naming the first term whose
+  conjugate image is missing when it fails.
+  [`arithmetic`](@ref) reports the arithmetic a node was materialized in.
 """
 mutable struct Node
     children::Vector{Any}
@@ -365,10 +371,11 @@ mutable struct Node
     keep::SelectionRule
     phase::Symbol
     ports::Vector{Tuple{Symbol,Port}}
+    arithmetic::Symbol
 
     function Node(children::AbstractVector; solver::Solver=Auto(), compute::Int=0,
                   keep::SelectionRule=lowest(0), phase::Union{Nothing,Symbol}=nothing,
-                  ports=Tuple{Symbol,Port}[])
+                  ports=Tuple{Symbol,Port}[], arithmetic::Symbol=:auto)
         isempty(children) && throw(ArgumentError("a Node needs at least one child"))
         for ch in children
             ok = ch isa Node || ch isa GivenSystem || (ch isa Pair && ch.first isa Symbol && ch.second isa Basis)
@@ -378,11 +385,13 @@ mutable struct Node
         phase in (:positive_sector, :follow) ||
             throw(ArgumentError("phase must be :positive_sector or :follow, got :$phase"))
         compute >= 0 || throw(ArgumentError("compute must be nonnegative"))
+        arithmetic in (:auto, :complex, :real) ||
+            throw(ArgumentError("arithmetic must be :auto, :complex or :real, got :$arithmetic"))
         # Auto() is checked at materialization, once it has resolved (see `_resolve_node_solver`).
         compute == 0 && !(solver isa Dense || solver isa Auto) &&
             throw(ArgumentError("compute == 0 (all eigenpairs) requires the Dense solver"))
         node = new(Any[ch for ch in children], solver, compute, keep, phase,
-                   Tuple{Symbol,Port}[(m, p) for (m, p) in ports])
+                   Tuple{Symbol,Port}[(m, p) for (m, p) in ports], arithmetic)
         ms = modes(node)
         for (i, m) in enumerate(ms)
             m in view(ms, 1:i-1) && throw(ArgumentError("mode :$m appears more than once in the tree"))
