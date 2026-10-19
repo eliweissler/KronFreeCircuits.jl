@@ -127,12 +127,13 @@ function apply_axis!(Y::AbstractArray, op::ShiftOp, X::AbstractArray, k::Int)
     return Y
 end
 
-# The array data an application of `op` reads, stored as `on`: the matrix of a DenseOp, the
-# diagonal of a DiagonalOp, (weights, offsets) of a BandedOp; a ShiftOp needs only scalars.
-_factor_data(on, op::DenseOp) = adapt(on, op.M)
-_factor_data(on, op::DiagonalOp) = adapt(on, op.d)
-_factor_data(on, op::BandedOp) = adapt(on, _banded_data(op))
-_factor_data(on, ::ShiftOp) = nothing
+# The array data an application of `op` reads, stored as `on`: the matrix of a DenseOp converted to the
+# operator's element type `T` (so a gemm never mixes real and complex), the diagonal of a DiagonalOp,
+# (weights, offsets) of a BandedOp; a ShiftOp needs only scalars.
+_factor_data(on, op::DenseOp, ::Type{T}) where {T} = adapt(on, Matrix{T}(op.M))
+_factor_data(on, op::DiagonalOp, ::Type) = adapt(on, op.d)
+_factor_data(on, op::BandedOp, ::Type) = adapt(on, _banded_data(op))
+_factor_data(on, ::ShiftOp, ::Type) = nothing
 
 # apply_axis! reading the factor's data from `data` (see `_factor_data`) instead of from `op`.
 # DenseOp factors inside an operator go through `_apply_dense!` instead.
@@ -151,21 +152,23 @@ _apply_factor!(Y::AbstractArray, op::ShiftOp, ::Nothing, X::AbstractArray, k::In
 
 One product term `coeff * ⊗_k A_k`, with `factors = [(axis, op), ...]` listing the axes it
 touches in strictly increasing order (at most one factor per axis); identity elsewhere.
+The coefficient keeps its own type (`AxisTerm{typeof(coeff)}`).
 """
-struct AxisTerm
-    coeff::ComplexF64
+struct AxisTerm{T<:Number}
+    coeff::T
     factors::Vector{Tuple{Int,LocalOp}}
-    function AxisTerm(coeff::Number, factors::AbstractVector{<:Tuple{Int,LocalOp}})
+    function AxisTerm{T}(coeff::T, factors::AbstractVector{<:Tuple{Int,LocalOp}}) where {T<:Number}
         axes = first.(factors)
         all(diff(axes) .> 0) || throw(ArgumentError("AxisTerm: factor axes must be strictly increasing, got $axes"))
-        return new(ComplexF64(coeff), Vector{Tuple{Int,LocalOp}}(factors))
+        return new{T}(coeff, Vector{Tuple{Int,LocalOp}}(factors))
     end
 end
+AxisTerm(coeff::T, factors::AbstractVector{<:Tuple{Int,LocalOp}}) where {T<:Number} = AxisTerm{T}(coeff, factors)
 
 # A term kept in the contraction sum: its coefficient and, per factor, `(axis, op, data)` with
 # `op` for dispatch and `data = _factor_data(on, op)` the stored array the application reads.
-struct _OperatorTerm
-    coeff::ComplexF64
+struct _OperatorTerm{T<:Number}
+    coeff::T
     factors::Vector{Tuple{Int,LocalOp,Any}}
 end
 
@@ -214,7 +217,7 @@ end
 
 _empty_memos() = (Ref{Any}(nothing), Ref{Any}(nothing), Ref{Any}(nothing))
 
-function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{AxisTerm};
+function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{<:AxisTerm};
                           constant::Number=0.0, block_capacity::Integer=1, on=Array)
     dims = Vector{Int}(dims)
     all(>=(1), dims) || throw(ArgumentError("KronFreeOperator: dims must be positive, got $dims"))
@@ -224,7 +227,8 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
             throw(DimensionMismatch("KronFreeOperator: factor on axis $a has dimension $(dimension(op)), expected $(dims[a])"))
     end
     block_capacity >= 1 || throw(ArgumentError("KronFreeOperator: block_capacity must be positive"))
-    T = promote_type(fieldtype(AxisTerm, :coeff), typeof(constant))
+    T = promote_type(typeof(constant), (typeof(t.coeff) for t in terms)...,
+                     (eltype(f[2]) for t in terms for f in t.factors)...)
     D = fill(T(constant), dims...)
     kept = _OperatorTerm[]
     fused = AxisTerm[]
@@ -234,8 +238,8 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
             _add_term_diagonal!(D, term.coeff, term.factors)
             push!(fused, term)
         else
-            push!(kept, _OperatorTerm(term.coeff,
-                                      Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op)) for (a, op) in term.factors]))
+            push!(kept, _OperatorTerm{T}(T(term.coeff),
+                                         Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op, T)) for (a, op) in term.factors]))
         end
     end
     shape = (dims..., Int(block_capacity))
@@ -252,7 +256,8 @@ end
 function _on_storage(H::KronFreeOperator, on; capacity::Integer=_block_capacity(H))
     H.on === on && return H
     diag = adapt(on, H.diag)
-    terms = _OperatorTerm[_OperatorTerm(t.coeff, Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op)) for (a, op, _) in t.factors])
+    T = eltype(H)
+    terms = _OperatorTerm[_OperatorTerm{T}(t.coeff, Tuple{Int,LocalOp,Any}[(a, op, _factor_data(on, op, T)) for (a, op, _) in t.factors])
                           for t in H.terms]
     shape = (H.dims..., Int(capacity))
     return KronFreeOperator(H.dims, diag, terms, similar(diag, eltype(H), shape), similar(diag, eltype(H), shape),
@@ -345,7 +350,21 @@ function _accumulate_term!(Y::AbstractArray, term::_OperatorTerm, X::AbstractArr
     return Y
 end
 
+# `mul!` for a real operator and complex vectors: `H` applied to `real(x)` and `imag(x)` through real
+# temporaries (allocating). A convenience path that solvers never take; they carry vectors of `eltype(H)`.
+function _mul_real_operator!(y::AbstractVecOrMat, H::KronFreeOperator, x::AbstractVecOrMat)
+    xr = real.(x)
+    yr = similar(xr)
+    mul!(yr, H, xr)
+    xr .= imag.(x)
+    yi = similar(xr)
+    mul!(yi, H, xr)
+    y .= complex.(yr, yi)
+    return y
+end
+
 function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::AbstractVecOrMat)
+    eltype(H) <: Real && eltype(x) <: Complex && return _mul_real_operator!(y, H, x)
     n = prod(H.dims)
     size(x, 1) == n || throw(DimensionMismatch("KronFreeOperator of size $(size(H)) applied to x with $(size(x, 1)) rows"))
     size(y) == size(x) || throw(DimensionMismatch("mul!: size(y) = $(size(y)) differs from size(x) = $(size(x))"))
@@ -364,7 +383,8 @@ function LinearAlgebra.mul!(y::AbstractVecOrMat, H::KronFreeOperator, x::Abstrac
     return y
 end
 
-Base.:*(H::KronFreeOperator, x::AbstractVecOrMat) = mul!(similar(H.diag, eltype(H), size(x)), H, x)
+Base.:*(H::KronFreeOperator, x::AbstractVecOrMat) =
+    mul!(similar(H.diag, promote_type(eltype(H), eltype(x)), size(x)), H, x)
 
 # D .+= coeff * ⊗_k diagonal(op_k) over a term's factors (ones on axes it does not touch).
 function _add_term_diagonal!(D::Array, coeff::Number, factors)
@@ -429,7 +449,7 @@ end
 const _MATRIX_BLOCK = 256
 
 """
-    Matrix(H::KronFreeOperator) -> Matrix{ComplexF64}
+    Matrix(H::KronFreeOperator) -> Matrix{eltype(H)}
 
 The explicit `n × n` matrix, built by applying `H` to blocks of at most 256 identity columns,
 so the peak memory beyond the result is a few `n × 256` blocks.
@@ -438,16 +458,17 @@ Host operators only: an operator stored on a device throws `ArgumentError`.
 function Base.Matrix(H::KronFreeOperator)
     H.diag isa Array || throw(ArgumentError("Matrix(H) is host-only, but H is stored as $(typeof(H.diag)); " *
                                             "build the operator with on=Array to form its matrix"))
+    T = eltype(H)
     n = prod(H.dims)
-    M = Matrix{ComplexF64}(undef, n, n)
+    M = Matrix{T}(undef, n, n)
     B = min(n, _MATRIX_BLOCK)
-    E = zeros(ComplexF64, n, B)          # identity block, reused
-    Y = Matrix{ComplexF64}(undef, n, B)
+    E = zeros(T, n, B)                   # identity block, reused
+    Y = Matrix{T}(undef, n, B)
     for c0 in 1:B:n
         w = min(B, n - c0 + 1)
         if w < B                         # last, narrower block
-            E = zeros(ComplexF64, n, w)
-            Y = Matrix{ComplexF64}(undef, n, w)
+            E = zeros(T, n, w)
+            Y = Matrix{T}(undef, n, w)
         end
         for j in 1:w
             E[c0 + j - 1, j] = 1

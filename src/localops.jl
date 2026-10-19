@@ -2,14 +2,15 @@
 
 abstract type LocalOp end
 
-struct DenseOp <: LocalOp
-    M::Matrix{ComplexF64}
-    function DenseOp(M::Matrix{ComplexF64})
+struct DenseOp{T<:Number} <: LocalOp
+    M::Matrix{T}
+    function DenseOp{T}(M::Matrix{T}) where {T<:Number}
         size(M, 1) == size(M, 2) || throw(DimensionMismatch("DenseOp requires a square matrix, got $(size(M))"))
-        return new(M)
+        return new{T}(M)
     end
 end
-DenseOp(A::AbstractMatrix{<:Number}) = DenseOp(Matrix{ComplexF64}(A))
+DenseOp(M::Matrix{T}) where {T<:Number} = DenseOp{T}(M)
+DenseOp(A::AbstractMatrix{T}) where {T<:Number} = DenseOp(Matrix{float(T)}(A))
 
 struct DiagonalOp{T<:Number} <: LocalOp
     d::Vector{T}
@@ -43,6 +44,12 @@ struct ShiftOp{T<:Number} <: LocalOp
 end
 ShiftOp(n::Int, s::Int, factor::T) where {T<:Number} = ShiftOp{T}(n, s, factor)
 
+# The element type of an operator's data (the type `diagonal`, `dense` and `sparse` return).
+Base.eltype(::DenseOp{T}) where {T} = T
+Base.eltype(::DiagonalOp{T}) where {T} = T
+Base.eltype(::BandedOp{T}) where {T} = T
+Base.eltype(::ShiftOp{T}) where {T} = T
+
 dimension(op::DenseOp) = size(op.M, 1)
 dimension(op::DiagonalOp) = length(op.d)
 dimension(op::BandedOp) = op.n
@@ -64,25 +71,25 @@ function Base.adjoint(op::BandedOp{T}) where {T}
 end
 Base.adjoint(op::ShiftOp) = ShiftOp(op.n, -op.s, conj(op.factor))
 
-function diagonal(op::BandedOp)
+function diagonal(op::BandedOp{T}) where {T}
     k = findfirst(==(0), op.offsets)
-    return k === nothing ? zeros(ComplexF64, op.n) : Vector{ComplexF64}(op.weights[k])
+    return k === nothing ? zeros(T, op.n) : Vector{T}(op.weights[k])
 end
-diagonal(op::DenseOp) = Vector{ComplexF64}(diag(op.M))
-diagonal(op::DiagonalOp) = Vector{ComplexF64}(op.d)
-diagonal(op::ShiftOp) = op.s == 0 ? fill(ComplexF64(op.factor), op.n) : zeros(ComplexF64, op.n)
+diagonal(op::DenseOp) = diag(op.M)
+diagonal(op::DiagonalOp{T}) where {T} = Vector{T}(op.d)
+diagonal(op::ShiftOp{T}) where {T} = op.s == 0 ? fill(op.factor, op.n) : zeros(T, op.n)
 
 dense(op::DenseOp) = copy(op.M)
-dense(op::DiagonalOp) = Matrix(Diagonal(Vector{ComplexF64}(op.d)))
-function dense(op::BandedOp)
-    A = zeros(ComplexF64, op.n, op.n)
+dense(op::DiagonalOp{T}) where {T} = Matrix(Diagonal(Vector{T}(op.d)))
+function dense(op::BandedOp{T}) where {T}
+    A = zeros(T, op.n, op.n)
     for (o, w) in zip(op.offsets, op.weights), i in 1:op.n
         1 <= i + o <= op.n && (A[i, i+o] += w[i])
     end
     return A
 end
-function dense(op::ShiftOp)
-    A = zeros(ComplexF64, op.n, op.n)
+function dense(op::ShiftOp{T}) where {T}
+    A = zeros(T, op.n, op.n)
     for i in 1:op.n
         1 <= i + op.s <= op.n && (A[i+op.s, i] = op.factor)
     end
@@ -92,9 +99,9 @@ end
 # Sparse matrices built from each operator's own data (never through `dense`), in the element
 # type `dense` returns.
 SparseArrays.sparse(op::DenseOp) = sparse(op.M)
-SparseArrays.sparse(op::DiagonalOp) = spdiagm(0 => Vector{ComplexF64}(op.d))
-function SparseArrays.sparse(op::BandedOp)
-    I, J, V = Int[], Int[], ComplexF64[]
+SparseArrays.sparse(op::DiagonalOp{T}) where {T} = spdiagm(0 => Vector{T}(op.d))
+function SparseArrays.sparse(op::BandedOp{T}) where {T}
+    I, J, V = Int[], Int[], T[]
     for (o, w) in zip(op.offsets, op.weights), i in 1:op.n
         if 1 <= i + o <= op.n          # A[i, i+o] = w[i]
             push!(I, i); push!(J, i + o); push!(V, w[i])
@@ -102,10 +109,28 @@ function SparseArrays.sparse(op::BandedOp)
     end
     return sparse(I, J, V, op.n, op.n)
 end
-function SparseArrays.sparse(op::ShiftOp)
+function SparseArrays.sparse(op::ShiftOp{T}) where {T}
     J = max(1, 1 - op.s):min(op.n, op.n - op.s)   # A[j+s, j] = factor
-    return sparse(collect(J) .+ op.s, collect(J), fill(ComplexF64(op.factor), length(J)), op.n, op.n)
+    return sparse(collect(J) .+ op.s, collect(J), fill(op.factor, length(J)), op.n, op.n)
 end
+
+"""
+    realpart(op::LocalOp), imagpart(op::LocalOp)
+
+The operator of the same structure type whose `Float64` data is the real (imaginary) part of `op`'s data
+(of `factor` for a `ShiftOp`), so that `dense(realpart(op)) + im * dense(imagpart(op)) == dense(op)`.
+For real data `imagpart` has zero data.
+"""
+function realpart end
+function imagpart end
+realpart(op::DenseOp) = DenseOp(Matrix{Float64}(real.(op.M)))
+imagpart(op::DenseOp) = DenseOp(Matrix{Float64}(imag.(op.M)))
+realpart(op::DiagonalOp) = DiagonalOp(Vector{Float64}(real.(op.d)))
+imagpart(op::DiagonalOp) = DiagonalOp(Vector{Float64}(imag.(op.d)))
+realpart(op::BandedOp) = BandedOp(op.n, copy(op.offsets), [Vector{Float64}(real.(w)) for w in op.weights])
+imagpart(op::BandedOp) = BandedOp(op.n, copy(op.offsets), [Vector{Float64}(imag.(w)) for w in op.weights])
+realpart(op::ShiftOp) = ShiftOp(op.n, op.s, Float64(real(op.factor)))
+imagpart(op::ShiftOp) = ShiftOp(op.n, op.s, Float64(imag(op.factor)))
 
 """
     infnorm(op::LocalOp) -> Float64

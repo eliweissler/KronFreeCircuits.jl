@@ -538,7 +538,7 @@ end
     # H = cI has exactly zero residuals for every block, so the product-seeded attempt and the random retry both fail:
     # one debug-level retry record, then the informative error.
     Random.seed!(43)                                 # the random retry's block (and so its failure) is then deterministic, as in S3
-    Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5)
+    Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5 + 0im)   # complex, as before: the real draw of the retry block converges
     ret = Ref{Any}(nothing)
     logs, _ = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
         ret[] = try solve(LOBPCG(), Hc, 3); nothing catch e; e end
@@ -712,7 +712,7 @@ LinearAlgebra.mul!(Y::AbstractVecOrMat, W::WidthRecorder, X::AbstractVecOrMat) =
     @test E2 ≈ d[1:3] atol=1e-8
     check_eigenpairs(H, E2, V2; tol=1e-9)
     # bounded: on H = c I every block has a zero residual, so the retry fails too and an informative error propagates
-    Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5)
+    Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5 + 0im)   # complex, as before: the real draw of the retry block converges
     err = @test_logs (:warn, r"warm-start") (try solve(LOBPCG(), Hc, 3; X0=randn(ComplexF64, 30, 3)); nothing catch e; e end)
     @test err isa ErrorException && occursin("Dense", err.msg)
 end

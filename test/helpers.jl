@@ -8,7 +8,7 @@ does not touch.  Axis 1 is fastest (column-major).
 `terms` is a vector of `(c, [(axis, matrix), ...])`.
 """
 function kron_reference(dims::Vector{Int},
-                        terms::Vector{<:Tuple{ComplexF64,Vector{<:Tuple{Int,<:AbstractMatrix}}}})
+                        terms::Vector{<:Tuple{Number,AbstractVector}})
     D = prod(dims)
     H = zeros(ComplexF64, D, D)
     for (c, factors) in terms

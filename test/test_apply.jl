@@ -468,7 +468,7 @@ end
     for op in (DenseOp(randn(rng, ComplexF64, 4, 4)), DiagonalOp(randn(rng, 5)), DiagonalOp(ComplexF64[1, -2, 0]),
                BandedOp(5, [-1, 0, 2], [randn(rng, ComplexF64, 5) for _ in 1:3]), BandedOp(4, [-3, 1], [randn(rng, 4) for _ in 1:2]),
                ShiftOp(5, -2, 0.5im), ShiftOp(3, 1, 0.3), ShiftOp(3, 4, 1.0))
-        @test sparse(op) isa SparseMatrixCSC{ComplexF64} && sparse(op) == dense(op)
+        @test sparse(op) isa SparseMatrixCSC{eltype(op)} && sparse(op) == dense(op)
         @test infnorm(op) ≈ opnorm(dense(op), Inf) atol=1e-14
     end
     # A Hermitian operator on dims [4, 5, 3]: non-diagonal single-axis terms on every axis, a fused
@@ -517,4 +517,21 @@ end
     Hn = KronFreeOperator([3], [AxisTerm(1.0, [(1, ShiftOp(3, 1, 1.0))])])
     err = try separable_eigenbases(Hn); nothing catch e; e end
     @test err isa ArgumentError && occursin("Hermitian", err.msg)
+end
+
+@testset "KronFreeOperator element type follows its data" begin
+    rng = MersenneTwister(302)
+    terms = [AxisTerm(1.0, [(1, DiagonalOp(collect(0.0:3)))]), AxisTerm(0.5, [(1, BandedOp(4, [1, -1], [ones(4), ones(4)])), (2, DenseOp(randn(rng, 3, 3) |> x -> x + x'))])]
+    H = KronFreeOperator([4, 3], terms)
+    @test eltype(H) === Float64 && eltype(Matrix(H)) === Float64
+    D, B, C = dense(terms[1].factors[1][2]), dense(terms[2].factors[1][2]), dense(terms[2].factors[2][2])
+    @test Matrix(H) ≈ kron(Matrix(1.0I, 3, 3), D) + 0.5 * kron(C, B) atol=1e-14          # axis 1 fastest
+    Hc = KronFreeOperator([4, 3], [AxisTerm(ComplexF64(t.coeff), t.factors) for t in terms])
+    @test eltype(Hc) === ComplexF64
+    @test Matrix(Hc) ≈ Matrix(H) atol=1e-14
+    @test all(t -> all(f -> !(f[2] isa DenseOp) || eltype(f[3]) === ComplexF64, t.factors), Hc.terms)   # dense data converted
+    X = randn(rng, ComplexF64, 12, 3)
+    @test H * X ≈ Matrix(H) * X atol=1e-13                                                              # mixed convenience path
+    Y = similar(X); mul!(Y, H, X); @test Y ≈ Matrix(H) * X atol=1e-13
+    @test eltype(three_oscillators(4)) === ComplexF64                                                   # complex data stays complex
 end
