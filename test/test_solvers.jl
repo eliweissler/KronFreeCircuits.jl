@@ -207,6 +207,69 @@ end
     end
 end
 
+@testset "ShiftInvert block = 2: an exhausted block Krylov space is not a breakdown" begin
+    # 64 states in 15 distinct levels, every level above the ground degenerate: two start vectors span an invariant
+    # block Krylov space of dimension at most 30, below the Krylov dimension. KrylovKit's block Lanczos stops there
+    # only when the residual falls below tol; one between tol and its block-QR tolerance emptied the next block
+    # (ArgumentError: blocklength must be >(0)) on about one seed in four.
+    H = two_identical_real_oscillators(8)
+    for Hx in (H, complexified(H))
+        Ed, Vd = solve(Dense(), Hx, 0)
+        # m = 10 tops levels 0–3 (1 + 2 + 3 + 4 states); m = 8 cuts the 4-fold level 3, leaving 6 in complete levels
+        for (s, m) in ((ShiftInvert(block=2), 10), (ShiftInvert(block=2), 8), (ShiftInvert(block=2, slices=2), 10)),
+            seed in 1:40
+            Random.seed!(seed)
+            r = try solve(s, Hx, m) catch e; e end
+            @test !(r isa Exception)
+            r isa Exception && continue
+            E, V = r
+            @test E ≈ Ed[1:m] atol=1e-8
+            check_eigenpairs(Hx, E, V; tol=1e-8)
+            c = m == 10 ? 10 : 6
+            @test V[:, 1:c] * V[:, 1:c]' ≈ Vd[:, 1:c] * Vd[:, 1:c]' atol=1e-8
+        end
+    end
+end
+
+@testset "ShiftInvert: highly degenerate operators, few distinct levels" begin
+    # identical uncoupled oscillators: every distinct level is reachable by `block` copies per Krylov space, so a
+    # level holding more copies is recovered only by the certificate's deflated rounds
+    osc(d, k) = KronFreeCircuits.KronFreeOperator(fill(d, k), [AxisTerm(1.0, [(i, DiagonalOp(collect(0.0:d-1)))]) for i in 1:k])
+    # the number of states in complete levels among the lowest m: the projector on them is unique
+    complete(Ed, m) = something(findlast(c -> Ed[c+1] - Ed[c] > 1e-6, 1:m), 0)
+    four = KronFreeCircuits.KronFreeOperator([36], [AxisTerm(1.0, [(1, DiagonalOp(repeat(0.0:3; inner=9)))])])
+    cases = (
+        # KrylovKit's block Lanczos took sqrt of a slightly negative u'Ru in its residual norms (a DomainError) on
+        # about half the seeds, when the residual block became rank-deficient
+        ("osc3 d = 4, block = 2", osc(4, 3), ShiftInvert(block=2), 16),
+        ("osc2 d = 6, interior shift, certify = true, block = 2", osc(6, 2), ShiftInvert(block=2, shift=0.5, certify=true), 5),
+        # (distinct levels) × block < m + 1: the first solve converged fewer than m + 1 pairs (an error before the
+        # certificate could deflate); with that error lifted, a deflated round also converged the deflated operator's
+        # zero eigenvalue, a vector in the span of the computed ones (seed 12 of the 36-state block = 1 case)
+        ("osc3 d = 4, block = 1", osc(4, 3), ShiftInvert(), 16),
+        ("osc2 d = 4, block = 1", osc(4, 2), ShiftInvert(), 12),
+        ("osc2 d = 4, block = 2", osc(4, 2), ShiftInvert(block=2), 12),
+        ("36 states in 4 levels, block = 1", four, ShiftInvert(), 12),
+        ("36 states in 4 levels, block = 2", four, ShiftInvert(block=2), 12),
+    )
+    for (name, H, s, m) in cases, Hx in (H, complexified(H))
+        Ed, Vd = solve(Dense(), Hx, 0)
+        c = complete(Ed, m)
+        @testset "$name, $(eltype(Hx))" begin
+            for seed in 1:30
+                Random.seed!(seed)
+                r = try solve(s, Hx, m) catch e; e end
+                @test !(r isa Exception)
+                r isa Exception && continue
+                E, V = r
+                @test E ≈ Ed[1:m] atol=1e-8
+                check_eigenpairs(Hx, E, V; tol=1e-8)
+                @test V[:, 1:c] * V[:, 1:c]' ≈ Vd[:, 1:c] * Vd[:, 1:c]' atol=1e-8
+            end
+        end
+    end
+end
+
 @testset "ShiftInvert slicing equals the single-shift solve" begin
     Random.seed!(82)
     H = three_oscillators(7)                                   # 343 states
