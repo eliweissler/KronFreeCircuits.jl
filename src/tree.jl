@@ -488,9 +488,12 @@ In order, deduplicated: the factors inside the node of terms routed to strict an
 strict ancestor's `ports_needed(keep)` and `ports` on modes inside the node, outermost ancestor
 first (an ancestor forms those ports from its children's, so every node on the path down to the
 mode's leaf exposes them); the node's own `ports_needed(keep)` and `ports`.
+An ancestor's `nport()` on a twisted ([`PeriodicGrid`](@ref)) mode is requested as its three derivative pieces
+`Port(:d1, 0)`, `Port(:d1wrap, ±1)`, from which each node that needs the charge assembles it.
 """
 function required_ports(root::Node, routed::IdDict)
     out = IdDict{Node,Vector{Tuple{Symbol,Port}}}()
+    twisted = Set(m for (m, b) in _tree_bases(root) if _is_twisted(b))
     function visit(node::Node, ancestors::Vector{Node})
         req = Tuple{Symbol,Port}[]
         if !isempty(ancestors)
@@ -499,7 +502,12 @@ function required_ports(root::Node, routed::IdDict)
                 f.mode in inside && push!(req, (f.mode, f.port))
             end
             for a in ancestors, (m, p) in Iterators.flatten((ports_needed(a.keep), a.ports))
-                m in inside && push!(req, (m, p))
+                m in inside || continue
+                if m in twisted && p == nport()
+                    append!(req, ((m, Port(:d1, 0)), (m, Port(:d1wrap, 1)), (m, Port(:d1wrap, -1))))
+                else
+                    push!(req, (m, p))
+                end
             end
         end
         append!(req, ports_needed(node.keep))

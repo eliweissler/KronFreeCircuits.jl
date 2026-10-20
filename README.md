@@ -126,33 +126,17 @@ The operators are complex, except when the spec gives `n_g` as the literal `"0.5
 ```julia
 spec = load_spec("cos2phi.json")                     # 4 E_C (n - n_g)^2 - E_2 cos 2φ - E_1 cos φ, mode phi
 θ = (E_C=1.0, n_g=0.3, E_1=0.5, E_2=10.0)
-sys = materialize(Node([:phi => PeriodicGrid(128)]; keep=lowest(8)), spec, θ)
+sys = materialize(Node([:phi => PeriodicGrid(128)]; keep=lowest(8), ports=[(:phi, nport())]), spec, θ)
 energies(sys)
-KronFreeCircuits.charge_port(sys, :phi)              # the charge n in the kept eigenbasis (8 × 8, complex)
+port(sys, :phi, nport())                             # the charge n in the kept eigenbasis (8 × 8, complex)
 ```
 
-The basis serves no `:n` port, because the charge is assembled from the derivative pieces and the offset charge.
-So `ports=[(:phi, nport())]`, or a selection rule that needs `nport()`, on a `PeriodicGrid` mode throws; use `KronFreeCircuits.charge_port(sys, mode)` (not exported) for the physical charge matrix `V'(D₁)V + n_g I`.
-
-Above the leaf, request the three derivative pieces as ports and assemble the charge from them (here `ng` is the mode's offset charge):
-
-```julia
-ports = [(:phi, Port(:d1, 0)), (:phi, Port(:d1wrap, 1)), (:phi, Port(:d1wrap, -1))]   # on the ancestor node
-n = port(sys, :phi, Port(:d1, 0)) + cispi(2ng) * port(sys, :phi, Port(:d1wrap, 1)) +
-    cispi(-2ng) * port(sys, :phi, Port(:d1wrap, -1)) + ng * I
-```
-
-A hand-written coupling `g n ⊗ A` on a twisted mode becomes three terms, whose coefficients carry the twist factors from the exported `twist_factor(ng, ±1)` (with `ng` the offset charge as a `Coefficient`), plus the `n_g I` share folded into the remaining factors:
-
-```julia
-c = Coefficient(g); ngc = Coefficient("n_g", [:n_g]); A = Factor(:res, Port(:x, 0))
-coupling = [Term(c, [Factor(:phi, Port(:d1, 0)), A]),
-            Term(c * twist_factor(ngc, 1), [Factor(:phi, Port(:d1wrap, 1)), A]),
-            Term(c * twist_factor(ngc, -1), [Factor(:phi, Port(:d1wrap, -1)), A]),
-            Term(c * ngc, [A])]
-```
-
-The automatic expansion of `nport()` in `ports=` and `extra_terms` is a planned follow-up.
+The basis serves no `:n` port of its own, because the charge is assembled from the derivative pieces and the offset charge.
+The spec form of `materialize` expands `nport()` on a `PeriodicGrid` mode automatically wherever a charge is requested: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of an `extra_terms` term.
+It expands into `n = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I` on the ports `Port(:d1, 0)` and `Port(:d1wrap, ±1)`, a term's `n_g I` share multiplying its remaining factors.
+At the leaf, `port(sys, mode, nport())` equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
+The term-list form of `materialize` has no offset charge, so `nport()` on a twisted mode throws there; write the pieces out instead, with the twist factors `twist_factor(ng, ±1)` as coefficients.
+`n2port()` is not served on a `PeriodicGrid`.
 The design is in spec §20d.
 
 ## Real arithmetic

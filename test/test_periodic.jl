@@ -90,28 +90,78 @@ end
     @test !isempty(wrap) && all(t -> :n_g1 in KronFreeCircuits.free_symbols(t.coeff), wrap)
 end
 
-@testset "a twisted mode's charge above the leaf: the documented recipe for ports and coupling terms" begin
+@testset "nport() on a PeriodicGrid leaf: the assembled charge as a port, a selection port and a term" begin
+    using KronFreeCircuits: charge_port
+    spec = load_spec(fixture("transmon.json")); θ = (E_J=20.0, E_C=1.0, n_g=0.3)
+    leaf(b; kw...) = Node([:varphi_1 => b]; solver=Dense(), keep=lowest(6), kw...)
+    # the port is d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I, which is charge_port at the leaf
+    sp = materialize(leaf(PeriodicGrid(64); ports=[(:varphi_1, nport())]), spec, θ)
+    @test port(sp, :varphi_1, nport()) isa Matrix{ComplexF64}
+    @test port(sp, :varphi_1, nport()) ≈ charge_port(sp, :varphi_1) atol=1e-12
+    # the charge basis's port, up to the eigenvectors' phases: element moduli, and the gauge-invariant diagonal
+    sc = materialize(leaf(ChargeBasis(20); ports=[(:varphi_1, nport())]), spec, θ)
+    @test abs.(port(sp, :varphi_1, nport())) ≈ abs.(port(sc, :varphi_1, nport())) atol=1e-6
+    @test real(diag(port(sp, :varphi_1, nport()))) ≈ real(diag(port(sc, :varphi_1, nport()))) atol=1e-6
+    # the literal n_g = "0.5" runs real; the charge port keeps its natural (complex) type
+    half = parse_spec(replace(read(fixture("transmon.json"), String), "\"n_g\": [\"n_g\"]" => "\"n_g\": [\"0.5\"]"))
+    sh = materialize(leaf(PeriodicGrid(64); ports=[(:varphi_1, nport())]), half, θ)
+    @test arithmetic(sh) === :real
+    @test port(sh, :varphi_1, nport()) isa Matrix{ComplexF64}
+    @test port(sh, :varphi_1, nport()) ≈ charge_port(sh, :varphi_1) atol=1e-12
+    shc = materialize(leaf(ChargeBasis(20); ports=[(:varphi_1, nport())]), half, θ)
+    @test abs.(port(sh, :varphi_1, nport())) ≈ abs.(port(shc, :varphi_1, nport())) atol=1e-6
+    # a selection rule on the charge selects the charge basis's states: at 0.5 the closure from the ground state is
+    # states 1-6 (the nearest moduli to the threshold are 0.45 and 0.52)
+    rule = connected([1], (:varphi_1, nport()), 0.5)
+    skp = materialize(Node([:varphi_1 => PeriodicGrid(128)]; solver=Dense(), compute=10, keep=rule), spec, θ)
+    skc = materialize(Node([:varphi_1 => ChargeBasis(20)]; solver=Dense(), compute=10, keep=rule), spec, θ)
+    @test skp.root.kept == skc.root.kept == 1:6
+    @test energies(skp) ≈ energies(skc) atol=1e-7
+    # a linear charge term c n on the twisted mode: three pieces and the share c n_g of the constant
+    lin = [Term(Coefficient(0.7), [Factor(:varphi_1, nport())])]
+    @test energies(materialize(leaf(PeriodicGrid(128)), spec, θ; extra_terms=lin)) ≈
+          energies(materialize(leaf(ChargeBasis(20)), spec, θ; extra_terms=lin)) atol=1e-7
+    # n2port() is still not served, and its message points to the automatic nport() expansion
+    err = try materialize(leaf(PeriodicGrid(64); ports=[(:varphi_1, n2port())]), spec, θ); nothing catch e; e end
+    @test err isa ArgumentError && occursin("nport()", err.msg) && !occursin("planned follow-up", err.msg)
+end
+
+@testset "nport() on a PeriodicGrid mode above its leaf: ancestor ports and coupling terms" begin
     spec = load_spec(fixture("two_transmons.json")); θ = two_transmons_params(; g=0.1); ng = θ.n_g1
-    leaves(b1) = [Node([:varphi_1 => b1]; solver=Dense(), keep=lowest(8)), Node([:varphi_2 => ChargeBasis(10)]; solver=Dense(), keep=lowest(8))]
-    # nport() on the twisted mode is refused, naming both routes
-    err = try materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10), ports=[(:varphi_1, nport())]), spec, θ); nothing catch e; e end
-    @test err isa ArgumentError && occursin("charge_port", err.msg) && occursin("Port(:d1wrap, -1)", err.msg)
-    # the root port from its three pieces equals the charge-basis root port
+    leaves(b1, b2=ChargeBasis(10)) = [Node([:varphi_1 => b1]; solver=Dense(), keep=lowest(8)), Node([:varphi_2 => b2]; solver=Dense(), keep=lowest(8))]
+    top(b1, b2=ChargeBasis(10); kw...) = Node(leaves(b1, b2); solver=Dense(), keep=lowest(10), kw...)
+    # the root's nport() is assembled from the three pieces, which are requested down the tree
     pieces = [(:varphi_1, Port(:d1, 0)), (:varphi_1, Port(:d1wrap, 1)), (:varphi_1, Port(:d1wrap, -1))]
-    sp = materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10), ports=pieces), spec, θ)
-    sc = materialize(Node(leaves(ChargeBasis(10)); solver=Dense(), keep=lowest(10), ports=[(:varphi_1, nport())]), spec, θ)
+    sp = materialize(top(PeriodicGrid(96); ports=[(:varphi_1, nport()); pieces]), spec, θ)
     n = port(sp, :varphi_1, Port(:d1, 0)) + cispi(2ng) * port(sp, :varphi_1, Port(:d1wrap, 1)) +
         cispi(-2ng) * port(sp, :varphi_1, Port(:d1wrap, -1)) + ng * I
-    @test abs.(n) ≈ abs.(port(sc, :varphi_1, nport())) atol=1e-5
-    # a coupling 0.05 n_1 n_2 as three twisted terms plus the n_g share on the other factor
+    @test port(sp, :varphi_1, nport()) ≈ n atol=1e-12
+    sc = materialize(top(ChargeBasis(10); ports=[(:varphi_1, nport())]), spec, θ)
+    @test abs.(port(materialize(top(PeriodicGrid(96); ports=[(:varphi_1, nport())]), spec, θ), :varphi_1, nport())) ≈
+          abs.(port(sc, :varphi_1, nport())) atol=1e-5
+    # a coupling 0.05 n_1 n_2 written with nport() is the hand-built four-term expansion
     c = Coefficient(0.05); ngc = Coefficient("n_g1", [:n_g1])
     twisted = [Term(c, [Factor(:varphi_1, Port(:d1, 0)), Factor(:varphi_2, nport())]),
                Term(c * twist_factor(ngc, 1), [Factor(:varphi_1, Port(:d1wrap, 1)), Factor(:varphi_2, nport())]),
                Term(c * twist_factor(ngc, -1), [Factor(:varphi_1, Port(:d1wrap, -1)), Factor(:varphi_2, nport())]),
                Term(c * ngc, [Factor(:varphi_2, nport())])]
     plain = [Term(c, [Factor(:varphi_1, nport()), Factor(:varphi_2, nport())])]
-    @test energies(materialize(Node(leaves(PeriodicGrid(96)); solver=Dense(), keep=lowest(10)), spec, θ; extra_terms=twisted)) ≈
-          energies(materialize(Node(leaves(ChargeBasis(10)); solver=Dense(), keep=lowest(10)), spec, θ; extra_terms=plain)) atol=1e-5
+    Ep = energies(materialize(top(PeriodicGrid(96)), spec, θ; extra_terms=plain))
+    @test Ep ≈ energies(materialize(top(PeriodicGrid(96)), spec, θ; extra_terms=twisted)) atol=1e-12
+    @test Ep ≈ energies(materialize(top(ChargeBasis(10)), spec, θ; extra_terms=plain)) atol=1e-5
+    # both modes twisted: the product of the two expansions, its factor-free share c n_g1 n_g2 in the constant
+    θ2 = (θ..., n_g2=0.15)
+    ts, k = KronFreeCircuits._expand_twisted_charge(plain, Dict(:varphi_1 => ngc, :varphi_2 => Coefficient("n_g2", [:n_g2])))
+    @test length(ts) == 15 && k(θ2) ≈ 0.05 * 0.25 * 0.15
+    @test energies(materialize(top(PeriodicGrid(48), PeriodicGrid(48)), spec, θ2; extra_terms=plain)) ≈
+          energies(materialize(top(ChargeBasis(10), ChargeBasis(10)), spec, θ2; extra_terms=plain)) atol=1e-5
+    # the term-list form has no offset charge: nport() on the twisted mode is refused, naming the mode and the spec form
+    bases = Dict{Symbol,Basis}(:varphi_1 => PeriodicGrid(96), :varphi_2 => ChargeBasis(10))
+    terms = circuit_terms(spec, bases)
+    for (root, ts) in ((top(PeriodicGrid(96)), vcat(terms, plain)), (top(PeriodicGrid(96); ports=[(:varphi_1, nport())]), terms))
+        err = try materialize(root, ts, θ; constant=constant_term(spec, bases)); nothing catch e; e end
+        @test err isa ArgumentError && occursin(":varphi_1", err.msg) && occursin("offset charge", err.msg) && occursin("spec", err.msg)
+    end
 end
 
 @testset "two transmons with both offset charges nonzero: the twist sign, one or both modes twisted" begin
