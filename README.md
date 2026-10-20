@@ -250,7 +250,7 @@ The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
 Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
-`Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
+`Auto()`'s `dense_cutoff=2500` was benchmarked (`bench/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, but it stays at 2500 until `ShiftInvert`'s spurious residual-check failures are fixed; 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.

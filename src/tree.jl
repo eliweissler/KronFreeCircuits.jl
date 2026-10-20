@@ -306,7 +306,7 @@ the node's kind, product dimension and storage (spec §20e decision 5).
 The resolved solvers take their default settings; for other settings, pass the solver explicitly
 (an explicit solver always wins). `compute == 0` (all eigenpairs) is valid only for a node that
 resolves to `Dense`; otherwise `materialize` raises an `ArgumentError` naming the resolved solver.
-`dense_cutoff` is a placeholder (to be benchmarked). The warning for a large `Dense` node (above
+`dense_cutoff = 2500` is conservative: on the benchmark machine the iterative solvers win from about 1000 states (a transmon leaf) or 150 to 300 (other shapes), and it stays at 2500 because `ShiftInvert` intermittently fails its own residual check above about 1000 states (`bench/dense_cutoff/results.md`). The warning for a large `Dense` node (above
 10 000 states) applies to any `Dense` that runs, explicit or resolved (e.g. `Auto(dense_cutoff=20000)`
 on a 15 000-state node).
 """
