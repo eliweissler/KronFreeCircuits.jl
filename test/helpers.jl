@@ -263,3 +263,98 @@ minimal_spec_json(; constant::AbstractString) =
 The expression string stored under the top-level `key` of the spec JSON `json`.
 """
 expr_text(json::AbstractString, key::AbstractString) = String(JSON3.read(json)[Symbol(key)])
+
+# --- Born–Oppenheimer helpers (test_bo.jl) ---
+
+# `promote_mode` with its `@info` silenced.
+quiet_promote(spec, mode; kwargs...) =
+    Base.CoreLogging.with_logger(Base.CoreLogging.NullLogger()) do
+        KronFreeCircuits.promote_mode(spec, mode; kwargs...)
+    end
+
+"""
+    crossing_spec() -> Spec
+
+Two compact modes, fast `f` and slow `s`: `4 E_C (n_f - n_g)² + 4 E_Cs (n_s - n_gs)² - E_J cos(s) cos(φ_f)`,
+written as two cosines of energy `E_J/2` with `omega` `[1, 1]` and `[1, -1]`.
+"""
+crossing_spec() = KronFreeCircuits.parse_spec("""{"format": "kronfree-spec", "version": 1,
+    "parameters": ["E_C", "E_J", "n_g", "E_Cs", "n_gs"],
+    "modes": [{"name": "f", "type": "c"}, {"name": "s", "type": "c"}],
+    "E_C": [["E_C", "0"], ["0", "E_Cs"]], "E_L": [["0", "0"], ["0", "0"]], "flux_linear": ["0", "0"], "n_g": ["n_g", "n_gs"],
+    "cosines": [{"energy": "E_J/2", "omega": [1, 1], "offset": "0"}, {"energy": "E_J/2", "omega": [1, -1], "offset": "0"}],
+    "constant": "0"}""")
+
+"""
+    dense_crossing_reference(grid; E_C, E_J, n_g, ncut) -> Matrix{Float64}
+
+All eigenvalues (rows) of `4 E_C (n - n_g)² - E_J cos(s) (S + S')/2` in the charge basis `n = -ncut..ncut`
+(`S` the shift `|n⟩ → |n+1⟩`), at each `s` of `grid` (columns).
+"""
+function dense_crossing_reference(grid; E_C, E_J, n_g, ncut)
+    ns = collect(-ncut:ncut)
+    D = length(ns)
+    S = diagm(-1 => ones(D - 1))
+    out = zeros(D, length(grid))
+    for (j, s) in enumerate(grid)
+        H = Diagonal(4 * E_C .* (ns .- n_g) .^ 2) - E_J * cos(s) * (S + S') / 2
+        out[:, j] = eigvals(Symmetric(Matrix(H)))
+    end
+    return out
+end
+
+"""
+    synthetic_surface(grid, U; θ=NamedTuple()) -> BOSurface
+
+A one-band `BOSurface` whose energies are `U.(grid)`, over a real `PromotedSpec` (from `promote_mode` of a small two-mode spec:
+slow compact `s` with `E_C[s,s] = E_Cs`, `n_g[s] = n_gs`, and a dummy fast mode that does not couple to `s`).
+"""
+function synthetic_surface(grid, U; θ::NamedTuple=NamedTuple())
+    spec = KronFreeCircuits.parse_spec("""{"format": "kronfree-spec", "version": 1, "parameters": ["E_Cs", "n_gs"],
+        "modes": [{"name": "s", "type": "c"}, {"name": "f", "type": "c"}],
+        "E_C": [["E_Cs", "0"], ["0", "1"]], "E_L": [["0", "0"], ["0", "0"]], "flux_linear": ["0", "0"], "n_g": ["n_gs", "0"],
+        "cosines": [], "constant": "0"}""")
+    p = quiet_promote(spec, :s)
+    g = Vector{Float64}(collect(grid))
+    return KronFreeCircuits.BOSurface(p, g, reshape(Float64.(U.(g)), 1, :), θ)
+end
+
+"""
+    dense_periodic_reference(S; E_C, n_g, ncut=20) -> Vector{Float64}
+
+Eigenvalues of `4 E_C (n - n_g)² + a0 + Σ_k a_k cos kθ + b_k sin kθ` in the charge basis `n = -ncut..ncut`, with `a0, a, b` the
+Fourier coefficients of the surface `S` (band 1) computed here directly from `S.energies` by a plain sum, and `cos kθ`, `sin kθ`
+the shifts `(S^k ± S^-k)/2`, `(S^k - S^-k)/2i`.
+"""
+function dense_periodic_reference(S; E_C, n_g, ncut=20)
+    U, θ = S.energies[1, :], S.grid
+    M = length(θ)
+    ns = collect(-ncut:ncut)
+    D = length(ns)
+    shift(k) = diagm(-k => ones(D - abs(k)))
+    H = Matrix{ComplexF64}(Diagonal(4 * E_C .* (ns .- n_g) .^ 2 .+ sum(U) / M))
+    for k in 1:M÷2
+        a = (k == M / 2 ? 1 : 2) / M * sum(U .* cos.(k .* θ))
+        b = k == M / 2 ? 0.0 : 2 / M * sum(U .* sin.(k .* θ))
+        H .+= a .* (shift(k) + shift(-k)) ./ 2 .+ b .* (shift(k) - shift(-k)) ./ 2im
+    end
+    return eigvals(Hermitian(H))
+end
+
+"""
+    dense_zero_pi_bo_reference(θ, grid, basis) -> Matrix{Float64}
+
+The two lowest eigenvalues (rows) of Appendix B's `H_φ(θ̃) = 4 E_Cφ n_φ² - 2 E_J cos θ̃ cos(φ - φ_ext/2) + E_L φ²` for each
+`θ̃` of `grid` (columns), from plain matrices on the finite-difference grid of the `PhaseGrid` `basis` (no spec, term or
+`materialize` code); `θ` has `E_Cphi, E_J, E_L, varphi_ext`.
+"""
+function dense_zero_pi_bo_reference(θ, grid, basis)
+    n2 = Matrix(KronFreeCircuits.dense(KronFreeCircuits.localop(basis, KronFreeCircuits.n2port())))
+    φ = KronFreeCircuits.coordinates(basis)
+    out = zeros(2, length(grid))
+    for (j, t) in enumerate(grid)
+        H = 4 * θ.E_Cphi * n2 + Diagonal(θ.E_L .* φ .^ 2 .- 2 * θ.E_J * cos(t) .* cos.(φ .- θ.varphi_ext / 2))
+        out[:, j] = eigvals(Hermitian(real(H)))[1:2]
+    end
+    return out
+end

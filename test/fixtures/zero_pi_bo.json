@@ -1,0 +1,28 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "_comment": [
+    "Zero-pi in the form of Di Paolo et al., arXiv:1811.07921v1, Appendix B (eq:phi_Hamiltonian, eq:theta_Hamiltonian), for the Born-Oppenheimer reduction; see docs/science/born-oppenheimer.md.",
+    "H = 4 E_Cphi n_phi^2 + 4 E_Ctheta (n_theta - n_g)^2 - 2 E_J cos(theta) cos(phi - varphi_ext/2) + E_L phi^2, with varphi_ext = 2*pi*flux.",
+    "The spec's 4 n E_C n convention makes E_C[i,i] the paper's E_C directly: E_C[theta,theta] = E_Ctheta, E_C[phi,phi] = E_Cphi.",
+    "E_L phi^2 -> E_L[phi,phi] = 2*E_L.",
+    "-2 E_J cos(theta) cos(phi - x) = -E_J cos(theta + phi - x) - E_J cos(theta - phi + x), x = varphi_ext/2.",
+    "No 2*E_J constant: Appendix B does not add one (zero_pi.json adds it to match scqubits).",
+    "Offset charge enters as (n_theta - n_g), the transmon convention."
+  ],
+  "parameters": ["E_Cphi", "E_Ctheta", "E_J", "E_L", "varphi_ext", "n_g"],
+  "modes": [
+    {"name": "theta", "type": "c"},
+    {"name": "phi", "type": "e"}
+  ],
+  "E_C": [["E_Ctheta", "0"], ["0", "E_Cphi"]],
+  "E_L": [["0", "0"], ["0", "2*E_L"]],
+  "flux_linear": ["0", "0"],
+  "n_g": ["n_g", "0"],
+  "cosines": [
+    {"energy": "E_J", "omega": [1, 1], "offset": "-varphi_ext/2"},
+    {"energy": "E_J", "omega": [1, -1], "offset": "varphi_ext/2"}
+  ],
+  "constant": "0"
+}
