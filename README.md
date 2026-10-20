@@ -214,11 +214,18 @@ The reproduction (`bench/born_oppenheimer/zero_pi.jl`, results in `bench/born_op
 ## Tests
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.test()'
-KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'
+julia --project=. -e 'using Pkg; Pkg.test()'                                   # fast tier, under a minute
+KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'             # every file
+julia --project=. -e 'using Pkg; Pkg.test(test_args=["test_bo.jl"])'           # only the named files
 ```
 
-Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute, the two plan-3 real-versus-complex equivalence testsets, and the zero-pi Born–Oppenheimer reproduction (`test/test_born_oppenheimer_reference.jl`, about 15 s).
+The default runs the fast tier: the unit-level files, about 45 s on an M2.
+Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 4 minutes more:
+- the end-to-end, solver, catalogue, character, generated-spec and Born–Oppenheimer files (`SLOW_FILES` in `test/runtests.jl`);
+- two plan-3 real-versus-complex equivalence testsets gated inside those files;
+- last, the published-reference reproductions: the two-coupled-zero-pi acceptance test against scqubits (about a minute) and the zero-pi Born–Oppenheimer reproduction (`test/test_born_oppenheimer_reference.jl`, about 15 s).
+
+Run the slow tier before merging.
 
 The [science reference catalogue](docs/science/README.md) maps package capabilities to
 versioned literature sources and reproduction targets. The default suite includes
