@@ -5,28 +5,33 @@
 Plans 1, 1b, 2, 2b, 3 and 4 are done.
 Plan 3 runs nodes whose structure guarantees a real Hamiltonian in `Float64` (spec §20f); on the two-zero-pi tree the full materialization takes 9.9 s on CPU and 5.0 s on the A4500, against 15.4 s and 12.6 s in plan 2b (`docs/spikes/2026-10-18-plan3-benchmark/results.md`).
 Plan 4 makes spec files come from `circuit-quantization` (`to_spec`, `save_spec`, `load_spec`; format authority `~/src/circuit-quantization/docs/spec-format.md`), and seven of the eight hand-written fixtures are cross-checked against generated ones (spec §20g).
-The Born–Oppenheimer reduction is done on the branch `born-oppenheimer` (design `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`; architecture §20h): `promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces` and reduced specs saved with `save_spec`; the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ to 0.2% (−0.11% and −0.12%) with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
+The Born–Oppenheimer reduction is done and merged into this branch (design `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`; architecture §20h): `promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces` and reduced specs saved with `save_spec`; the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ to 0.2% (−0.11% and −0.12%) with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
 Two ShiftInvert fixes from side sessions are merged: a block-Lanczos breakdown at invariant subspaces, and recovery on highly degenerate operators.
-All of this is on the branch `plan4-julia-integration`, which fast-forwards from `main` (77b2da1); merging and pushing are Eli's.
+All of this is on the branch `plan4-julia-integration`, which fast-forwards from `main`; merging and pushing are Eli's.
+Coefficients now share one compiled function per distinct expression (a fixed argument name in `_compile`), so a sweep through `materialize(spec)` no longer recompiles every coefficient at every point (about 35 ms per point before, 2.5 ms after on the zero-pi BO leaf).
 
-Verification on the branch: default suite passes at 932ddf9; gated suite (`KRONFREE_SLOW_TESTS=1`) and device suite on ewdesktop (457/457) pass at e2a6c62, and the changes after it touch only spec loading (symmetry check), tests, docs and generated-file metadata.
+Verification on the branch (2026-10-20): the fast tier and the full suite (`KRONFREE_SLOW_TESTS=1`, every file) pass on the Mac; the device suite on ewdesktop (457/457) last passed at e2a6c62 and has not been rerun since the BO work.
 The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the side-session notes folder of the session that ran them.
 
 ## Next plan
 
+Pre-autodiff quick wins in progress (2026-10-20): test tiers (done), reduced specs cross-checked numerically against circuit-quantization (done), BO hardening (done); merging this branch into `main` is Eli's.
 Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3, deferred to plan 5).
 Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "What stays complex": derivative operators and pullbacks promote to complex where a cotangent or derivative operator is complex).
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).
+Proposed by Eli (2026-10-20), not yet designed:
+- Local matrix-element queries in the full space after materialization (a single-mode operator, or a product across subsystems, between the root's kept states, lifted on demand through the stored eigenvectors); this is the core the noise plan's element operators would use. A product of factors on modes inside one child needs the composite port that is still design debt (§20a).
+- A more robust circuit ingest than the JSON interchange in the long term, such as a direct SymPy interface to circuit-quantization; today the interchange is guarded by load checks and, for the BO reduced specs, a numeric cross-check of spectra and potentials (`test/fixtures/bo/validate_reduced.py` → `test/fixtures/bo_reference/python_reduced_levels.json`, compared in `test/test_bo.jl`).
 
 ## Open items, in priority order
 
-1. Default-suite time has grown to about 180–270 s on the loaded Mac (base before plan 3: about 140–160 s); plan 3's share is about +40 s of first-call compilation of the `Float64` paths, not run time. Accept it, or gate whole test files (decision pending, see below).
+1. Test time is now tiered (Eli, 2026-10-20): the default `Pkg.test()` runs the 14 unit-level files in about 50 s; `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes on the loaded Mac (`SLOW_FILES` and `REFERENCE_FILES` in test/runtests.jl); `Pkg.test(test_args=[...])` runs named files. Most of the full suite's time is first-call compilation of the materialize and solver paths; a PrecompileTools workload would cut it for tests and users alike (not done).
 2. `ShiftInvert(slices=8)` measured 4.35 s against 2.9 s for a single shift on the benchmark leaf; `Auto()` keeps the single shift.
 3. `dense_cutoff = 2500` in `Auto()` is untuned; no benchmark node is near it.
 4. A `PeriodicGrid` mode's charge above its leaf: `ports=` and `extra_terms` with `nport()` throw with the three-piece recipe; automatic expansion is a proposed follow-up.
 5. ShiftInvert, remaining loud failures (pre-existing, rare): a marginal true-residual failure on block = 2 over random-multiplicity spectra; a `LAPACKException(22)` from `stegr!` inside KrylovKit's scalar Lanczos (about 5 in 36 000 Cholesky runs); an interior shift with `certify` raises on a short count (no deflated recovery on the LU path); slicing has no deflated recovery.
 6. Real arithmetic at special parameter values (a parameter `n_g` at 0 or ½ on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex.
-7. Pre-existing: `_primitive(Any)` is defined in both test/helpers.jl and test/test_selection.jl (method-overwrite warning); a Cholesky failure at the automatic shift falls back to LU with a warning rather than retrying a lower shift; `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
+7. Pre-existing: a Cholesky failure at the automatic shift falls back to LU with a warning rather than retrying a lower shift; `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
 8. The cos 2φ fixture has no generated counterpart (one compact mode with junction harmonics 2 and 1 is not a lumped circuit).
 
 9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the twisted `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
@@ -35,7 +40,6 @@ Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which n
 
 ## Decisions still Eli's
 
-- Default-suite time budget (item 1 above).
 - Selection cluster closure over near-degenerate states and the §11.3 warning (needed before autodiff).
 - Guard stopping rule for LOBPCG on stiff leaves.
 - Branch phase at the joint peak: antisymmetric exchange states with vanishing joint-peak amplitude (fallback vs the tabled Cauchy–Schwarz search), and the related observation from plan 3 that the peak argmax can tie on exchange-symmetric trees, so global signs of some root states differ between arithmetics (energies and ports agree).
