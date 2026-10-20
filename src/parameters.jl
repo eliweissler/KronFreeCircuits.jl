@@ -38,12 +38,15 @@ struct Coefficient
     f::Function
 end
 
-# The argument is gensym'd so that any parameter name (e.g. `θ`) is safe, and the result type is
-# interpolated as a value so no parameter can shadow it.
+# The argument name is fixed so that identical expressions hash alike and share one compiled function (a gensym'd name
+# would give every build its own function type and a first-call recompile of about 20 ms).
+# It is safe because `check_parameter_names` forbids it, so no parameter can shadow it, and the result type is
+# interpolated as a value so no parameter can shadow that either.
+const _COEFF_ARG = Symbol("#θarg")
+
 function _compile(ex, deps::Vector{Symbol})
-    arg = gensym(:θ)
-    assigns = [:($d = $arg.$d) for d in deps]
-    fex = :($arg -> begin
+    assigns = [:($d = $_COEFF_ARG.$d) for d in deps]
+    fex = :($_COEFF_ARG -> begin
         $(assigns...)
         $(ComplexF64)($ex)
     end)
@@ -60,11 +63,12 @@ const _ALLOWED_CONSTANTS = (:pi, :π, :im, :ℯ)
 """
     check_parameter_names(params)
 
-Throw an `ArgumentError` if a parameter name is reserved: one of the constants `pi, π, im, ℯ, e`
-or a function name allowed in coefficient expressions.
+Throw an `ArgumentError` if a parameter name is reserved: one of the constants `pi, π, im, ℯ, e`,
+a function name allowed in coefficient expressions, or the internal argument name of compiled coefficients.
 """
 function check_parameter_names(params)
     for p in params
+        p === _COEFF_ARG && throw(ArgumentError("parameter name :$p is reserved for the coefficient argument"))
         p in _CONSTANT_SYMBOLS && throw(ArgumentError("parameter name :$p is reserved for a constant"))
         p in _ALLOWED_CALLS && throw(ArgumentError("parameter name :$p is reserved for a function"))
     end

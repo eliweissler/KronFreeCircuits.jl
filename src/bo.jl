@@ -47,15 +47,8 @@ function bo_surface(fast_root::Node, p::PromotedSpec, θ::NamedTuple, grid::Abst
         throw(ArgumentError("bo_surface: θ contains :$(p.parameter), the slow parameter; the grid supplies it"))
     g = Vector{Float64}(grid)
     E = zeros(Float64, bands, length(g))
-    # Build the term list and constant once: every `Coefficient` compiles a fresh generated function, so rebuilding them
-    # per grid point (as the spec method of `materialize` would) costs about 30 ms each.
-    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in p.fast.modes)
-    _check_bases(fast_root, modetypes)
-    bases = _tree_bases(fast_root)
-    terms = circuit_terms(p.fast, bases)
-    c = constant_term(p.fast, bases)
     for (j, x) in enumerate(g)
-        sys = materialize(fast_root, terms, merge(θ, NamedTuple{(p.parameter,)}((x,))); constant=c, modetypes=modetypes)
+        sys = materialize(fast_root, p.fast, merge(θ, NamedTuple{(p.parameter,)}((x,))))
         e = energies(sys)
         length(e) >= bands ||
             throw(ArgumentError("bo_surface: bands = $bands, but the fast tree keeps only $(length(e)) states"))
