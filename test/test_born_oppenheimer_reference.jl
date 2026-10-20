@@ -39,9 +39,13 @@
     @test ref.pi_periodicity_bound_GHz ≈ 1e-5 * E_gamma * 40 rtol=1e-3
 
     # agreement with the reference fixture to its recorded numerical error
-    for (k, v) in ((:E_alpha, E_alpha), (:E_gamma, E_gamma), (:E_beta, E_beta))
+    for (k, v) in ((:E_alpha, E_alpha), (:E_gamma, E_gamma))
         @test abs(v / ref.constants[k] - 1) <= ref.numerical_error_relative[k]
     end
+    # E_beta (reported only) is a 4e-7 GHz quantity from ~1 GHz energies: its refinement changes plateau at round-off
+    # (about 1e-6 to 2e-6 relative, the N block of results.md), and another CPU or BLAS changes the per-point round-off,
+    # so its agreement check has the explicit floor 1e-4
+    @test abs(E_beta / ref.constants.E_beta - 1) <= max(ref.numerical_error_relative.E_beta, 1e-4)
 
     # the committed reduced spec (test/fixtures/bo/zero_pi_reduced.json, validated by validate_reduced.py) is this fit
     path = fixture(joinpath("bo", "zero_pi_reduced.json"))

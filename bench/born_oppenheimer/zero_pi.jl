@@ -229,6 +229,13 @@ function err(f)
     end
     return e
 end
+# E_β is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz, so its changes under refinement stop
+# decreasing at round-off: the floor is the largest change between the N-block rows at and beyond the base (where finer
+# grids only add round-off), and E_β's error estimate is at least that floor.
+let seq = refinements["phi points N (L = 12π)"], k = BASE_ROW["phi points N (L = 12π)"]
+    global BETA_FLOOR = maximum(relchange(seq[j+1].c.E_beta, seq[j].c.E_beta) for j in k:length(seq)-1)
+end
+err_beta() = max(err(:E_beta), BETA_FLOOR)
 runtime = time() - t_start
 
 # ---- results.md ----------------------------------------------------------------------------------------------
@@ -265,7 +272,7 @@ pr("| E_β | ", fmt(c.E_beta), " | ", @sprintf("%.1e", c.se_beta), " | 1.0073e-8
 pr("| E_γ | ", fmt(c.E_gamma), " | ", @sprintf("%.1e", c.se_gamma), " | 2.6625e-5 | ", sg(d.gamma), " | ", abs(d.gamma) < ACCEPT ? "pass" : "**miss**", " |")
 pr()
 pr("The fit standard errors come from the residuals, which are the omitted harmonics (cos 3θ, cos 4θ, …), not numerical noise;")
-pr(@sprintf("the numerical error of the base setting (its change to the adjacent refinement in each block, below) is %.1e for E_α, %.1e for E_γ and %.1e for E_β, relative.", err(:E_alpha), err(:E_gamma), err(:E_beta)))
+pr(@sprintf("the numerical error of the base setting (its change to the adjacent refinement in each block, below) is %.1e for E_α and %.1e for E_γ, relative; E_β's estimate is the round-off floor %.1e (below).", err(:E_alpha), err(:E_gamma), err_beta()))
 pr(@sprintf("Fit residuals: rms %.3e GHz, max %.3e GHz.", F.rms_residual, F.max_residual))
 pr(@sprintf("Fast gap min(band 2 − band 1) over θ and flux: %.6f GHz.", gap))
 pr(@sprintf("π-periodicity at half flux, max |U(θ+π) − U(θ)|: %.2e GHz (bound used by the gated test: 1e-5·E_γ = %.2e GHz).", pi_periodicity, PI_BOUND))
@@ -304,7 +311,8 @@ for name in SEQUENCES
     pr("Chosen: row ", chosen[name], ".")
     pr()
 end
-pr("E_β converges to about 1e-5 relative only between the coarser rows: it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz.")
+pr(@sprintf("E_β's changes plateau at about %.0e relative (round-off): it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz, ", BETA_FLOOR),
+   "and in the N block its change grows as the grid is refined. Its recorded error estimate is at least this floor.")
 pr()
 pr("## Rounding extremes of the inputs")
 pr()
@@ -418,8 +426,8 @@ fixture = Dict{String,Any}(
     "model" => [Dict("key" => string(k), "expressions" => v) for (k, v) in MODEL],
     "constants" => Dict("E_alpha" => c.E_alpha, "E_beta" => c.E_beta, "E_gamma" => c.E_gamma),
     "fit_stderr" => Dict("E_alpha" => c.se_alpha, "E_beta" => c.se_beta, "E_gamma" => c.se_gamma),
-    "numerical_error_relative" => Dict("E_alpha" => err(:E_alpha), "E_gamma" => err(:E_gamma), "E_beta" => err(:E_beta),
-                                       "note" => "largest relative change from the converged (base) setting to its adjacent refinement (finer, or coarser where the base is the finest) over the four refinement sequences of results.md"),
+    "numerical_error_relative" => Dict("E_alpha" => err(:E_alpha), "E_gamma" => err(:E_gamma), "E_beta" => err_beta(),
+                                       "note" => "largest relative change from the converged (base) setting to its adjacent refinement (finer, or coarser where the base is the finest) over the four refinement sequences of results.md; for E_beta at least its round-off floor (the largest change between N-block rows at and beyond the base)"),
     "fit_residuals_GHz" => Dict("rms" => F.rms_residual, "max" => F.max_residual),
     "fast_gap_min_GHz" => gap,
     "pi_periodicity_half_flux_GHz" => pi_periodicity,
