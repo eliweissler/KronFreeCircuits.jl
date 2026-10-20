@@ -486,7 +486,7 @@ end
     @test all(isfinite, Vl) && all(j -> (i = argmax(abs.(Vl[:, j])); abs(imag(Vl[i, j])) < 1e-14 && real(Vl[i, j]) > 0), 1:2)
 end
 
-if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 6 s; the default suite checks a real branch against the complex path in test_materialize.jl
+if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated (and the file is slow-tier): about 6 s; test_materialize.jl checks a real branch against the complex path
 @testset "real branch: two coupled zero-pis equal the complex path" begin
     using KronFreeCircuits: arithmetic, follow, _initial_block
     tz = load_spec(fixture("two_zero_pi.json")); θ = two_zero_pi_params(g=0.05)

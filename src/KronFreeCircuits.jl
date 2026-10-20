@@ -11,7 +11,8 @@ using Random: Random, randn!
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-export Spec, load_spec, parse_spec, Coefficient, Port, nport,
+export Spec, load_spec, parse_spec, spec_json, save_spec, substitute, promote_mode, PromotedSpec,
+       periodic_grid, BOSurface, bo_surface, fourier_coefficients, slow_spec, BOFit, fit_surfaces, Coefficient, Port, nport,
        n2port, phiport, phi2port, expiphi, exp2pin, Factor,
        Term, circuit_terms, LocalOp, DenseOp, DiagonalOp, BandedOp,
        ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid, PeriodicGrid,
@@ -25,6 +26,8 @@ export Spec, load_spec, parse_spec, Coefficient, Port, nport,
 
 include("parameters.jl")
 include("spec.jl")
+include("specwrite.jl")
+include("spectransform.jl")
 include("terms.jl")
 include("localops.jl")
 include("bases.jl")
@@ -39,6 +42,7 @@ include("chebyshev.jl")
 include("selection.jl")
 include("phase.jl")
 include("materialize.jl")
+include("bo.jl")
 include("dressed.jl")
 
 end # module

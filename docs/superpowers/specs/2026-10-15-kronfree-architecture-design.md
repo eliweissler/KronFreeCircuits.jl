@@ -741,6 +741,13 @@ Decision (Eli, 2026-10-19): `full_zero_pi.json` keeps scqubits 4.3.1's dC_J sign
 The generator applied `together` to every expression before `to_spec(res)` for that fixture only.
 `circuit-quantization` commit 58ee6ef applies `together` before `cancel` in `to_spec` (0.3 s on two_zero_pi), so the generator now calls `to_spec(res, subs=..., mode_names=...)` for every fixture; the regenerated files differ from the previous ones only in `_generator.commit` and in two_zero_pi's `_comment`.
 
+### 20h. Born–Oppenheimer reduction (2026-10-20)
+
+The Born–Oppenheimer workflow of Section 13.1 is designed in `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md` and implemented in `src/spectransform.jl` (`substitute`, `promote_mode`) and `src/bo.jl` (`bo_surface`, `fourier_coefficients`, `slow_spec`, `fit_surfaces`).
+Promotion is spec-level: `promote_mode` turns a mode of a `Spec` into a parameter and returns the fast `Spec`, so the term list, `materialize` and the tree are unchanged; a charge coupling between the slow and fast modes is rejected by expression, never by value.
+The surface reaches the slow stage only as a reduced one-mode spec (a Fourier `slow_spec` or a linear least-squares `fit_surfaces`), written with `save_spec`; the data-valued `DiagonalOp` entry into a `Term` (Section 20a) is still deferred to plan 5.
+Acceptance: the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ (arXiv:1811.07921v1, Appendix B) to 0.2% with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
+
 ## 21. Builder check
 
 A fresh reviewer read the document as a builder on 2026-10-15.

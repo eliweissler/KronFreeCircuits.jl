@@ -72,7 +72,7 @@ end
     @test parse_spec(with_offset("-varphi_ext/2 + sqrt(abs(varphi_ext))")) isa Spec      # real-valued calls stay allowed
     # every spec fixture still loads
     specs = filter(f -> endswith(f, ".json") && f != "scqubits_reference.json", readdir(joinpath(@__DIR__, "fixtures")))
-    @test length(specs) == 8 && all(f -> load_spec(fixture(f)) isa Spec, specs)
+    @test length(specs) == 9 && all(f -> load_spec(fixture(f)) isa Spec, specs)
 end
 
 @testset "Spec: the format document's fluxonium, dotted operators" begin

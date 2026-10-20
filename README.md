@@ -193,21 +193,51 @@ A direct `solve(LOBPCG(), H, m; X0)` with a complex `X0` on a real `H` converts 
 In the benchmark (`docs/spikes/2026-10-18-plan3-benchmark/results.md`), the full two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×).
 The `ShiftInvert` leaf on CPU gains nothing against plan 2b, which already factored the assembled real matrix; the gains are in the parent solve (2.5× CPU, 3.3× A4500), the device leaf (2.5×) and port formation (about 4×).
 
+## Born–Oppenheimer reduction
+
+A slow mode can be promoted to a parameter, the fast modes diagonalized on a grid of its coordinate, and the resulting surface fitted to a one-mode reduced spec.
+The zero-pi of Di Paolo et al. (arXiv:1811.07921v1, Appendix B), with θ slow and φ fast:
+
+```julia
+using KronFreeCircuits
+
+p = promote_mode(load_spec("test/fixtures/zero_pi_bo.json"), :theta)        # fast spec over φ; θ is a parameter
+leaf = Node([:phi => PhaseGrid(-12π, 12π, 481)]; solver=Dense(), compute=2, keep=lowest(2))
+θ = (E_Cphi=40 / (16 * 0.165), E_Ctheta=0.007, E_J=6.6, E_L=0.04)           # GHz
+S = [bo_surface(leaf, p, merge(θ, (varphi_ext=2π * f,)), periodic_grid(32; start=-π/2)) for f in 0:0.125:0.5]
+F = fit_surfaces(S, [:constant => ["1", "cos(varphi_ext)", "cos(2*varphi_ext)", "cos(3*varphi_ext)", "cos(4*varphi_ext)"],
+                     (:cos, 2) => ["1", "cos(varphi_ext)"], (:cos, 1) => ["cos(varphi_ext/2)"]])
+F.constants, F.stderr, F.rms_residual                                        # E_α = c[6], E_β = −c[7], E_γ = c[8] in GHz
+save_spec("zero_pi_reduced.json", F.spec; metadata=F.metadata)              # a kronfree-spec with its _bo provenance
+```
+
+`slow_spec(S[1])` gives the slow spec of one surface from its Fourier coefficients instead of a fit.
+Promotion is a spec-to-spec transformation; a charge coupling between slow and fast modes is rejected, and only the single lowest surface is used (no derivative couplings).
+The reproduction (`bench/born_oppenheimer/zero_pi.jl`, results in `bench/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
+
 ## Tests
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.test()'
-KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'
+julia --project=. -e 'using Pkg; Pkg.test()'                                   # fast tier, under a minute
+KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'             # every file
+julia --project=. -e 'using Pkg; Pkg.test(test_args=["test_bo.jl"])'           # only the named files
 ```
 
-Setting `KRONFREE_SLOW_TESTS=1` adds the two-coupled-zero-pi acceptance test against scqubits, which takes about a minute, and also runs the two plan-3 real-versus-complex equivalence testsets.
+The default runs the fast tier: the unit-level files, about 45 s on an M2.
+Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes in all on a loaded M2:
+- the apply, end-to-end, solver, catalogue, character, generated-spec and Born–Oppenheimer files (`SLOW_FILES` in `test/runtests.jl`);
+- two plan-3 real-versus-complex equivalence testsets gated inside those files;
+- last, the published-reference reproductions: the two-coupled-zero-pi acceptance test against scqubits (about a minute) and the zero-pi Born–Oppenheimer reproduction (`test/test_born_oppenheimer_reference.jl`, about 15 s).
+
+Run the slow tier before merging.
+A named-file run skips the testsets gated inside those files unless `KRONFREE_SLOW_TESTS=1` is also set.
 
 The [science reference catalogue](docs/science/README.md) maps package capabilities to
 versioned literature sources and reproduction targets. The default suite includes
 saved scqubits spectra and matrix elements for CPB/transmon, fluxonium, and three
 seeded circuits with irrotational flux assignments. Python is only needed to
 regenerate those fixtures. The [Appendix B BO reference](docs/science/born-oppenheimer.md)
-is prepared for a later implementation phase.
+is implemented by the Born–Oppenheimer reduction above.
 The [KITE references](docs/science/kite.md) prepare both the inductively shunted
 experiment and the capacitively shunted protected circuit for future spectra and
 matrix-element benchmarks alongside the four-mode fluxonium coupler.
@@ -240,6 +270,7 @@ Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` le
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
+The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
 The next plan (5) is automatic differentiation rules.
 Later plans:
 

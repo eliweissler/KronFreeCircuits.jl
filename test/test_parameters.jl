@@ -20,7 +20,7 @@ using KronFreeCircuits: Coefficient, phase_factor, iszero_expr, free_symbols
 end
 @testset "Coefficient expressions are restricted" begin
     @test Coefficient("sqrt(E_J/E_C)", [:E_J, :E_C])((E_J=8.0, E_C=2.0)) ≈ 2
-    @test Coefficient("θ^2", [:θ])((θ=3.0,)) ≈ 9                   # the generated argument is gensym'd
+    @test Coefficient("θ^2", [:θ])((θ=3.0,)) ≈ 9                   # the generated argument has a reserved name
     @test Coefficient("pi*x", [:x])((x=2.0,)) ≈ 2π
     @test Coefficient("cis(x) * conj(im) + 1//2 - abs(-x)", [:x])((x=0.0,)) ≈ 1/2 - im
     for src in ("E_J + (println(\"x\"); 0)", "E_J +", "", "  ", "E_J )", "x; y", "begin E_J end",
@@ -89,4 +89,30 @@ end
                 "@int128_str(\"1\", \"2\")")
         @test_throws ArgumentError Coefficient(src, [:x])
     end
+end
+
+@testset "identical coefficient expressions share one compiled function" begin
+    a, b = Coefficient("E_J * cos(x) + 1/2", [:E_J, :x]), Coefficient("E_J * cos(x) + 1/2", [:E_J, :x])
+    @test typeof(a.f) == typeof(b.f)
+    @test a((E_J=2.0, x=0.3)) == b((E_J=2.0, x=0.3))
+    @test typeof(Coefficient("E_J * cos(x)", [:E_J, :x]).f) != typeof(a.f)
+    @test Coefficient("θ^2 + E_J", [:θ, :E_J])((θ=3.0, E_J=1.0)) ≈ 10        # a parameter named θ is not shadowed
+    reserved = KronFreeCircuits._COEFF_ARG
+    @test_throws ArgumentError KronFreeCircuits.check_parameter_names([:x, reserved])
+    @test_throws ArgumentError Coefficient("x", [reserved])
+    @test_throws ArgumentError parse_spec("""{"format": "kronfree-spec", "version": 1, "parameters": ["#θarg"],
+        "modes": [{"name": "q", "type": "c"}], "E_C": [["1"]], "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["0"], "cosines": []}""")
+    @test_throws ArgumentError KronFreeCircuits.promote_mode(load_spec(fixture("zero_pi.json")), :theta; parameter=reserved)
+
+    # Rebuilding the coefficients per point (the spec path) costs about as much as the term list built once (about 2x);
+    # with a per-build recompile it costs over 10x.
+    leaf = Node([:varphi_1 => ChargeBasis(6)]; keep=lowest(2))
+    spec, θ = load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3)
+    bases = KronFreeCircuits._tree_bases(leaf)
+    terms, c = KronFreeCircuits.circuit_terms(spec, bases), KronFreeCircuits.constant_term(spec, bases)
+    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
+    materialize(leaf, spec, θ); materialize(leaf, terms, θ; constant=c, modetypes=modetypes)     # warm
+    t_spec = minimum(@elapsed(materialize(leaf, spec, θ)) for _ in 1:10)
+    t_terms = minimum(@elapsed(materialize(leaf, terms, θ; constant=c, modetypes=modetypes)) for _ in 1:10)
+    @test t_spec < 3 * t_terms + 1e-3
 end

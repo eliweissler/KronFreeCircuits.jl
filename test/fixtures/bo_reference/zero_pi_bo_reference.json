@@ -1,0 +1,256 @@
+{
+    "source": {
+        "published_fit": {
+            "note": "published fitted coefficients; compared against, never stored as results of this run",
+            "E_alpha": 0.018608,
+            "E_beta": 1.0073e-8,
+            "E_gamma": 2.6625e-5
+        },
+        "section": "Appendix B (app:1d_effective_Hamiltonian)",
+        "equations": [
+            "eq:phi_Hamiltonian",
+            "eq:theta_Hamiltonian",
+            "eq:effective_1D_Hamiltonian"
+        ],
+        "arxiv": "1811.07921v1"
+    },
+    "fast_gap_min_GHz": 2.8902937663857164,
+    "numerical_error_relative": {
+        "note": "largest relative change from the converged (base) setting to its adjacent refinement (finer, or coarser where the base is the finest) over the four refinement sequences of results.md; for E_beta at least its round-off floor (the largest change between N-block rows at and beyond the base)",
+        "E_alpha": 3.178023066929825e-8,
+        "E_beta": 2.145623959393106e-6,
+        "E_gamma": 2.1433926633562805e-8
+    },
+    "theta_grid": {
+        "kind": "periodic_grid (uniform, half-open)",
+        "M": 32,
+        "start": -1.5707963267948966
+    },
+    "fast_leaf": {
+        "pairs": 2,
+        "a": -37.69911184307752,
+        "N": 481,
+        "solver": "Dense",
+        "mode": "phi",
+        "basis": "PhaseGrid",
+        "b": 37.69911184307752,
+        "order": 8
+    },
+    "constants": {
+        "E_alpha": 0.018586850014275534,
+        "E_beta": 1.0046645428030128e-8,
+        "E_gamma": 2.6592398881824566e-5
+    },
+    "fit_stderr": {
+        "E_alpha": 8.271816186093738e-6,
+        "E_beta": 1.0678868777210002e-5,
+        "E_gamma": 1.1698114635831056e-5
+    },
+    "producer": "independent BO numerics",
+    "inputs_hbar_omega_p": {
+        "E_L": 0.001,
+        "E_Ctheta": 0.000175,
+        "E_J": 0.165,
+        "E_Cphi": 0.3787878787878788
+    },
+    "units": {
+        "energies": "GHz (E/h)",
+        "coefficients": "ratio to hbar*omega_p, omega_p/2pi = 40 GHz"
+    },
+    "conventions": {
+        "hamiltonian": "H_phi = 4 E_Cphi n_phi^2 - 2 E_J cos(theta) cos(phi - varphi_ext/2) + E_L phi^2; [phi, n_phi] = i",
+        "flux": "varphi_ext = 2 pi flux, flux = Phi_ext/Phi_0",
+        "fit": "U = u_0(varphi_ext) - (E_alpha - E_beta cos varphi_ext) cos 2theta - E_gamma cos(varphi_ext/2) cos theta",
+        "n_g": 0
+    },
+    "inputs_note": "E_Cphi = hbar*omega_p/(16*0.165), derived from omega_p = sqrt(8 E_J E_CJ)/hbar (1811.07921v1 tex line 252) and C_phi = 2 C_J (tex line 262; E_Cphi = E_CJ/2), instead of the printed 0.378 (decided 2026-10-20, design section 7); E_L, E_J, E_Ctheta as printed. The paper's other parameter set (caption at tex line 303, E_Cphi = E_J = 0.25 hbar*omega_p) also satisfies 16 E_J E_Cphi = 1 exactly. With the printed 0.378, E_gamma misses the published value by +0.96%.",
+    "versions": {
+        "julia": "1.13.2",
+        "KronFreeCircuits": "0.1.0"
+    },
+    "inputs_GHz": {
+        "E_L": 0.04,
+        "E_Ctheta": 0.007,
+        "E_J": 6.6000000000000005,
+        "E_Cphi": 15.151515151515152
+    },
+    "fit_residuals_GHz": {
+        "max": 0.004147399760654702,
+        "rms": 0.002884480866778131
+    },
+    "model": [
+        {
+            "key": "constant",
+            "expressions": [
+                "1",
+                "cos(varphi_ext)",
+                "cos(2*varphi_ext)",
+                "cos(3*varphi_ext)",
+                "cos(4*varphi_ext)"
+            ]
+        },
+        {
+            "key": "(:cos, 2)",
+            "expressions": [
+                "1",
+                "cos(varphi_ext)"
+            ]
+        },
+        {
+            "key": "(:cos, 1)",
+            "expressions": [
+                "cos(varphi_ext/2)"
+            ]
+        }
+    ],
+    "fluxes": [
+        0,
+        0.125,
+        0.25,
+        0.375,
+        0.5
+    ],
+    "acceptance": {
+        "relative_tolerance": 0.002,
+        "coefficients": [
+            "E_alpha",
+            "E_gamma"
+        ]
+    },
+    "generator": "bench/born_oppenheimer/zero_pi.jl",
+    "full_2d": {
+        "bo_error_fit_GHz": [
+            [
+                -0.002228842990394053,
+                -0.002366900337030964,
+                0.0003696094190301924,
+                0.00033473211572920825,
+                0.0013986523845526122,
+                0.0014430969999279508
+            ],
+            [
+                -0.0022340885825975487,
+                -0.0023616361389687257,
+                0.0003682715861080821,
+                0.00033605445301265746,
+                0.001399827022925848,
+                0.0014418965076654633
+            ],
+            [
+                -0.0022490303088025243,
+                -0.0023466494990248,
+                0.0003644640129354393,
+                0.0003398246130772442,
+                0.0014029030304796297,
+                0.0014387580807058153
+            ],
+            [
+                -0.0022714022969519965,
+                -0.00232423259809611,
+                0.00035876548080160386,
+                0.0003454857325038141,
+                0.0014064245443798917,
+                0.0014351741483342728
+            ],
+            [
+                -0.002297778758858171,
+                -0.0022978375337705526,
+                0.0003523193171982575,
+                0.0003519163986123175,
+                0.0014080596156427205,
+                0.0014335132219733815
+            ]
+        ],
+        "note": "per-level BO error recorded, not bounded",
+        "solver": "ShiftInvert(tol=1e-9)",
+        "bo_error_numerical_potential_GHz": [
+            [
+                -4.951802085700896e-5,
+                -4.855083570931562e-5,
+                -0.00015101147406237914,
+                -0.00014847942848739137,
+                -0.00025855596411483717,
+                -0.00025198330096565247
+            ],
+            [
+                -4.948197031245938e-5,
+                -4.858841118016155e-5,
+                -0.0001509181593577491,
+                -0.00014857645015298182,
+                -0.00025851454602388024,
+                -0.0002520278008103505
+            ],
+            [
+                -4.937897739543118e-5,
+                -4.869508931537592e-5,
+                -0.0001506523653251879,
+                -0.0001488512036427192,
+                -0.00025841663198855613,
+                -0.0002521331608306143
+            ],
+            [
+                -4.9223936687992076e-5,
+                -4.885381165958824e-5,
+                -0.00015025762786502472,
+                -0.00014925489843209405,
+                -0.0002583251703491829,
+                -0.0002522320661600963
+            ],
+            [
+                -4.904377879766386e-5,
+                -4.903549647516936e-5,
+                -0.00014993306728816602,
+                -0.00014958316769653202,
+                -0.0002582909178411308,
+                -0.0002522694003820325
+            ]
+        ],
+        "producer": "full 2D numerics (same run)",
+        "basis": "theta ChargeBasis(20), phi as fast_leaf",
+        "slow_stage": "ChargeBasis(20), Dense",
+        "levels_GHz": [
+            [
+                0.26390474831852107,
+                0.26609288109546547,
+                0.6390850023268042,
+                0.6410066130932011,
+                0.9807068556221017,
+                0.9833389450012717
+            ],
+            [
+                0.26398781974857854,
+                0.2660093902254186,
+                0.6391577570271503,
+                0.6409335414575343,
+                0.980744989489974,
+                0.983300578204453
+            ],
+            [
+                0.26422447754822986,
+                0.26577171981447734,
+                0.6393648765147226,
+                0.6407256568253601,
+                0.980842150152319,
+                0.9832028552060468
+            ],
+            [
+                0.2645789109723511,
+                0.26541627378029276,
+                0.6396740608915525,
+                0.640415707303748,
+                0.9809481143139163,
+                0.9830963287076013
+            ],
+            [
+                0.2649962624086726,
+                0.26499850290923277,
+                0.6399926069142428,
+                0.6400968443493653,
+                0.9809952206439743,
+                0.9830489894514978
+            ]
+        ]
+    },
+    "pi_periodicity_half_flux_GHz": 4.49268400259939e-12,
+    "pi_periodicity_bound_GHz": 1.0636959552729826e-8
+}
