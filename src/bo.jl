@@ -32,6 +32,8 @@ struct BOSurface
         return new(promoted, grid, energies, θ)
     end
 end
+BOSurface(promoted::PromotedSpec, grid::AbstractVector{<:Real}, energies::AbstractMatrix{<:Real}, θ::NamedTuple) =
+    BOSurface(promoted, Vector{Float64}(grid), Matrix{Float64}(energies), θ)
 
 """
     bo_surface(fast_root::Node, p::PromotedSpec, θ::NamedTuple, grid::AbstractVector{<:Real}; bands::Integer=2) -> BOSurface
@@ -117,8 +119,23 @@ function _slow_stage_coefficients(p::PromotedSpec, θ::NamedTuple, free::Abstrac
     return substitute(p.E_C, fixed), substitute(p.n_g, fixed)
 end
 
+# The `_bo` entries shared by `slow_spec` and `fit_surfaces`: the source spec (as a JSON object), the slow mode, the band,
+# the parameters written into the reduced spec as numbers, and every value held fixed while computing the surfaces.
+function _bo_provenance(p::PromotedSpec, θ0::NamedTuple, free::AbstractVector{Symbol}, band::Integer)
+    deps = _spec_dependencies(p.fast)
+    return Dict{String,Any}(
+        "source_spec" => JSON3.read(spec_json(p.source), Dict{String,Any}),
+        "slow_mode" => Dict{String,Any}("name" => String(p.mode.name), "type" => String(p.mode.type), "parameter" => String(p.parameter)),
+        "band" => band,
+        "substituted_parameters" => Dict{String,Any}(String(k) => θ0[k] for k in keys(θ0) if k ∉ free && k in deps),
+        "surface_parameters" => Dict{String,Any}(String(k) => θ0[k] for k in keys(θ0) if k ∉ free),
+    )
+end
+
+_bo_generator() = Dict{String,Any}("package" => "KronFreeCircuits", "version" => string(pkgversion(KronFreeCircuits)))
+
 """
-    slow_spec(s::BOSurface; band::Integer=1, K=nothing, tol=nothing) -> (spec::Spec, dropped::Float64)
+    slow_spec(s::BOSurface; band::Integer=1, K=nothing, tol=nothing) -> (spec::Spec, dropped::Float64, metadata::Dict)
 
 The one-mode spec of the slow mode of `s`: `E_C` and `n_g` from the promoted spec, no inductive terms, the mean of the surface as the constant, and
 for each kept harmonic `k` the cosines `-a_k cos kθ` and `-b_k cos(kθ - π/2)` (entries with zero energy are omitted).
@@ -129,6 +146,12 @@ with neither, all of them.
 
 Every parameter in `s.θ` that `s.promoted.fast` depends on is substituted by its value in `E_C` and `n_g` (the surface assumed it);
 the rest stay free parameters of the returned spec.
+
+`metadata` is the spec's provenance, ready for [`save_spec`](@ref): `metadata["_bo"]` records the source spec (as a JSON object), the slow mode,
+the band, the substituted and surface parameters (as in [`fit_surfaces`](@ref)), the slow grid, the number of harmonics kept and the dropped amplitude;
+`metadata["_generator"]` records the package version.
+Callers add numerical settings such as fast-leaf bases and cutoffs before saving.
+Two-name destructuring, `spec, dropped = slow_spec(s)`, still works.
 """
 function slow_spec(s::BOSurface; band::Integer=1, K::Union{Nothing,Integer}=nothing, tol::Union{Nothing,Real}=nothing)
     K === nothing || tol === nothing || throw(ArgumentError("slow_spec: give K or tol, not both"))
@@ -152,7 +175,12 @@ function slow_spec(s::BOSurface; band::Integer=1, K::Union{Nothing,Integer}=noth
     params = filter(in(used), p.source.parameters)
     spec = Spec(params, [p.mode], reshape([E_C], 1, 1), reshape([Coefficient(0)], 1, 1), [Coefficient(0)], [n_g],
                 cosines, ChargeCosineSpec[], Coefficient(a0))
-    return (spec, tail(keep))
+    bo = _bo_provenance(p, s.θ, Symbol[], band)
+    bo["slow_stage"] = "fourier"
+    bo["grid"] = s.grid
+    bo["harmonics_kept"] = keep
+    bo["dropped_amplitude"] = tail(keep)
+    return (spec, tail(keep), Dict{String,Any}("_bo" => bo, "_generator" => _bo_generator()))
 end
 
 # Fits of surfaces to a reduced one-mode spec (design Section 4.4).
@@ -378,16 +406,8 @@ function _fit_surfaces(surfaces::Vector{BOSurface}, model::Vector{Pair{Any,Vecto
     # provenance
     key_json(k) = k isa Symbol ? Dict{String,Any}("basis" => String(k)) : Dict{String,Any}("basis" => String(k[1]), "k" => k[2])
     nan_null(x) = isnan(x) ? nothing : x
-    surface_params = Dict{String,Any}(String(k) => θ0[k] for k in keys(θ0) if k ∉ fitted)
-    # the ones the reduced spec has as numbers (E_C[s,s] and n_g[s] depend on them through the fast spec); the others only describe the surfaces
-    deps = _spec_dependencies(p.fast)
-    substituted = Dict{String,Any}(String(k) => θ0[k] for k in keys(θ0) if k ∉ fitted && k in deps)
-    bo = Dict{String,Any}(
-        "source_spec" => JSON3.read(spec_json(p.source), Dict{String,Any}),
-        "slow_mode" => Dict{String,Any}("name" => String(p.mode.name), "type" => String(p.mode.type), "parameter" => String(p.parameter)),
-        "band" => band,
-        "substituted_parameters" => substituted,
-        "surface_parameters" => surface_params,
+    bo = _bo_provenance(p, θ0, fitted, band)
+    merge!(bo, Dict{String,Any}(
         "surfaces" => [Dict{String,Any}("grid_size" => length(s.grid), "grid" => s.grid,
                                         "fitted_values" => Dict{String,Any}(String(k) => s.θ[k] for k in fitted)) for s in surfaces],
         "model" => [Dict{String,Any}("key" => key_json(k), "expression" => t[2]) for (k, t) in zip(keys_, terms)],
@@ -395,9 +415,8 @@ function _fit_surfaces(surfaces::Vector{BOSurface}, model::Vector{Pair{Any,Vecto
         "stderr" => nan_null.(stderr),
         "rms_residual" => rms,
         "max_residual" => maxres,
-    )
-    metadata = Dict{String,Any}("_bo" => bo,
-                                "_generator" => Dict{String,Any}("package" => "KronFreeCircuits", "version" => string(pkgversion(KronFreeCircuits))))
+    ))
+    metadata = Dict{String,Any}("_bo" => bo, "_generator" => _bo_generator())
     return BOFit(terms, c, stderr, rms, maxres, spec, metadata)
 end
 

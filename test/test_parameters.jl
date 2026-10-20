@@ -100,8 +100,12 @@ end
     reserved = KronFreeCircuits._COEFF_ARG
     @test_throws ArgumentError KronFreeCircuits.check_parameter_names([:x, reserved])
     @test_throws ArgumentError Coefficient("x", [reserved])
+    @test_throws ArgumentError parse_spec("""{"format": "kronfree-spec", "version": 1, "parameters": ["#θarg"],
+        "modes": [{"name": "q", "type": "c"}], "E_C": [["1"]], "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["0"], "cosines": []}""")
+    @test_throws ArgumentError KronFreeCircuits.promote_mode(load_spec(fixture("zero_pi.json")), :theta; parameter=reserved)
 
-    # Rebuilding the coefficients per point (the spec path) costs about as much as the term list built once.
+    # Rebuilding the coefficients per point (the spec path) costs about as much as the term list built once (about 2x);
+    # with a per-build recompile it costs over 10x.
     leaf = Node([:varphi_1 => ChargeBasis(6)]; keep=lowest(2))
     spec, θ = load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3)
     bases = KronFreeCircuits._tree_bases(leaf)
@@ -110,5 +114,5 @@ end
     materialize(leaf, spec, θ); materialize(leaf, terms, θ; constant=c, modetypes=modetypes)     # warm
     t_spec = minimum(@elapsed(materialize(leaf, spec, θ)) for _ in 1:10)
     t_terms = minimum(@elapsed(materialize(leaf, terms, θ; constant=c, modetypes=modetypes)) for _ in 1:10)
-    @test t_spec < 10 * t_terms + 5e-3
+    @test t_spec < 3 * t_terms + 1e-3
 end

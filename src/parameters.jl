@@ -39,7 +39,7 @@ struct Coefficient
 end
 
 # The argument name is fixed so that identical expressions hash alike and share one compiled function (a gensym'd name
-# would give every build its own function type and a first-call recompile of about 20 ms).
+# would give every build its own function type and a first-call compile of several milliseconds per coefficient).
 # It is safe because `check_parameter_names` forbids it, so no parameter can shadow it, and the result type is
 # interpolated as a value so no parameter can shadow that either.
 const _COEFF_ARG = Symbol("#θarg")

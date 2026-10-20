@@ -43,6 +43,12 @@ end
     spec2, dropped2 = slow_spec(S; K=2)
     @test dropped2 ≈ 0.01
     @test spec.parameters == [:E_Cs, :n_gs]
+    # provenance, as fit_surfaces writes it, survives the writer
+    _, _, md = slow_spec(S; K=2)
+    js = KronFreeCircuits.JSON3.read(spec_json(spec2; metadata=md))
+    @test js._bo.slow_stage == "fourier" && js._bo.harmonics_kept == 2 && js._bo.dropped_amplitude ≈ dropped2
+    @test js._bo.slow_mode.name == "s" && js._bo.source_spec.format == "kronfree-spec" && length(js._bo.grid) == 32
+    @test haskey(js._bo.substituted_parameters, :dummy) && js._generator.package == "KronFreeCircuits"
     leaf = Node([:s => ChargeBasis(20)]; solver=Dense(), keep=lowest(6))
     @test energies(materialize(leaf, spec, (E_Cs=0.05, n_gs=0.1))) ≈
           dense_periodic_reference(S, E_C=0.05, n_g=0.1)[1:6] rtol=1e-8
@@ -61,6 +67,8 @@ end
     @test_throws ArgumentError BOSurface(e, periodic_grid(8), ones(1, 9), NamedTuple())
     @test_throws ArgumentError BOSurface(e, periodic_grid(8), ones(8, 1), NamedTuple())
     @test_throws ArgumentError BOSurface(e, periodic_grid(8), zeros(0, 8), NamedTuple())
+    # any real vector and matrix are converted
+    @test BOSurface(e, range(0, 2π; length=9)[1:8], fill(1, 1, 8), NamedTuple()).grid ≈ periodic_grid(8)
 end
 
 @testset "zero-pi BO against an independent dense BO" begin
@@ -224,4 +232,21 @@ end
     @test Fc.spec.modes[1].type === :c && :varphi_ext in Fc.spec.parameters
     @test sort([c.omega[1] for c in Fc.spec.cosines]) == [1.0, 1.0, 2.0]               # cos 2θ, cos θ and the sin θ term
     @test count(c -> c.offset(NamedTuple()) ≈ -π / 2, Fc.spec.cosines) == 1            # (:sin, 1): cosine with offset -π/2
+
+    # Python's numbers for the same files (validate_reduced.py, from circuit_quantization's own Hamiltonian): the spectrum, in the same
+    # charge basis or converged on a grid, and the classical potential, which pins the sign of the sine terms that the spectrum cannot
+    ref = KronFreeCircuits.JSON3.read(read(fixture(joinpath("bo_reference", "python_reduced_levels.json")), String))
+    @test Set(String.(keys(ref.files))) == Set(first.(bo_reduced_fits())) ∪ Set(["zero_pi_reduced.json"])
+    for (name, r) in pairs(ref.files)
+        spec = load_spec(fixture(joinpath("bo", String(name))))
+        θ = NamedTuple(Symbol(k) => Float64(v) for (k, v) in pairs(r.point))
+        mode = spec.modes[1]
+        basis = mode.type === :c ? ChargeBasis(r.basis.charge_cutoff) : PhaseGrid(-r.basis.half_width, r.basis.half_width, 801)
+        E = energies(materialize(Node([mode.name => basis]; solver=Dense(), keep=lowest(ref.levels)), spec, θ))
+        @test E ≈ r.levels rtol=1e-9
+        at(c) = real(c(θ))
+        V(x) = 0.5 * at(spec.E_L[1, 1]) * x^2 + at(spec.flux_linear[1]) * x + at(spec.constant) -
+               sum((at(c.energy) * cos(c.omega[1] * x + at(c.offset)) for c in spec.cosines); init=0.0)
+        @test V.(r.potential.varphi) ≈ r.potential.V rtol=1e-12
+    end
 end
