@@ -1,6 +1,6 @@
 # Zero-pi Born–Oppenheimer reproduction (Di Paolo et al., arXiv:1811.07921v1, Appendix B)
 
-Written by `bench/born_oppenheimer/zero_pi.jl` on 2026-10-20 09:35 (Julia 1.13.2, KronFreeCircuits 0.1.0, 8 threads); run time 75 s.
+Written by `bench/born_oppenheimer/zero_pi.jl` on 2026-10-20 09:53 (Julia 1.13.2, KronFreeCircuits 0.1.0, 8 threads); run time 76 s.
 
 Inputs (decided 2026-10-20, design §7), ratios to ħω_p with ω_p/2π = 40 GHz: E_Cφ = 1/(16·0.165) = 0.378788, derived from the source's ω_p = sqrt(8 E_J E_CJ)/ħ with C_φ = 2C_J (E_Cφ = E_CJ/2), instead of the printed 0.378;
 E_L = 0.001, E_J = 0.165, E_Cθ = 0.000175 as printed.
@@ -28,7 +28,7 @@ the numerical error of the base setting (its change to the adjacent refinement i
 Fit residuals: rms 2.884e-03 GHz, max 4.147e-03 GHz.
 Fast gap min(band 2 − band 1) over θ and flux: 2.890294 GHz.
 π-periodicity at half flux, max |U(θ+π) − U(θ)|: 4.49e-12 GHz (bound used by the gated test: 1e-5·E_γ = 1.06e-08 GHz).
-Solver check (flux 0.125, θ̃ = 0.3): ShiftInvert(tol=1e-10) vs Dense, max |ΔE| over the two bands = 2.8e-12 GHz.
+Solver check (flux 0.125, θ̃ = 0.3): ShiftInvert(tol=1e-10) vs Dense, max |ΔE| over the two bands = 3.2e-12 GHz.
 The gated test `test/test_born_oppenheimer_reference.jl` recomputes the five surfaces and the fit at this setting, single-threaded:
 about 15 s run alone, 4 s inside the gated suite (measured 2026-10-20).
 Flux dependence: a_2 varies by 8.0e-07 GHz across the fluxes (E_β), a_1 follows cos(φ_ext/2) and vanishes at half flux, as in the source.
@@ -53,7 +53,7 @@ whose next refinement changes E_α and E_γ by less than 1e-5. The base setting 
 
 | setting | M | E_α | E_γ | E_β | ΔE_α | ΔE_γ | ΔE_β | edge warning | time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
-| PhaseGrid(±6π, 241; order=8), Δ=0.1571 | 32 | 1.859045e-02 | 2.642247e-05 | -8.41204e-08 |  |  |  | yes | 6.0 |
+| PhaseGrid(±6π, 241; order=8), Δ=0.1571 | 32 | 1.859045e-02 | 2.642247e-05 | -8.41204e-08 |  |  |  | yes | 6.5 |
 | PhaseGrid(±8π, 321; order=8), Δ=0.1571 | 32 | 1.858686e-02 | 2.659217e-05 | 9.96320e-09 | 1.9e-04 | 6.4e-03 | 1.1e+00 | yes | 1.1 |
 | PhaseGrid(±10π, 401; order=8), Δ=0.1571 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00467e-08 | 2.8e-07 | 8.7e-06 | 8.4e-03 | yes | 0.9 |
 | PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 4.4e-11 | 1.5e-09 | 7.6e-07 | no | 1.1 |
@@ -67,7 +67,7 @@ Chosen: row 4.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
 | PhaseGrid(±12π, 241; order=8), Δ=0.3142 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 |  |  |  | no | 0.6 |
 | PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 5.3e-08 | 5.8e-08 | 2.7e-07 | no | 1.1 |
-| PhaseGrid(±12π, 721; order=8), Δ=0.1047 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 2.1e-10 | 1.5e-09 | 1.0e-06 | no | 2.0 |
+| PhaseGrid(±12π, 721; order=8), Δ=0.1047 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 2.1e-10 | 1.5e-09 | 1.0e-06 | no | 2.1 |
 | PhaseGrid(±12π, 961; order=8), Δ=0.0785 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00467e-08 | 7.1e-12 | 2.2e-09 | 2.1e-06 | no | 4.1 |
 
 Chosen: row 1.
@@ -87,13 +87,13 @@ Chosen: row 1.
 | setting | M | E_α | E_γ | E_β | ΔE_α | ΔE_γ | ΔE_β | edge warning | time (s) |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |
 | PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 8 | 1.858801e-02 | 2.659185e-05 | 1.01639e-08 |  |  |  | no | 0.6 |
-| PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 16 | 1.858685e-02 | 2.659240e-05 | 1.00467e-08 | 6.2e-05 | 2.1e-05 | 1.2e-02 | no | 0.7 |
+| PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 16 | 1.858685e-02 | 2.659240e-05 | 1.00467e-08 | 6.2e-05 | 2.1e-05 | 1.2e-02 | no | 0.8 |
 | PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 32 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 3.9e-12 | 6.3e-11 | 7.0e-07 | no | 1.1 |
-| PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 64 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 5.2e-14 | 5.1e-11 | 1.1e-07 | no | 1.9 |
+| PhaseGrid(±12π, 481; order=8), Δ=0.1571 | 64 | 1.858685e-02 | 2.659240e-05 | 1.00466e-08 | 5.2e-14 | 5.1e-11 | 1.1e-07 | no | 1.8 |
 
 Chosen: row 2.
 
-E_β's changes plateau at about 2e-06 relative (round-off): it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz, and in the N block its change grows as the grid is refined. Its recorded error estimate is at least this floor.
+E_β's refinement changes are at round-off, at most 2e-06 relative in the N block at and beyond the base, and do not decrease with N: it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz. Its recorded error estimate is at least this floor.
 
 ## Rounding extremes of the inputs
 
@@ -168,8 +168,8 @@ Charge-cutoff refinement, max |ΔE| over the 6 levels against the next cutoff (G
 | 2D ncut | flux 0 | flux 0.5 |
 | ---: | ---: | ---: |
 | 10 → 15 | 4.6e-05 | 4.6e-05 |
-| 15 → 20 | 9.0e-11 | 9.2e-11 |
-| 20 → 30 | 5.0e-13 | 7.3e-13 |
+| 15 → 20 | 9.0e-11 | 9.1e-11 |
+| 20 → 30 | 7.3e-13 | 5.4e-13 |
 
 Per-level comparison (GHz): E_2D, and the BO errors E_fit − E_2D (reduced spec) and E_U − E_2D (full numerical potential).
 

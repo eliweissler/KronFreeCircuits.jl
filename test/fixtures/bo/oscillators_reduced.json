@@ -31,27 +31,21 @@
     ],
     "constant": "(1.4142135623675465 * 1)",
     "_bo": {
-        "model": [
-            {
-                "key": {
-                    "basis": "constant"
-                },
-                "expression": "1"
-            },
-            {
-                "key": {
-                    "basis": "x2"
-                },
-                "expression": "1"
-            }
-        ],
-        "band": 1,
+        "surface_parameters": {
+            "a": 1,
+            "E_Cs": 0.1,
+            "E_Cf": 0.5,
+            "b": 2,
+            "c": 0.6
+        },
         "max_residual": 7.254197242900773e-13,
-        "constants": [
-            1.4142135623675465,
-            0.40999999999998116
-        ],
-        "rms_residual": 2.4537222515372364e-13,
+        "band": 1,
+        "substituted_parameters": {
+            "a": 1,
+            "E_Cf": 0.5,
+            "b": 2,
+            "c": 0.6
+        },
         "surfaces": [
             {
                 "grid": [
@@ -81,10 +75,6 @@
                 },
                 "grid_size": 21
             }
-        ],
-        "stderr": [
-            8.459923944198529e-14,
-            1.722335672538447e-13
         ],
         "source_spec": {
             "constant": "0",
@@ -139,13 +129,29 @@
                 "0"
             ]
         },
-        "fixed_parameters": {
-            "a": 1,
-            "E_Cs": 0.1,
-            "E_Cf": 0.5,
-            "b": 2,
-            "c": 0.6
-        },
+        "model": [
+            {
+                "key": {
+                    "basis": "constant"
+                },
+                "expression": "1"
+            },
+            {
+                "key": {
+                    "basis": "x2"
+                },
+                "expression": "1"
+            }
+        ],
+        "constants": [
+            1.4142135623675465,
+            0.40999999999998116
+        ],
+        "rms_residual": 2.4537222515372364e-13,
+        "stderr": [
+            8.459923944198529e-14,
+            1.722335672538447e-13
+        ],
         "slow_mode": {
             "type": "e",
             "name": "s",

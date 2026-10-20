@@ -54,52 +54,14 @@
     ],
     "constant": "(1.1 * 1)",
     "_bo": {
-        "model": [
-            {
-                "key": {
-                    "basis": "constant"
-                },
-                "expression": "1"
-            },
-            {
-                "key": {
-                    "k": 2,
-                    "basis": "cos"
-                },
-                "expression": "1"
-            },
-            {
-                "key": {
-                    "k": 2,
-                    "basis": "cos"
-                },
-                "expression": "cos(varphi_ext)"
-            },
-            {
-                "key": {
-                    "k": 1,
-                    "basis": "cos"
-                },
-                "expression": "cos(varphi_ext/2)"
-            },
-            {
-                "key": {
-                    "k": 1,
-                    "basis": "sin"
-                },
-                "expression": "sin(varphi_ext/2)"
-            }
-        ],
-        "band": 1,
+        "surface_parameters": {
+            "dummy": 0.7
+        },
         "max_residual": 5.551115123125783e-16,
-        "constants": [
-            1.1,
-            0.7400000000000003,
-            -0.00039999999999984823,
-            0.001100000000000119,
-            -0.0007000000000000232
-        ],
-        "rms_residual": 2.6320277373084213e-16,
+        "band": 1,
+        "substituted_parameters": {
+            "dummy": 0.7
+        },
         "surfaces": [
             {
                 "grid": [
@@ -302,13 +264,6 @@
                 "grid_size": 32
             }
         ],
-        "stderr": [
-            2.1140955528136325e-17,
-            2.989782602941685e-17,
-            3.859792743324604e-17,
-            4.228191105627267e-17,
-            4.228191105627265e-17
-        ],
         "source_spec": {
             "constant": "0",
             "cosines": [
@@ -362,9 +317,57 @@
                 "0"
             ]
         },
-        "fixed_parameters": {
-            "dummy": 0.7
-        },
+        "model": [
+            {
+                "key": {
+                    "basis": "constant"
+                },
+                "expression": "1"
+            },
+            {
+                "key": {
+                    "k": 2,
+                    "basis": "cos"
+                },
+                "expression": "1"
+            },
+            {
+                "key": {
+                    "k": 2,
+                    "basis": "cos"
+                },
+                "expression": "cos(varphi_ext)"
+            },
+            {
+                "key": {
+                    "k": 1,
+                    "basis": "cos"
+                },
+                "expression": "cos(varphi_ext/2)"
+            },
+            {
+                "key": {
+                    "k": 1,
+                    "basis": "sin"
+                },
+                "expression": "sin(varphi_ext/2)"
+            }
+        ],
+        "constants": [
+            1.1,
+            0.7400000000000003,
+            -0.00039999999999984823,
+            0.001100000000000119,
+            -0.0007000000000000232
+        ],
+        "rms_residual": 2.6320277373084213e-16,
+        "stderr": [
+            2.1140955528136325e-17,
+            2.989782602941685e-17,
+            3.859792743324604e-17,
+            4.228191105627267e-17,
+            4.228191105627265e-17
+        ],
         "slow_mode": {
             "type": "c",
             "name": "s",

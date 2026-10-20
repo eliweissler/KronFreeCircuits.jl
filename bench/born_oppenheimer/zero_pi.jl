@@ -122,9 +122,12 @@ function converged_index(seq)
     return nothing
 end
 chosen = Dict(name => converged_index(refinements[name]) for name in SEQUENCES)
+# row of each sequence holding the base setting (L 12π, N 481, order 8, M 32); checked against `best` below
+const BASE_ROW = Dict("phi range L" => 4, "phi points N (L = 12π)" => 2, "stencil order" => 3, "theta samples M" => 3)
 # the base setting must be at or beyond the chosen value of every sequence
 for (name, k) in chosen
     k === nothing && error("refinement sequence \"$name\" did not converge")
+    k <= BASE_ROW[name] || error("refinement sequence \"$name\": the chosen row $k is beyond the base row $(BASE_ROW[name])")
 end
 
 # ---- (2) The converged setting and its checks ------------------------------------------------------------------
@@ -218,7 +221,6 @@ all(isempty(w) for (_, w) in full) || @warn "edge warnings in the full 2D solves
 ok = abs(dev(c).alpha) < ACCEPT && abs(dev(c).gamma) < ACCEPT
 # numerical error of the base setting: in each sequence, the relative change from the base row to the next finer row
 # (to the next coarser row where the base is the finest), maximized over the sequences
-const BASE_ROW = Dict("phi range L" => 4, "phi points N (L = 12π)" => 2, "stencil order" => 3, "theta samples M" => 3)
 function err(f)
     e = 0.0
     for n in SEQUENCES
@@ -311,8 +313,8 @@ for name in SEQUENCES
     pr("Chosen: row ", chosen[name], ".")
     pr()
 end
-pr(@sprintf("E_β's changes plateau at about %.0e relative (round-off): it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz, ", BETA_FLOOR),
-   "and in the N block its change grows as the grid is refined. Its recorded error estimate is at least this floor.")
+pr(@sprintf("E_β's refinement changes are at round-off, at most %.0e relative in the N block at and beyond the base, and do not decrease with N: ", BETA_FLOOR),
+   "it is a 4e-7 GHz flux variation of a_2 extracted from energies of order 1 GHz. Its recorded error estimate is at least this floor.")
 pr()
 pr("## Rounding extremes of the inputs")
 pr()
@@ -416,8 +418,9 @@ fixture = Dict{String,Any}(
                           "flux" => "varphi_ext = 2 pi flux, flux = Phi_ext/Phi_0", "n_g" => 0.0),
     "inputs_hbar_omega_p" => Dict(String(k) => v for (k, v) in pairs(INPUT_RATIOS)),
     "inputs_GHz" => Dict(String(k) => v for (k, v) in pairs(BASE)),
-    "inputs_note" => "E_Cphi = hbar*omega_p/(16*0.165), derived from omega_p = sqrt(8 E_J E_CJ)/hbar and C_phi = 2 C_J (E_Cphi = E_CJ/2; " *
-                     "1811.07921v1 tex line 252), instead of the printed 0.378 (decided 2026-10-20, design section 7); E_L, E_J, E_Ctheta as printed. " *
+    "inputs_note" => "E_Cphi = hbar*omega_p/(16*0.165), derived from omega_p = sqrt(8 E_J E_CJ)/hbar (1811.07921v1 tex line 252) and C_phi = 2 C_J " *
+                     "(tex line 262; E_Cphi = E_CJ/2), instead of the printed 0.378 (decided 2026-10-20, design section 7); E_L, E_J, E_Ctheta as printed. " *
+                     "The paper's other parameter set (caption at tex line 303, E_Cphi = E_J = 0.25 hbar*omega_p) also satisfies 16 E_J E_Cphi = 1 exactly. " *
                      "With the printed 0.378, E_gamma misses the published value by +0.96%.",
     "acceptance" => Dict("relative_tolerance" => ACCEPT, "coefficients" => ["E_alpha", "E_gamma"]),
     "fluxes" => FLUXES,
