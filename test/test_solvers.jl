@@ -150,20 +150,31 @@ end
     # a complex Hermitian matrix: the Gershgorin bound takes the real diagonal and the complex off-diagonal moduli
     Ac = sparse(ComplexF64[2 im 0; -im 3 0.5; 0 0.5 1])
     @test _gershgorin_lower(Ac) == min(2 - 1, 3 - 1.5, 1 - 0.5)
+    # absent diagonal entries count as zero: complex (no stored diagonal at all) and real (partly absent)
+    Az = sparse(ComplexF64[0 0.5im; -0.5im 0])
+    @test nnz(Az) == 2 && _gershgorin_lower(Az) == -0.5
+    Ap = sparse([0.0 1 0; 1 2 0.5; 0 0.5 0])
+    @test nnz(Ap) == 5 && _gershgorin_lower(Ap) == min(0 - 1, 2 - 1.5, 0 - 0.5)
 
     # (b) end to end: a short estimate whose error exceeds shift_margin, so the first Cholesky fails
     H = real_three_oscillators(8)
     Ed, _ = solve(Dense(), H, 0)
     As = sparse(H); As = (As + As') / 2
-    gaps = map(1:5) do seed
+    # the seed with the largest overshoot of seeds 1:20, so the test does not hang on one RNG stream
+    gaps = map(1:20) do seed
         Random.seed!(seed)
         _lowest_estimate(As, 1) - Ed[1]
     end
     seed = argmax(gaps)
-    @test gaps[seed] > 1e-8
+    gaps[seed] > 1e-8 || error("no seed in 1:20 makes the short estimate overshoot λ1 (largest gap $(gaps[seed])); " *
+                               "the end-to-end retry test needs a harder estimate")
     s = ShiftInvert(tol=1e-9, shift_margin=gaps[seed] / 2, maxiter=1, krylovdim=60)    # σ₀ above λ1: Cholesky fails
     Random.seed!(seed)
-    E, V = @test_logs min_level=Warn solve(s, H, 3)
+    logs, (E, V) = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+        solve(s, H, 3)
+    end
+    @test !any(r -> r.level >= Warn, logs)
+    @test count(r -> r.level == Base.CoreLogging.Debug && occursin("retried", string(r.message)), logs) == 1
     @test E ≈ Ed[1:3] atol=1e-8
     check_eigenpairs(H, E, V; tol=1e-9)
 end

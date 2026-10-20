@@ -98,8 +98,9 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
   estimate overshoots by more than `shift_margin` and the Cholesky fails, it is retried at
   `E_min − shift_margin·4^r` for `r = 1, 2, 3`, then at the Gershgorin lower bound of `H` minus
   `shift_margin` (a debug message names the shift that worked); only if every retry fails does the
-  solve fall back to LU, with a warning. Slicing (`slices > 1`) does not retry. A number is used as `σ` itself; a shift at or above the
-  estimate is interior, `H − σI` is factored by LU, and the `m` eigenvalues nearest `σ` are returned.
+  solve fall back to LU, with a warning. Slicing (`slices > 1`) does not retry.
+  A number is used as `σ` itself; a shift at or above the estimate is interior, `H − σI` is factored
+  by LU, and the `m` eigenvalues nearest `σ` are returned.
 - `shift_margin`: the distance of the automatic shift below the estimate, in the Hamiltonian's
   energy units, and the base of the retry shifts above. The default is taken from the zero-pi
   fixtures (GHz) and must be set for other energy scales.

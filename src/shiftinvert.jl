@@ -39,7 +39,7 @@ end
 # lowest eigenvalue, so A − σI is positive definite for every σ below it.
 function _gershgorin_lower(A::SparseMatrixCSC)
     n = size(A, 1)
-    g = real.(diag(A))
+    g = Vector(real.(diag(A)))                     # dense, with zeros for absent diagonal entries
     rows, vals = rowvals(A), nonzeros(A)
     for j in 1:n, k in nzrange(A, j)
         rows[k] == j || (g[j] -= abs(vals[k]))     # column j of a Hermitian A holds the moduli of row j
@@ -54,6 +54,8 @@ function _auto_factor(A::SparseMatrixCSC, Emin::Real, margin::Real)
     σ0 = Emin - margin
     F, ischol = _factor_shifted(A, σ0, false; fallback=false)
     ischol && return F, σ0, true
+    # A retry can land just below λ₁, where H − σI is ill-conditioned yet still Cholesky-factorable; the
+    # true-residual check catches a Lanczos failure there.
     for σ in [Emin .- margin .* 4.0 .^ (1:3); _gershgorin_lower(A) - margin]
         F, ischol = _factor_shifted(A, σ, false; fallback=false)
         if ischol
