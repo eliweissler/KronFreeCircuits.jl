@@ -96,18 +96,10 @@ end
     @test_throws ArgumentError _child_overlap(mk(lg, [9], V9, Any[PhaseGrid(-2π, 2π, 9; order=2)]), mk(lg2, [9], V9, Any[PhaseGrid(-3π, 3π, 9; order=2)]))
 end
 
-# Shared by the T1-T3 unit cases: a MaterializedNode with placeholder energies, ports and peaks, and the
-# explicit primitive-space vectors of a materialized node (axis 1 fastest), built without the transport.
+# Shared by the T1-T3 unit cases: a MaterializedNode with placeholder energies, ports and peaks. The explicit
+# primitive-space vectors (built without the transport) are `_primitive` in helpers.jl.
 _mkmn(node, dims, V, children) = KronFreeCircuits.MaterializedNode(node, dims, zeros(size(V, 2)), V, collect(1:size(V, 2)),
     Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}(), children, ones(Int, size(V, 2)), Matrix{ComplexF64}(I, size(V, 2), size(V, 2)))
-function _primitive(mn)
-    W = ones(ComplexF64, 1, 1)
-    for c in mn.children
-        d = c isa KronFreeCircuits.MaterializedNode ? _primitive(c) : Matrix{ComplexF64}(I, KronFreeCircuits.dimension(c), KronFreeCircuits.dimension(c))
-        W = kron(d, W)
-    end
-    return W * mn.vectors
-end
 
 @testset "T1: overlaps through several levels against explicit primitive vectors; gauge covariance" begin
     using KronFreeCircuits: _child_overlap, _transport_previous, Node, ChargeBasis, lowest

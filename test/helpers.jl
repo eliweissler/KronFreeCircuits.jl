@@ -164,10 +164,9 @@ function primitive_hamiltonian(terms, θ::NamedTuple, bases::AbstractVector; con
     return H + ComplexF64(constant) * sparse(ComplexF64(1) * I, D, D)
 end
 
-# The primitive-space eigenvector columns of a materialized node whose children are leaves or raw
-# bases, axis 1 fastest.
-_embed(c::KronFreeCircuits.MaterializedNode) = c.vectors
-_embed(b::KronFreeCircuits.Basis) = Matrix{ComplexF64}(I, KronFreeCircuits.dimension(b), KronFreeCircuits.dimension(b))
+# The primitive-space eigenvector columns of a materialized node, through any number of levels, axis 1 fastest.
+_embed(c::KronFreeCircuits.MaterializedNode) = _primitive(c)
+_embed(b) = Matrix{ComplexF64}(I, KronFreeCircuits.dimension(b), KronFreeCircuits.dimension(b))
 _primitive(mn) = foldl((acc, c) -> kron(_embed(c), acc), mn.children; init=ones(ComplexF64, 1, 1)) * mn.vectors
 
 # Per column, the true residual norm ‖H v − λ v‖ with an independently assembled H.
@@ -317,7 +316,7 @@ function synthetic_surface(grid, U; θ::NamedTuple=NamedTuple(), fast_value::Rea
     return KronFreeCircuits.BOSurface(p, g, reshape(Float64.(U.(g)), 1, :), merge(θ, (dummy=Float64(fast_value),)))
 end
 
-# The promoted spec of `synthetic_surface`, built once (every spec parse and promotion compiles a function per coefficient).
+# The promoted spec of `synthetic_surface`, built once and shared (`fresh=true` gives a separate, equal one).
 const _SYNTHETIC_PROMOTED = Ref{Any}(nothing)
 function _synthetic_promoted(; fresh::Bool=false)
     fresh || _SYNTHETIC_PROMOTED[] === nothing || return _SYNTHETIC_PROMOTED[]
