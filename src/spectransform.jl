@@ -64,3 +64,101 @@ function substitute(spec::Spec, values::NamedTuple)
     return Spec(filter(p -> p ∉ keys(values), spec.parameters), spec.modes, sub.(spec.E_C), sub.(spec.E_L),
                 sub.(spec.flux_linear), sub.(spec.n_g), keep(cosines), keep(charge_cosines), sub(spec.constant))
 end
+
+# Promoting a mode of a `Spec` to a parameter (design Section 4.1).
+
+"""
+    PromotedSpec
+
+The result of [`promote_mode`](@ref).
+`fast` is the spec of the remaining modes, whose parameters are those of `source` followed by `parameter`, the name that holds the slow coordinate.
+`mode` is the slow mode (name and type), and `E_C` and `n_g` are the source's `E_C[s,s]` and `n_g[s]` for the slow stage.
+"""
+struct PromotedSpec
+    fast::Spec
+    source::Spec
+    mode::ModeSpec
+    parameter::Symbol
+    E_C::Coefficient
+    n_g::Coefficient
+end
+
+# `a + b`, with a structurally zero summand left out.
+_add(a::Coefficient, b::Coefficient) = _iszero(b) ? a : _iszero(a) ? b : a + b
+
+"""
+    promote_mode(spec::Spec, mode::Symbol; parameter::Symbol=mode) -> PromotedSpec
+
+Fix the coordinate of `mode` (the slow mode `s`) at the value of a new parameter `parameter`, giving a spec over the remaining (fast) modes.
+Each part of `spec` carries over exactly:
+`E_C[s,s]` and `n_g[s]` are dropped from the fast spec (an `@info` says so; they are in the result for the slow stage);
+`E_L[s,s]` becomes the constant `½ E_L[s,s] p²`;
+`E_L[s,f]` adds `E_L[s,f] p` to `flux_linear[f]`;
+`flux_linear[s]` becomes the constant `flux_linear[s] p`;
+a cosine with `omega[s] ≠ 0` keeps its other multipliers and its `offset` gains `omega[s] p`, or, if it has no other multiplier, becomes the constant `-energy cos(omega[s] p + offset)`.
+Constants accumulate onto `spec.constant`, and `parameter` is appended to the parameters.
+The offset-charge constant `4 n_gᵀ E_C n_g` loses its `(s,s)` part with `E_C[s,s]` and `n_g[s]`.
+
+Throws `ArgumentError` if `mode` is not a mode, `spec` has only one mode, `E_C[s,f]` is not (structurally) zero for some fast mode `f`, a charge cosine has `kappa[s] ≠ 0`, or `parameter` is already a parameter, the name of a fast mode, or a reserved name.
+The checks look at the coefficient expressions, never at parameter values: remove a coupling that vanishes only at particular values first with [`substitute`](@ref).
+"""
+function promote_mode(spec::Spec, mode::Symbol; parameter::Symbol=mode)
+    names = [m.name for m in spec.modes]
+    s = findfirst(==(mode), names)
+    s === nothing && throw(ArgumentError("promote_mode: :$mode is not a mode of the spec (modes: $(join(":" .* string.(names), ", ")))"))
+    length(names) > 1 ||
+        throw(ArgumentError("promote_mode: mode :$mode is the only mode, so nothing is left to be fast"))
+    fast = [i for i in eachindex(names) if i != s]
+    parameter in spec.parameters &&
+        throw(ArgumentError("promote_mode: the new parameter :$parameter is already a parameter of the spec"))
+    parameter in names[fast] &&
+        throw(ArgumentError("promote_mode: the new parameter :$parameter is the name of a remaining mode"))
+    try
+        check_parameter_names([parameter])
+    catch e
+        e isa ArgumentError && throw(ArgumentError("promote_mode: $(e.msg)"))
+        rethrow()
+    end
+    for f in fast, (i, j) in ((s, f), (f, s))
+        _iszero(spec.E_C[i, j]) ||
+            throw(ArgumentError("promote_mode: E_C[$(names[i]),$(names[j])] = $(expr_string(spec.E_C[i, j].ex)) couples the slow mode " *
+                                ":$mode to the fast mode :$(names[f]) through the charge; a charge coupling has no exact carry-over " *
+                                "(substitute the parameters that make it vanish first)"))
+    end
+    for (k, c) in enumerate(spec.charge_cosines)
+        c.kappa[s] == 0 ||
+            throw(ArgumentError("promote_mode: charge_cosines[$k] has kappa[$(names[s])] = $(c.kappa[s]) ≠ 0, so it is not diagonal in " *
+                                "the coordinate of the slow mode :$mode; it has no exact carry-over"))
+    end
+
+    p = _make(parameter, [parameter])
+    drop_s(v) = v[fast]
+    constant = spec.constant
+    constant = _add(constant, 0.5 * spec.E_L[s, s] * p * p)
+    constant = _add(constant, spec.flux_linear[s] * p)
+    flux_linear = copy(spec.flux_linear)
+    for f in fast
+        flux_linear[f] = _add(flux_linear[f], 0.5 * (spec.E_L[s, f] + spec.E_L[f, s]) * p)
+    end
+    cosines = CosineSpec[]
+    for c in spec.cosines
+        ω = c.omega[s]
+        rest = drop_s(c.omega)
+        if ω == 0
+            push!(cosines, CosineSpec(c.energy, rest, c.offset))
+            continue
+        end
+        offset = _make(:($(c.offset.ex) + $ω * $parameter), union(c.offset.deps, [parameter]))
+        if all(iszero, rest)
+            constant = _add(constant, _make(:(-($(c.energy.ex)) * cos($(offset.ex))), union(c.energy.deps, offset.deps)))
+        else
+            push!(cosines, CosineSpec(c.energy, rest, offset))
+        end
+    end
+    charge_cosines = [ChargeCosineSpec(c.energy, drop_s(c.kappa), c.offset) for c in spec.charge_cosines]
+
+    @info "promote_mode: E_C[$mode,$mode] and n_g[$mode] are dropped from the fast spec; they are kept in the PromotedSpec for the slow stage"
+    fastspec = Spec([spec.parameters; parameter], spec.modes[fast], spec.E_C[fast, fast], spec.E_L[fast, fast], flux_linear[fast],
+                    spec.n_g[fast], cosines, charge_cosines, constant)
+    return PromotedSpec(fastspec, spec, spec.modes[s], parameter, spec.E_C[s, s], spec.n_g[s])
+end

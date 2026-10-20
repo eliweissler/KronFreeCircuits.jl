@@ -11,7 +11,7 @@ using Random: Random, randn!
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-export Spec, load_spec, parse_spec, spec_json, save_spec, substitute, Coefficient, Port, nport,
+export Spec, load_spec, parse_spec, spec_json, save_spec, substitute, promote_mode, PromotedSpec, Coefficient, Port, nport,
        n2port, phiport, phi2port, expiphi, exp2pin, Factor,
        Term, circuit_terms, LocalOp, DenseOp, DiagonalOp, BandedOp,
        ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid, PeriodicGrid,
