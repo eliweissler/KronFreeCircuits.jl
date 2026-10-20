@@ -1,3 +1,5 @@
+include(joinpath(@__DIR__, "fixtures", "bo", "reduced_specs.jl"))
+
 @testset "BO surfaces" begin
     # L6 crossing: fast compact mode f, slow compact s, H = 4E_C (n_f - n_g)^2 - E_J cos(s) cos(φ_f)
     # (two cosines, omega [1,1] and [1,-1], energy E_J/2). At n_g = 0.5 the two lowest bands cross at s = π/2.
@@ -140,11 +142,7 @@ end
     @test Fq.spec.constant((varphi_ext=0.6, n_g1=0.2, E_Cs=1.0, n_gs=0.0)) ≈ q(0.6, 0.2)
 
     # L6 oscillators, extended slow mode through :x2: U(s) = ω/2 + ½(a − c²/b) s², ω = sqrt(8 E_Cf b)
-    p = quiet_promote(coupled_oscillators_spec(), :s)
-    leaf = Node([:f => PhaseGrid(-12, 12, 301)]; solver=Dense(), keep=lowest(1))
-    θ = (a=1.0, b=2.0, c=0.6, E_Cf=0.5, E_Cs=0.1)
-    S = bo_surface(leaf, p, θ, range(-1, 1; length=21); bands=1)
-    Fo = fit_surfaces([S], [:constant => ["1"], :x2 => ["1"]])
+    S, Fo = bo_oscillators_construction()                  # shared with the committed reduced specs (test/fixtures/bo)
     @test Fo.constants ≈ [sqrt(8 * 0.5 * 2.0) / 2, (1.0 - 0.6^2 / 2.0) / 2] rtol=1e-7
     @test Fo.spec.parameters == [:E_Cs]                                  # a, b, c, E_Cf substituted
     @test Fo.spec.E_L[1, 1](NamedTuple()) ≈ 2 * Fo.constants[2] && Fo.spec.E_C[1, 1]((E_Cs=0.1,)) ≈ 0.1
@@ -193,4 +191,22 @@ end
     @test_throws ArgumentError fit_surfaces(surfs, [:constant => String[]])
     @test_throws ArgumentError fit_surfaces([surfs[1], D(0.5)], model)                     # different source specs
     @test_throws ArgumentError fit_surfaces([surfs[1], synthetic_surface(periodic_grid(32), cos; θ=(varphi_ext=0.0, n_g1=0.0))], model)   # θ keys differ
+end
+
+@testset "reduced-spec interchange" begin
+    # the committed files (written by test/fixtures/bo/write_reduced.jl, validated by validate_reduced.py) define the specs rebuilt now
+    for (name, F) in bo_reduced_fits()
+        path = fixture(joinpath("bo", name))
+        @test isfile(path)
+        @test spec_equal(load_spec(path), F.spec)
+        text = read(path, String)
+        @test !occursin(homedir(), text) && !occursin("/Users/", text)             # no machine-specific paths in the metadata
+        md = KronFreeCircuits.JSON3.read(text)
+        @test md._generator.package == "KronFreeCircuits" && haskey(md, :_bo)
+    end
+    Fo, Fc = last.(bo_reduced_fits())[[1, 2]]
+    @test Fo.spec.modes[1].type === :e && Fo.spec.parameters == [:E_Cs]
+    @test Fc.spec.modes[1].type === :c && :varphi_ext in Fc.spec.parameters
+    @test sort([c.omega[1] for c in Fc.spec.cosines]) == [1.0, 1.0, 2.0]               # cos 2θ, cos θ and the sin θ term
+    @test count(c -> c.offset(NamedTuple()) ≈ -π / 2, Fc.spec.cosines) == 1            # (:sin, 1): cosine with offset -π/2
 end

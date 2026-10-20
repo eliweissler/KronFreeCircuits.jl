@@ -1,0 +1,159 @@
+{
+    "format": "kronfree-spec",
+    "version": 1,
+    "units": "GHz",
+    "parameters": [
+        "E_Cs"
+    ],
+    "modes": [
+        {
+            "name": "s",
+            "type": "e"
+        }
+    ],
+    "E_C": [
+        [
+            "E_Cs"
+        ]
+    ],
+    "E_L": [
+        [
+            "(0.8199999999999623 * 1)"
+        ]
+    ],
+    "flux_linear": [
+        "0"
+    ],
+    "n_g": [
+        "0"
+    ],
+    "cosines": [
+    ],
+    "constant": "(1.4142135623675465 * 1)",
+    "_bo": {
+        "model": [
+            {
+                "key": {
+                    "basis": "constant"
+                },
+                "expression": "1"
+            },
+            {
+                "key": {
+                    "basis": "x2"
+                },
+                "expression": "1"
+            }
+        ],
+        "band": 1,
+        "max_residual": 7.254197242900773e-13,
+        "constants": [
+            1.4142135623675465,
+            0.40999999999998116
+        ],
+        "rms_residual": 2.4537222515372364e-13,
+        "surfaces": [
+            {
+                "grid": [
+                    -1,
+                    -0.9,
+                    -0.8,
+                    -0.7,
+                    -0.6,
+                    -0.5,
+                    -0.4,
+                    -0.3,
+                    -0.2,
+                    -0.1,
+                    0,
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.4,
+                    0.5,
+                    0.6,
+                    0.7,
+                    0.8,
+                    0.9,
+                    1
+                ],
+                "fitted_values": {
+                },
+                "grid_size": 21
+            }
+        ],
+        "stderr": [
+            8.459923944198529e-14,
+            1.722335672538447e-13
+        ],
+        "source_spec": {
+            "constant": "0",
+            "cosines": [
+            ],
+            "version": 1,
+            "modes": [
+                {
+                    "type": "e",
+                    "name": "s"
+                },
+                {
+                    "type": "e",
+                    "name": "f"
+                }
+            ],
+            "E_C": [
+                [
+                    "E_Cs",
+                    "0"
+                ],
+                [
+                    "0",
+                    "E_Cf"
+                ]
+            ],
+            "E_L": [
+                [
+                    "a",
+                    "c"
+                ],
+                [
+                    "c",
+                    "b"
+                ]
+            ],
+            "format": "kronfree-spec",
+            "units": "GHz",
+            "flux_linear": [
+                "0",
+                "0"
+            ],
+            "parameters": [
+                "a",
+                "b",
+                "c",
+                "E_Cf",
+                "E_Cs"
+            ],
+            "n_g": [
+                "0",
+                "0"
+            ]
+        },
+        "fixed_parameters": {
+            "a": 1,
+            "E_Cs": 0.1,
+            "E_Cf": 0.5,
+            "b": 2,
+            "c": 0.6
+        },
+        "slow_mode": {
+            "type": "e",
+            "name": "s",
+            "parameter": "s"
+        }
+    },
+    "_generator": {
+        "version": "0.1.0",
+        "package": "KronFreeCircuits"
+    }
+}
