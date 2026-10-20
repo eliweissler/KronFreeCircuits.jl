@@ -1082,7 +1082,7 @@ end
     @test_throws ArgumentError LOBPCG(seed=:bogus)
 end
 
-if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated: about 3 s; the default suite runs every solver in real arithmetic in the degenerate and invariant-seed probes below
+if get(ENV, "KRONFREE_SLOW_TESTS", "0") == "1"      # gated (and the file is slow-tier): about 3 s; the degenerate and invariant-seed probes below run every solver in real arithmetic
 @testset "solvers run in the operator's element type; real equals complex" begin
     for (name, H) in (("three real oscillators", real_three_oscillators(6)),
                       ("degenerate pair", two_identical_real_oscillators(12)))

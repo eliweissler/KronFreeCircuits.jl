@@ -248,5 +248,7 @@ end
         V(x) = 0.5 * at(spec.E_L[1, 1]) * x^2 + at(spec.flux_linear[1]) * x + at(spec.constant) -
                sum((at(c.energy) * cos(c.omega[1] * x + at(c.offset)) for c in spec.cosines); init=0.0)
         @test V.(r.potential.varphi) ≈ r.potential.V rtol=1e-12
+        n = r.at_charge.n                                                   # the kinetic term and the sign of n_g
+        @test [4 * at(spec.E_C[1, 1]) * (n - at(spec.n_g[1]))^2 + V(x) for x in r.potential.varphi] ≈ r.at_charge.H rtol=1e-12
     end
 end

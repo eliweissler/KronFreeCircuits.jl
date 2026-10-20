@@ -220,12 +220,13 @@ julia --project=. -e 'using Pkg; Pkg.test(test_args=["test_bo.jl"])'           #
 ```
 
 The default runs the fast tier: the unit-level files, about 45 s on an M2.
-Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 4 minutes more:
-- the end-to-end, solver, catalogue, character, generated-spec and Born–Oppenheimer files (`SLOW_FILES` in `test/runtests.jl`);
+Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes in all on a loaded M2:
+- the apply, end-to-end, solver, catalogue, character, generated-spec and Born–Oppenheimer files (`SLOW_FILES` in `test/runtests.jl`);
 - two plan-3 real-versus-complex equivalence testsets gated inside those files;
 - last, the published-reference reproductions: the two-coupled-zero-pi acceptance test against scqubits (about a minute) and the zero-pi Born–Oppenheimer reproduction (`test/test_born_oppenheimer_reference.jl`, about 15 s).
 
 Run the slow tier before merging.
+A named-file run skips the testsets gated inside those files unless `KRONFREE_SLOW_TESTS=1` is also set.
 
 The [science reference catalogue](docs/science/README.md) maps package capabilities to
 versioned literature sources and reproduction targets. The default suite includes

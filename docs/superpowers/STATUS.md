@@ -10,12 +10,12 @@ Two ShiftInvert fixes from side sessions are merged: a block-Lanczos breakdown a
 All of this is on the branch `plan4-julia-integration`, which fast-forwards from `main`; merging and pushing are Eli's.
 Coefficients now share one compiled function per distinct expression (a fixed argument name in `_compile`), so a sweep through `materialize(spec)` no longer recompiles every coefficient at every point (about 35 ms per point before, 2.5 ms after on the zero-pi BO leaf).
 
-Verification on the branch (2026-10-20): the fast tier and the full suite (`KRONFREE_SLOW_TESTS=1`, every file) pass on the Mac; the device suite on ewdesktop (457/457) last passed at e2a6c62 and has not been rerun since the BO work.
+Verification on the branch (2026-10-20): the fast tier and the full suite (`KRONFREE_SLOW_TESTS=1`, every file, 600 s) pass on the Mac at dc4afc6; the device suite on ewdesktop (457/457) last passed at e2a6c62 and has not been rerun since the BO work.
 The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the side-session notes folder of the session that ran them.
 
 ## Next plan
 
-Pre-autodiff quick wins in progress (2026-10-20): test tiers (done), reduced specs cross-checked numerically against circuit-quantization (done), BO hardening (done); merging this branch into `main` is Eli's.
+Pre-autodiff quick wins done (2026-10-20): test tiers, reduced specs cross-checked numerically against circuit-quantization, BO hardening, and the duplicate `_primitive` test helper removed; merging this branch into `main` is Eli's.
 Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3, deferred to plan 5).
 Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "What stays complex": derivative operators and pullbacks promote to complex where a cotangent or derivative operator is complex).
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).

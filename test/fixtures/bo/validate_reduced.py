@@ -13,11 +13,16 @@ parameter point in POINTS, and writes test/fixtures/bo_reference/python_reduced_
 - the lowest LEVELS eigenvalues, in the charge basis |m>, m = -NCUT..NCUT, for a compact
   mode (e^{ik varphi}|m> = |m+k>), and on a spectral (Fourier) grid of GRID points on
   [-HALF_WIDTH, HALF_WIDTH) for an extended mode;
-- the classical potential V(varphi) (the Hamiltonian at n = n_g) at a few points.
-test/test_bo.jl compares both against KronFreeCircuits, so a convention mismatch between the
-two loaders (a sign, an offset, a factor) fails a Julia test. The potential samples matter:
-complex conjugation in the charge basis flips every cosine offset at once and leaves the
-spectrum unchanged, so eigenvalues alone cannot pin the sign of the sine terms.
+- the Hamiltonian as a function, at a few varphi and at n = n_g (the classical potential V) and at the fixed charge
+  n = N_SAMPLE (the kinetic term too).
+test/test_bo.jl compares the levels against KronFreeCircuits' spectrum and the function samples against the canonical
+form rebuilt from the loaded Spec's fields, so a mismatch in how the two packages read a file (a sign, an offset, a
+factor, the sign of n_g) fails a Julia test. The function samples matter: complex conjugation in the charge basis flips
+every cosine offset at once, and for one mode parity followed by conjugation maps n_g to -n_g, both leaving the spectrum
+unchanged, so eigenvalues alone pin neither the sine-term sign nor the n_g sign. Neither check pins the orientation of
+KronFreeCircuits' own charge-basis shift operator (e^{ik varphi}|m> = |m+k> or |m-k>), which the spectrum also cannot see;
+the package's operator tests do. The extended-mode path is exercised only by a harmonic oscillator here (no cosines, no
+offset charge), so the grid's n and e^{ik varphi} branches are not yet cross-checked.
 
 Run from the repository root, only after regenerating the committed files:
 
@@ -46,6 +51,7 @@ LEVELS = 6
 NCUT = 40                       # compact modes: charge states -NCUT..NCUT
 GRID, HALF_WIDTH = 256, 16.0    # extended modes: spectral grid
 POTENTIAL_POINTS = [-2.5, -1.0, -0.3, 0.0, 0.4, 1.3, 2.9]
+N_SAMPLE = 1.3                  # a charge away from every file's n_g
 
 # The free parameters of each committed file, at a generic point (nonzero offsets and flux).
 POINTS = {
@@ -127,9 +133,12 @@ def _numbers(spec, point):
     ng = complex(sym.N(spec.n_g[0].subs(subs))).real
     V = sym.lambdify(phi, H.subs(n, ng), "numpy")
     potential = [complex(V(x)).real for x in POTENTIAL_POINTS]
+    Hn = sym.lambdify(phi, H.subs(n, N_SAMPLE), "numpy")
+    at_n = [complex(Hn(x)).real for x in POTENTIAL_POINTS]
     basis = {"charge_cutoff": NCUT} if compact else {"spectral_grid": GRID, "half_width": HALF_WIDTH}
     return {"point": point, "basis": basis, "levels": levels.tolist(),
-            "potential": {"varphi": POTENTIAL_POINTS, "V": potential}}
+            "potential": {"varphi": POTENTIAL_POINTS, "V": potential},
+            "at_charge": {"n": N_SAMPLE, "H": at_n}}
 
 
 def main() -> int:
