@@ -7,6 +7,7 @@ include(joinpath(@__DIR__, "fixtures", "bo", "reduced_specs.jl"))
     leaf = Node([:f => ChargeBasis(4)]; solver=Dense(), keep=lowest(4))
     g = periodic_grid(64)
     @test g == 2π .* (0:63) ./ 64 && periodic_grid(4; start=0.5) == 0.5 .+ 2π .* (0:3) ./ 4
+    @test g isa Vector{Float64}
     # At s = π/2 the coupling vanishes, the kept states are bare charge states, and the third one has no weight on the phase mask.
     S = @test_logs (:warn, r"column 3 has no weight on the phase mask") match_mode=:any bo_surface(leaf, p, (E_C=1.0, E_J=0.2, n_g=0.5, n_gs=0.0), g; bands=2)
     @test S.energies ≈ dense_crossing_reference(g; E_C=1.0, E_J=0.2, n_g=0.5, ncut=4)[1:2, :] atol=1e-12
@@ -56,6 +57,10 @@ end
         "E_C": [["1", "0"], ["0", "1"]], "E_L": [["0", "0"], ["0", "0"]], "flux_linear": ["0", "0"], "n_g": ["0", "0"],
         "cosines": [], "constant": "0"}"""), :s)
     @test_throws ArgumentError fourier_coefficients(BOSurface(e, periodic_grid(8), zeros(1, 8), NamedTuple()))
+    # the constructor checks that energies is bands × length(grid) with at least one band
+    @test_throws ArgumentError BOSurface(e, periodic_grid(8), ones(1, 9), NamedTuple())
+    @test_throws ArgumentError BOSurface(e, periodic_grid(8), ones(8, 1), NamedTuple())
+    @test_throws ArgumentError BOSurface(e, periodic_grid(8), zeros(0, 8), NamedTuple())
 end
 
 @testset "zero-pi BO against an independent dense BO" begin
@@ -96,13 +101,16 @@ end
     @test spec_equal(parse_spec(spec_json(F.spec; metadata=F.metadata)), F.spec)
     md = KronFreeCircuits.JSON3.read(spec_json(F.spec; metadata=F.metadata))
     @test md._generator.package == "KronFreeCircuits" && md._generator.version == string(pkgversion(KronFreeCircuits))
-    @test md._bo.slow_mode.name == "s" && md._bo.fixed_parameters.dummy == 0.7 && length(md._bo.surfaces) == 5
+    @test md._bo.slow_mode.name == "s" && md._bo.surface_parameters.dummy == 0.7 && length(md._bo.surfaces) == 5
     @test [m.name for m in md._bo.source_spec.modes] == ["s", "f"] && md._bo.source_spec.format == "kronfree-spec"
     @test parse_spec(spec_json(F.spec; metadata=F.metadata)) isa KronFreeCircuits.Spec
     @test length(md._bo.surfaces[2].grid) == 32 && collect(md._bo.surfaces[2].grid) ≈ surfs[2].grid
     @test md._bo.surfaces[2].grid_size == 32 && md._bo.surfaces[2].fitted_values.varphi_ext ≈ 2π * 0.125
     @test collect(md._bo.constants) ≈ F.constants && length(md._bo.model) == 4 && md._bo.band == 1
     @test md._bo.rms_residual == F.rms_residual
+    @test !haskey(md._bo, :fixed_parameters)
+    @test collect(keys(md._bo.substituted_parameters)) == [:dummy]            # the fast spec depends on dummy only
+    @test md._bo.surface_parameters.dummy == 0.7 && !haskey(md._bo.surface_parameters, :varphi_ext)
 
     # sine harmonics become cosines with offset -π/2
     Fs = fit_surfaces([synthetic_surface(periodic_grid(16), θ -> 0.2 + 0.3sin(θ) - 0.4cos(3θ); θ=(varphi_ext=0.0,))],
@@ -127,6 +135,13 @@ end
     @test Fn.constants ≈ c
     @test Fn.stderr ≈ sqrt.(rss / 30 .* diag(inv(A'A)))
     @test Fn.rms_residual ≈ sqrt(rss / 32)
+    # a compact harmonic above Nyquist would alias onto a lower one: it is refused, and Nyquist itself is allowed
+    Sal = synthetic_surface(periodic_grid(32), θ -> 0.2 - 0.5cos(θ); θ=(varphi_ext=0.0,))
+    @test_throws r"\(:cos, 31\).*32" fit_surfaces([Sal], [:constant => ["1"], (:cos, 31) => ["1"]])
+    @test_throws r"\(:sin, 17\)" fit_surfaces([Sal], [:constant => ["1"], (:sin, 17) => ["1"]])
+    @test fit_surfaces([Sal], [:constant => ["1"], (:cos, 16) => ["1"], (:cos, 1) => ["1"]]).constants ≈ [0.2, 0.0, 0.5] atol=1e-13
+    @test_throws ArgumentError fit_surfaces([Sal, synthetic_surface(periodic_grid(8), cos; θ=(varphi_ext=0.0,))],   # the smallest grid decides
+                                            [:constant => ["1"], (:cos, 5) => ["1"]])
     Fe = fit_surfaces([synthetic_surface(periodic_grid(3), θ -> θ; θ=(varphi_ext=0.0,))],        # as many points as constants
                       [:constant => ["1"], (:cos, 1) => ["1"], (:sin, 1) => ["1"]])
     @test all(isnan, Fe.stderr) && all(isfinite, Fe.constants) && Fe.rms_residual < 1e-14
