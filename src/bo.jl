@@ -248,8 +248,11 @@ every other entry of their `θ` must agree exactly, else an `ArgumentError` name
 The reduced spec's parameters are the fitted-over ones and those of `E_C[s,s]` and `n_g[s]` that the fast spec does not depend on;
 every other parameter of `E_C[s,s]` and `n_g[s]` is substituted by its shared fixed value, as in [`slow_spec`](@ref).
 Parameters held fixed while computing the surfaces therefore never remain free in the reduced spec.
-`metadata["_bo"]` records the slow mode, the fixed parameter values, each surface's grid size and fitted-over values, the model, constants,
-standard errors and residuals; `metadata["_generator"]` records the package version.
+`metadata["_bo"]` records the source spec (as a JSON object), the slow mode, the fixed parameter values, each surface's slow grid and fitted-over values,
+the model, constants, standard errors and residuals; `metadata["_generator"]` records the package version.
+The residuals are the reduced spec's truncation measure: how far the model is from the computed surfaces.
+A surface does not know the fast leaf that produced it, so callers add numerical settings (fast-leaf bases and cutoffs, solver tolerances)
+to the metadata before saving, under their own `_`-prefixed keys or inside `_bo`.
 """
 function fit_surfaces(surfaces::AbstractVector{BOSurface}, model::AbstractVector{<:Pair}; band::Integer=1)
     # one concrete method body for every model type (the body is long, and compiling it per key type costs seconds)
@@ -369,10 +372,11 @@ function _fit_surfaces(surfaces::Vector{BOSurface}, model::Vector{Pair{Any,Vecto
     nan_null(x) = isnan(x) ? nothing : x
     fixed = Dict{String,Any}(String(k) => θ0[k] for k in keys(θ0) if k ∉ fitted)
     bo = Dict{String,Any}(
+        "source_spec" => JSON3.read(spec_json(p.source), Dict{String,Any}),
         "slow_mode" => Dict{String,Any}("name" => String(p.mode.name), "type" => String(p.mode.type), "parameter" => String(p.parameter)),
         "band" => band,
         "fixed_parameters" => fixed,
-        "surfaces" => [Dict{String,Any}("grid_size" => length(s.grid),
+        "surfaces" => [Dict{String,Any}("grid_size" => length(s.grid), "grid" => s.grid,
                                         "fitted_values" => Dict{String,Any}(String(k) => s.θ[k] for k in fitted)) for s in surfaces],
         "model" => [Dict{String,Any}("key" => key_json(k), "expression" => t[2]) for (k, t) in zip(keys_, terms)],
         "constants" => c,

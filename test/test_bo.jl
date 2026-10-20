@@ -95,6 +95,9 @@ end
     md = KronFreeCircuits.JSON3.read(spec_json(F.spec; metadata=F.metadata))
     @test md._generator.package == "KronFreeCircuits" && md._generator.version == string(pkgversion(KronFreeCircuits))
     @test md._bo.slow_mode.name == "s" && md._bo.fixed_parameters.dummy == 0.7 && length(md._bo.surfaces) == 5
+    @test [m.name for m in md._bo.source_spec.modes] == ["s", "f"] && md._bo.source_spec.format == "kronfree-spec"
+    @test parse_spec(spec_json(F.spec; metadata=F.metadata)) isa KronFreeCircuits.Spec
+    @test length(md._bo.surfaces[2].grid) == 32 && collect(md._bo.surfaces[2].grid) ≈ surfs[2].grid
     @test md._bo.surfaces[2].grid_size == 32 && md._bo.surfaces[2].fitted_values.varphi_ext ≈ 2π * 0.125
     @test collect(md._bo.constants) ≈ F.constants && length(md._bo.model) == 4 && md._bo.band == 1
     @test md._bo.rms_residual == F.rms_residual
