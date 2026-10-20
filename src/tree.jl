@@ -94,12 +94,15 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
   Hamiltonian's energy units, computed with the package operator. A pair above it raises an error
   naming the worst residual; pairs are never returned unvalidated.
 - `shift`: `:auto` puts `σ = E_min − shift_margin` below a short Lanczos estimate `E_min` of the
-  lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky (with an
-  LU fallback, and a warning, if it is not). A number is used as `σ` itself; a shift at or above the
+  lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky. If the
+  estimate overshoots by more than `shift_margin` and the Cholesky fails, it is retried at
+  `E_min − shift_margin·4^r` for `r = 1, 2, 3`, then at the Gershgorin lower bound of `H` minus
+  `shift_margin` (a debug message names the shift that worked); only if every retry fails does the
+  solve fall back to LU, with a warning. Slicing (`slices > 1`) does not retry. A number is used as `σ` itself; a shift at or above the
   estimate is interior, `H − σI` is factored by LU, and the `m` eigenvalues nearest `σ` are returned.
 - `shift_margin`: the distance of the automatic shift below the estimate, in the Hamiltonian's
-  energy units. The default is taken from the zero-pi fixtures (GHz) and must be set for other
-  energy scales.
+  energy units, and the base of the retry shifts above. The default is taken from the zero-pi
+  fixtures (GHz) and must be set for other energy scales.
 - `inner_tol`, `krylovdim`, `maxiter`: KrylovKit's tolerance on the inverted operator (not the
   acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
 - `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated

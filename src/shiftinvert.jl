@@ -15,14 +15,16 @@ function _lowest_estimate(A::AbstractMatrix, maxiter::Int)
 end
 
 # Cholesky of A − σI when σ lies below the estimate, falling back to LU when it is not positive
-# definite; LU always for an interior σ. Returns the factorization and whether it is a Cholesky.
-function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
+# definite (`nothing` instead with `fallback=false`); LU always for an interior σ. Returns the factorization
+# and whether it is a Cholesky.
+function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool; fallback::Bool=true)
     if !interior
         try
             return cholesky(Hermitian(A); shift=-σ), true
         catch err
             err isa PosDefException || rethrow()
         end
+        fallback || return nothing, false
     end
     try
         return lu(A - σ * I), false
@@ -31,6 +33,37 @@ function _factor_shifted(A::SparseMatrixCSC, σ::Real, interior::Bool)
         throw(ArgumentError("ShiftInvert: H − σI is singular at the shift σ = $σ (σ is an eigenvalue of H, to working " *
                             "precision); move the shift off the eigenvalue, or use shift = :auto"))
     end
+end
+
+# The Gershgorin lower bound min_i (Re A_ii − Σ_{j≠i} |A_ij|) of a Hermitian sparse matrix: at most its
+# lowest eigenvalue, so A − σI is positive definite for every σ below it.
+function _gershgorin_lower(A::SparseMatrixCSC)
+    n = size(A, 1)
+    g = real.(diag(A))
+    rows, vals = rowvals(A), nonzeros(A)
+    for j in 1:n, k in nzrange(A, j)
+        rows[k] == j || (g[j] -= abs(vals[k]))     # column j of a Hermitian A holds the moduli of row j
+    end
+    return minimum(g)
+end
+
+# The automatic shift's factorization: Cholesky of A − σI at σ = Emin − margin, retried at Emin − margin·4^r
+# (r = 1, 2, 3) and then at the Gershgorin shift g − margin when the estimate Emin overshoots the lowest eigenvalue
+# by more than the margin; LU at σ = Emin − margin only if every Cholesky fails. Returns `(F, σ, ischol)`.
+function _auto_factor(A::SparseMatrixCSC, Emin::Real, margin::Real)
+    σ0 = Emin - margin
+    F, ischol = _factor_shifted(A, σ0, false; fallback=false)
+    ischol && return F, σ0, true
+    for σ in [Emin .- margin .* 4.0 .^ (1:3); _gershgorin_lower(A) - margin]
+        F, ischol = _factor_shifted(A, σ, false; fallback=false)
+        if ischol
+            @debug "ShiftInvert: H − σI was not positive definite at the automatic shift σ = $σ0 (E_min = $Emin); " *
+                   "retried Cholesky at σ = $σ"
+            return F, σ, true
+        end
+    end
+    F, _ = _factor_shifted(A, σ0, false)
+    return F, σ0, false
 end
 
 # The number of eigenvalues of A below τ: the negative entries of D in the LDLᵀ factorization of
@@ -266,8 +299,12 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
         _check_residuals(s, H, E, V)
         return E, V
     end
-    σ = s.shift === :auto ? Emin - s.shift_margin : s.shift
-    F, ischol = _factor_shifted(A, σ, σ >= Emin)
+    if s.shift === :auto
+        F, σ, ischol = _auto_factor(A, Emin, s.shift_margin)
+    else
+        σ = s.shift
+        F, ischol = _factor_shifted(A, σ, σ >= Emin)
+    end
     if s.shift === :auto && !ischol
         @warn "ShiftInvert: H − σI is not positive definite at the automatic shift σ = $σ (the estimate E_min = $Emin " *
               "is off by more than shift_margin = $(s.shift_margin)); factored by LU, so states below σ may be missed. " *

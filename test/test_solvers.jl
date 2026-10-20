@@ -123,6 +123,51 @@ end
     check_eigenpairs(H, E, V; tol=1e-9)
 end
 
+@testset "ShiftInvert: the automatic shift retries Cholesky at lower shifts" begin
+    using KronFreeCircuits: _auto_factor, _lowest_estimate, _gershgorin_lower
+    Warn = Base.CoreLogging.Warn
+    # (a) the helper, on a tridiagonal matrix of known lowest eigenvalue, from a deliberately wrong estimate
+    n = 20
+    A = spdiagm(-1 => -ones(n - 1), 0 => fill(2.0, n), 1 => -ones(n - 1))
+    λ1 = 2 - 2cos(π / (n + 1))
+    @test _gershgorin_lower(A) ≤ λ1
+    @test _gershgorin_lower(A) == 0.0
+    # σ₀ = E_min − 1 lies above λ1, and the first retry at E_min − 4 lies below it
+    F, σ, ischol = @test_logs min_level=Warn _auto_factor(A, λ1 + 1.5, 1.0)
+    @test ischol && F isa SparseArrays.CHOLMOD.Factor
+    @test σ ≈ λ1 + 1.5 - 4 && σ < λ1
+    # E_min so far above λ1 that every 4^r retry fails: only the Gershgorin shift g − margin factors
+    F, σ, ischol = @test_logs min_level=Warn _auto_factor(A, λ1 + 1000, 1.0)
+    @test ischol && F isa SparseArrays.CHOLMOD.Factor
+    @test σ == _gershgorin_lower(A) - 1.0 && σ < λ1
+    # the estimate is accurate: no retry
+    @test _auto_factor(A, λ1, 1.0)[2] == λ1 - 1.0
+    # the retry reports the shift that worked at debug level
+    logs, _ = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+        _auto_factor(A, λ1 + 1.5, 1.0)
+    end
+    @test count(r -> r.level == Base.CoreLogging.Debug && occursin("retried", string(r.message)), logs) == 1
+    # a complex Hermitian matrix: the Gershgorin bound takes the real diagonal and the complex off-diagonal moduli
+    Ac = sparse(ComplexF64[2 im 0; -im 3 0.5; 0 0.5 1])
+    @test _gershgorin_lower(Ac) == min(2 - 1, 3 - 1.5, 1 - 0.5)
+
+    # (b) end to end: a short estimate whose error exceeds shift_margin, so the first Cholesky fails
+    H = real_three_oscillators(8)
+    Ed, _ = solve(Dense(), H, 0)
+    As = sparse(H); As = (As + As') / 2
+    gaps = map(1:5) do seed
+        Random.seed!(seed)
+        _lowest_estimate(As, 1) - Ed[1]
+    end
+    seed = argmax(gaps)
+    @test gaps[seed] > 1e-8
+    s = ShiftInvert(tol=1e-9, shift_margin=gaps[seed] / 2, maxiter=1, krylovdim=60)    # σ₀ above λ1: Cholesky fails
+    Random.seed!(seed)
+    E, V = @test_logs min_level=Warn solve(s, H, 3)
+    @test E ≈ Ed[1:3] atol=1e-8
+    check_eigenpairs(H, E, V; tol=1e-9)
+end
+
 @testset "ShiftInvert: the default certificate recovers degenerate levels by deflation" begin
     Random.seed!(83)
     @test ShiftInvert().certify === :auto                              # decided in solve: certified unless an explicit interior shift

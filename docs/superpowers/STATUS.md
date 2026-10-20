@@ -31,7 +31,7 @@ Proposed by Eli (2026-10-20), not yet designed:
 4. A `PeriodicGrid` mode's charge above its leaf: `ports=` and `extra_terms` with `nport()` throw with the three-piece recipe; automatic expansion is a proposed follow-up.
 5. ShiftInvert, remaining loud failures (pre-existing, rare): a marginal true-residual failure on block = 2 over random-multiplicity spectra; a `LAPACKException(22)` from `stegr!` inside KrylovKit's scalar Lanczos (about 5 in 36 000 Cholesky runs); an interior shift with `certify` raises on a short count (no deflated recovery on the LU path); slicing has no deflated recovery.
 6. Real arithmetic at special parameter values (a parameter `n_g` at 0 or ½ on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex.
-7. Pre-existing: a Cholesky failure at the automatic shift falls back to LU with a warning rather than retrying a lower shift; `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
+7. Pre-existing: `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
 8. The cos 2φ fixture has no generated counterpart (one compact mode with junction harmonics 2 and 1 is not a lumped circuit).
 
 9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the twisted `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
