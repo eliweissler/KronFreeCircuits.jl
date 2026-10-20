@@ -139,6 +139,13 @@ end
     sc = materialize(top(ChargeBasis(10); ports=[(:varphi_1, nport())]), spec, θ)
     @test abs.(port(materialize(top(PeriodicGrid(96); ports=[(:varphi_1, nport())]), spec, θ), :varphi_1, nport())) ≈
           abs.(port(sc, :varphi_1, nport())) atol=1e-5
+    # a selection rule on the charge at the root: at 0.7 the closure from the ground state is states 1, 3, 6, 10, 13
+    # of the lowest 20 (every modulus from them is at least 0.029 from the threshold)
+    rule = connected([1], (:varphi_1, nport()), 0.7)
+    rp = materialize(top(PeriodicGrid(96); compute=20, keep=rule), spec, θ)
+    rc = materialize(top(ChargeBasis(10); compute=20, keep=rule), spec, θ)
+    @test rp.root.kept == rc.root.kept == [1, 3, 6, 10, 13]
+    @test energies(rp) ≈ energies(rc) atol=1e-5
     # a coupling 0.05 n_1 n_2 written with nport() is the hand-built four-term expansion
     c = Coefficient(0.05); ngc = Coefficient("n_g1", [:n_g1])
     twisted = [Term(c, [Factor(:varphi_1, Port(:d1, 0)), Factor(:varphi_2, nport())]),
@@ -155,6 +162,14 @@ end
     @test length(ts) == 15 && k(θ2) ≈ 0.05 * 0.25 * 0.15
     @test energies(materialize(top(PeriodicGrid(48), PeriodicGrid(48)), spec, θ2; extra_terms=plain)) ≈
           energies(materialize(top(ChargeBasis(10), ChargeBasis(10)), spec, θ2; extra_terms=plain)) atol=1e-5
+    # both offset charges the literal "0.5" (twist phases −1): (n₁ − ½)(n₂ − ½) written with nport() stays real, since its
+    # single-mode pieces cancel, while n₁ n₂ leaves an imaginary-character d1 term with a real coefficient and runs complex
+    halves = parse_spec(replace(read(fixture("two_transmons.json"), String), "\"n_g\": [\"n_g1\", \"n_g2\"]" => "\"n_g\": [\"0.5\", \"0.5\"]"))
+    shifted = [plain; Term(Coefficient(-0.025), [Factor(:varphi_1, nport())]); Term(Coefficient(-0.025), [Factor(:varphi_2, nport())])]
+    sr = materialize(top(PeriodicGrid(48), PeriodicGrid(48)), halves, θ; extra_terms=shifted)
+    @test arithmetic(sr) === :real
+    @test energies(sr) ≈ energies(materialize(top(ChargeBasis(10), ChargeBasis(10)), halves, θ; extra_terms=shifted)) atol=1e-5
+    @test arithmetic(materialize(top(PeriodicGrid(48), PeriodicGrid(48)), halves, θ; extra_terms=plain)) === :complex
     # the term-list form has no offset charge: nport() on the twisted mode is refused, naming the mode and the spec form
     bases = Dict{Symbol,Basis}(:varphi_1 => PeriodicGrid(96), :varphi_2 => ChargeBasis(10))
     terms = circuit_terms(spec, bases)

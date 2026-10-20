@@ -495,6 +495,7 @@ An ancestor's `nport()` on a twisted ([`PeriodicGrid`](@ref)) mode is requested 
 function required_ports(root::Node, routed::IdDict)
     out = IdDict{Node,Vector{Tuple{Symbol,Port}}}()
     twisted = Set(m for (m, b) in _tree_bases(root) if _is_twisted(b))
+    pieces = last.(_twisted_pieces(Coefficient(0), :d1))      # the charge's derivative ports (the twists are unused)
     function visit(node::Node, ancestors::Vector{Node})
         req = Tuple{Symbol,Port}[]
         if !isempty(ancestors)
@@ -505,7 +506,7 @@ function required_ports(root::Node, routed::IdDict)
             for a in ancestors, (m, p) in Iterators.flatten((ports_needed(a.keep), a.ports))
                 m in inside || continue
                 if m in twisted && p == nport()
-                    append!(req, ((m, Port(:d1, 0)), (m, Port(:d1wrap, 1)), (m, Port(:d1wrap, -1))))
+                    append!(req, ((m, q) for q in pieces))
                 else
                     push!(req, (m, p))
                 end
