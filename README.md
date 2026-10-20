@@ -58,7 +58,7 @@ If the given system is built from a materialized `System`, subtract it: `energie
 A term whose factors all lie on the given mode (a drive or a Stark shift) is applied at its parent through the given operators.
 
 Each node has a solver; the default, `Auto()`, picks one when the node is materialized.
-`Auto(; dense_cutoff=2500, on=Array)` resolves to `Dense()` for a node of at most 2 500 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
+`Auto(; dense_cutoff=1000, on=Array)` resolves to `Dense()` for a node of at most 1 000 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
 An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node whose solver is, or resolves to, `Dense`.
 `ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in the operator's element type (real for a real node, see "Real arithmetic" below); it offers spectrum slicing across threads and a completeness certificate by inertia counts, on by default with the automatic shift, which recovers the copies of a degenerate level single-vector Lanczos misses by deflation.
 `ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part (with a `1e-2` random admixture and guard columns, so a lower state outside the seed span usually surfaces; there is no completeness certificate, which `ShiftInvert` provides), with the filter's upper end from `gershgorin_bound(H)`.
@@ -98,7 +98,7 @@ Only kept vectors are stored, so a node with `compute > keep` fills its other `c
 `previous` also feeds the `follow` rule and the `:follow` phase convention, which compare physical overlaps with the previous kept states.
 
 On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` or `ChebyshevFilter(on=CuArray)` stores a node's operator and block on the device.
-`Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (2 500) states resolves to `Dense()` on the host.
+`Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (1 000) states resolves to `Dense()` on the host.
 Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
 
 ## Spec files
@@ -250,7 +250,7 @@ The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
 Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
-`Auto()`'s `dense_cutoff=2500` was benchmarked (`bench/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, but it stays at 2500 until `ShiftInvert`'s spurious residual-check failures are fixed; 3D leaves are tabled (spec §20e decision 8).
+`Auto()`'s `dense_cutoff` was benchmarked (`bench/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, and it was lowered from 2500 to 1000 once `ShiftInvert`'s spurious residual-check failures were fixed; 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.

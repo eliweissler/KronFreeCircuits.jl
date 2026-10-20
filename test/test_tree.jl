@@ -86,9 +86,9 @@ struct FakeDevice end                                                           
 
 @testset "Auto resolves by node shape and keeps small nodes Dense" begin
     using KronFreeCircuits: resolve, Auto, ShiftInvert, ChebyshevFilter, LOBPCG
-    @test resolve(Auto(), (isleaf=true, dims=[50, 50], m=10)) isa Dense                # 2500: Dense
-    @test resolve(Auto(), (isleaf=true, dims=[50, 51], m=10)) isa ShiftInvert           # 2550: leaf, CPU
-    @test resolve(Auto(on=FakeDevice), (isleaf=true, dims=[50, 51], m=10)) isa ChebyshevFilter
+    @test resolve(Auto(), (isleaf=true, dims=[20, 50], m=10)) isa Dense                # 1000: Dense
+    @test resolve(Auto(), (isleaf=true, dims=[7, 11, 13], m=10)) isa ShiftInvert        # 1001: leaf, CPU
+    @test resolve(Auto(on=FakeDevice), (isleaf=true, dims=[7, 11, 13], m=10)) isa ChebyshevFilter
     @test resolve(Auto(), (isleaf=false, dims=[60, 60], m=10)) isa LOBPCG
     @test Node([:a => ChargeBasis(3)]).solver isa Auto
 end
