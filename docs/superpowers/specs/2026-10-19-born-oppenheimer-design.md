@@ -92,7 +92,7 @@ How each part of the spec is carried over, for slow mode `s` and fast modes `f`:
 Every one of these is exact; the two error rows are the only places an exact carry-over does not exist.
 
 The error checks are structural: they look at the coefficient expressions, not at parameter values **(my call)**.
-A coupling that vanishes only at particular values (for example `full_zero_pi.json` at `dCJ = 0`) is removed first with a substitution helper, part of this feature, that replaces named parameters of a spec by numbers and drops the entries that become exactly zero.
+A coupling that vanishes only at particular values (for example `full_zero_pi.json` at `dC_J = dC = 0`) is removed first with a substitution helper, part of this feature, that replaces named parameters of a spec by numbers and drops the entries that become exactly zero.
 
 ### 4.2 Surfaces
 
