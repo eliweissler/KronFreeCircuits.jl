@@ -304,20 +304,44 @@ function dense_crossing_reference(grid; E_C, E_J, n_g, ncut)
 end
 
 """
-    synthetic_surface(grid, U; θ=NamedTuple()) -> BOSurface
+    synthetic_surface(grid, U; θ=NamedTuple(), fast_value=0.7) -> BOSurface
 
 A one-band `BOSurface` whose energies are `U.(grid)`, over a real `PromotedSpec` (from `promote_mode` of a small two-mode spec:
-slow compact `s` with `E_C[s,s] = E_Cs`, `n_g[s] = n_gs`, and a dummy fast mode that does not couple to `s`).
+slow compact `s` with `E_C[s,s] = E_Cs`, `n_g[s] = n_gs`, and a dummy fast mode with `E_C[f,f] = dummy`, which does not couple to `s`).
+The spec also declares `varphi_ext` and `n_g1`, so a fit can vary over them.
+The surface's `θ` is the given `θ` (the parameters the surface was computed at) plus `dummy = fast_value`, a fast parameter held fixed.
 """
-function synthetic_surface(grid, U; θ::NamedTuple=NamedTuple())
-    spec = KronFreeCircuits.parse_spec("""{"format": "kronfree-spec", "version": 1, "parameters": ["E_Cs", "n_gs"],
+function synthetic_surface(grid, U; θ::NamedTuple=NamedTuple(), fast_value::Real=0.7)
+    p = _synthetic_promoted()
+    g = Vector{Float64}(collect(grid))
+    return KronFreeCircuits.BOSurface(p, g, reshape(Float64.(U.(g)), 1, :), merge(θ, (dummy=Float64(fast_value),)))
+end
+
+# The promoted spec of `synthetic_surface`, built once (every spec parse and promotion compiles a function per coefficient).
+const _SYNTHETIC_PROMOTED = Ref{Any}(nothing)
+function _synthetic_promoted(; fresh::Bool=false)
+    fresh || _SYNTHETIC_PROMOTED[] === nothing || return _SYNTHETIC_PROMOTED[]
+    spec = KronFreeCircuits.parse_spec("""{"format": "kronfree-spec", "version": 1,
+        "parameters": ["E_Cs", "n_gs", "varphi_ext", "n_g1", "dummy"],
         "modes": [{"name": "s", "type": "c"}, {"name": "f", "type": "c"}],
-        "E_C": [["E_Cs", "0"], ["0", "1"]], "E_L": [["0", "0"], ["0", "0"]], "flux_linear": ["0", "0"], "n_g": ["n_gs", "0"],
+        "E_C": [["E_Cs", "0"], ["0", "dummy"]], "E_L": [["0", "0"], ["0", "0"]], "flux_linear": ["0", "0"], "n_g": ["n_gs", "0"],
         "cosines": [], "constant": "0"}""")
     p = quiet_promote(spec, :s)
-    g = Vector{Float64}(collect(grid))
-    return KronFreeCircuits.BOSurface(p, g, reshape(Float64.(U.(g)), 1, :), θ)
+    fresh || (_SYNTHETIC_PROMOTED[] = p)
+    return p
 end
+
+"""
+    coupled_oscillators_spec() -> Spec
+
+Two extended modes, slow `s` and fast `f`: `4 E_Cs n_s² + 4 E_Cf n_f² + ½ a φ_s² + ½ b φ_f² + c φ_s φ_f`.
+For fixed `s` the fast ground energy is `ω/2 + ½ (a - c²/b) s²` with `ω = sqrt(8 E_Cf b)`.
+"""
+coupled_oscillators_spec() = KronFreeCircuits.parse_spec("""{"format": "kronfree-spec", "version": 1,
+    "parameters": ["a", "b", "c", "E_Cf", "E_Cs"],
+    "modes": [{"name": "s", "type": "e"}, {"name": "f", "type": "e"}],
+    "E_C": [["E_Cs", "0"], ["0", "E_Cf"]], "E_L": [["a", "c"], ["c", "b"]], "flux_linear": ["0", "0"], "n_g": ["0", "0"],
+    "cosines": [], "constant": "0"}""")
 
 """
     dense_periodic_reference(S; E_C, n_g, ncut=20) -> Vector{Float64}
