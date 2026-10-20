@@ -163,9 +163,9 @@ The fast leaf is φ on a `PhaseGrid` or `FockBasis`; its range and spacing (or c
 Follow the protocol in `docs/science/born-oppenheimer.md` at flux samples `0, 0.125, 0.25, 0.375, 0.5`.
 Passing means **(decided)**:
 
-- The published input ratios (0.001, 0.378, 0.000175, 0.165 of ħω_p, with ω_p/2π = 40 GHz) are treated as exact.
-  They are not replaced by values inferred from the plasma-frequency identity.
-- E_α and E_γ agree with the published values (1.8608e-2 and 2.6625e-5 of ħω_p) to 0.1% relative, as a hard assertion in the gated suite.
+- Inputs **(decided 2026-10-20)**: E_Cφ/ħω_p = 1/(16·0.165) = 0.378788, derived from the source's ω_p = sqrt(8 E_J E_CJ)/ħ with C_φ = 2C_J (so E_Cφ = E_CJ/2), instead of the printed 0.378; E_L/ħω_p = 0.001, E_J/ħω_p = 0.165 and E_Cθ/ħω_p = 0.000175 as printed, with ω_p/2π = 40 GHz.
+  Superseded: the printed ratios treated as exact, with no value inferred from the plasma-frequency identity, which leaves E_γ 0.96% above the published value (bench/born_oppenheimer/results.md).
+- E_α and E_γ agree with the published values (1.8608e-2 and 2.6625e-5 of ħω_p) to 0.2% relative, as a hard assertion in the gated suite **(decided 2026-10-20; superseded: 0.1%)**.
   Numerical convergence (grids, cutoffs, solver tolerance) must be demonstrably tighter than 0.1%.
   A miss is a bug to be chased until it is explained, not a recorded finding.
 - The flux dependence matches the source qualitatively, and the fast ground energy is π-periodic in θ at half flux.

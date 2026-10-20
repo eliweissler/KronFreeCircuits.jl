@@ -1,7 +1,9 @@
 """Validate test/fixtures/bo/*.json with circuit-quantization.
 
 The reduced specs in this directory are written by KronFreeCircuits' `save_spec`
-(test/fixtures/bo/write_reduced.jl) from Born-Oppenheimer fits.
+from Born-Oppenheimer fits: compact_reduced.json and oscillators_reduced.json by
+test/fixtures/bo/write_reduced.jl, zero_pi_reduced.json (the Di Paolo zero-pi fit)
+by bench/born_oppenheimer/zero_pi.jl.
 This script loads each with circuit_quantization.load_spec and builds its
 Hamiltonian with `.hamiltonian()`, so a file Python's format validator rejects
 (or cannot assemble) is caught here, once, and never at test time.

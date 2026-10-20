@@ -49,7 +49,7 @@ Work counts are H columns (`n_matvec`); they are observations, not acceptance cr
 | L3 | deferred | autodiff milestone, after T1–T4 and P1–P2 |
 | L4 | deferred | optional: only when a wraparound compact phase basis is implemented |
 | L5 | deferred | optional sweep optimization after ordinary warm starts and physical alignment |
-| L6 | deferred | when the scalar BO / data-valued potential interface is designed |
+| L6 | implemented/passing (2026-10-20, BO plan) | `test/test_bo.jl`: "BO surfaces" (two-level crossing at n_g = ½ and the avoided crossing at 0.45, envelope ordering, repeated points), "fits" (two oscillators coupled through `E_L[s,f]`, exactly quadratic surface through `:x2`), "compact slow stage" (surface insertion against a dense periodic-grid reference), "zero-pi BO against an independent dense BO"; gated: `test/test_born_oppenheimer_reference.jl`: "zero-pi BO: Di Paolo E_alpha and E_gamma (gated)". The surface enters the slow stage through a fitted or Fourier reduced spec, not a data-valued `DiagonalOp` (still deferred to plan 5). |
 
 ## Cases added or extended in Task 10
 

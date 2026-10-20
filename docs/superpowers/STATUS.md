@@ -1,10 +1,11 @@
-# Status, 2026-10-19
+# Status, 2026-10-20
 
 ## Where things stand
 
 Plans 1, 1b, 2, 2b, 3 and 4 are done.
 Plan 3 runs nodes whose structure guarantees a real Hamiltonian in `Float64` (spec §20f); on the two-zero-pi tree the full materialization takes 9.9 s on CPU and 5.0 s on the A4500, against 15.4 s and 12.6 s in plan 2b (`docs/spikes/2026-10-18-plan3-benchmark/results.md`).
 Plan 4 makes spec files come from `circuit-quantization` (`to_spec`, `save_spec`, `load_spec`; format authority `~/src/circuit-quantization/docs/spec-format.md`), and seven of the eight hand-written fixtures are cross-checked against generated ones (spec §20g).
+The Born–Oppenheimer reduction is done on the branch `born-oppenheimer` (design `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`; architecture §20h): `promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces` and reduced specs saved with `save_spec`; the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ to 0.2% (−0.11% and −0.12%) with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
 Two ShiftInvert fixes from side sessions are merged: a block-Lanczos breakdown at invariant subspaces, and recovery on highly degenerate operators.
 All of this is on the branch `plan4-julia-integration`, which fast-forwards from `main` (77b2da1); merging and pushing are Eli's.
 
@@ -13,6 +14,7 @@ The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the si
 
 ## Next plan
 
+Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3, deferred to plan 5).
 Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "What stays complex": derivative operators and pullbacks promote to complex where a cotangent or derivative operator is complex).
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).
 
@@ -29,7 +31,7 @@ Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which n
 
 9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the twisted `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
    The gap is the one recorded in §20a: a data-valued operator (the surface fed back as a potential) has no entry into a `Term`, so stage 2 cannot go through `materialize`; it should be designed with plan 5, since autodiff wraps `materialize`.
-   The promotion transformation itself is not in the package yet (§13.1 requires only that nothing makes it hard).
+   The promotion transformation is now in the package as a spec-level `promote_mode` (BO plan, §20h); the data-valued entry is still open.
 
 ## Decisions still Eli's
 
