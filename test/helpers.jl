@@ -197,15 +197,54 @@ function spec_equal(a::KronFreeCircuits.Spec, b::KronFreeCircuits.Spec)
         push!(pairs_, (x.energy, y.energy), (x.offset, y.offset))
     end
     push!(pairs_, (a.constant, b.constant))
-    names = sort(a.parameters)
-    rng = Random.MersenneTwister(20261020)
-    for _ in 1:3
-        θ = NamedTuple{Tuple(names)}(Tuple(0.5 .+ 1.5 .* rand(rng, length(names))))
+    for θ in _seeded_points(sort(a.parameters))
         for (x, y) in pairs_
             isapprox(x(θ), y(θ); rtol=1e-12, atol=0) || return false
         end
     end
     return true
+end
+
+# Three seeded pseudo-random points in [0.5, 2]^n over the parameter `names`, as NamedTuples.
+function _seeded_points(names::AbstractVector{Symbol})
+    rng = Random.MersenneTwister(20261020)
+    return [NamedTuple{Tuple(names)}(Tuple(0.5 .+ 1.5 .* rand(rng, length(names)))) for _ in 1:3]
+end
+
+"""
+    coefficients_agree(s::Spec, full::Spec, values::NamedTuple) -> Bool
+
+`s` is `full` with `values` substituted: same modes, `omega`, `kappa`, and every coefficient of `s` at three seeded points in
+`[0.5, 2]` equals the matching coefficient of `full` at the same points merged with `values`, to `1e-12` relative.
+Cosines and charge cosines of `full` that are missing from `s` must vanish at every point; the rest match in order.
+"""
+function coefficients_agree(s::KronFreeCircuits.Spec, full::KronFreeCircuits.Spec, values::NamedTuple)
+    s.modes == full.modes || return false
+    all(p -> p ∉ keys(values), s.parameters) || return false
+    all(p -> p in full.parameters, s.parameters) || return false
+    pairs_ = Tuple{KronFreeCircuits.Coefficient,KronFreeCircuits.Coefficient}[]
+    append!(pairs_, zip(s.E_C, full.E_C), zip(s.E_L, full.E_L), zip(s.flux_linear, full.flux_linear), zip(s.n_g, full.n_g))
+    push!(pairs_, (s.constant, full.constant))
+    points = _seeded_points(sort(full.parameters))
+    agree(x, y) = all(θ -> isapprox(x(θ), y(merge(θ, values)); rtol=1e-12, atol=0), points)
+    vanishes(y) = all(θ -> iszero(y(merge(θ, values))), points)
+    # entries are (energy, offset, omega-or-kappa) triples; each `full` entry matches the next `s` entry or vanishes
+    function match_entries(s_entries, full_entries, same_direction)
+        j = 1
+        for (energy, offset, direction) in full_entries
+            if j <= length(s_entries) && same_direction(s_entries[j][3], direction) &&
+               agree(s_entries[j][1], energy) && agree(s_entries[j][2], offset)
+                j += 1
+            elseif !vanishes(energy)
+                return false
+            end
+        end
+        return j == length(s_entries) + 1
+    end
+    entries(cs, key) = [(c.energy, c.offset, getfield(c, key)) for c in cs]
+    match_entries(entries(s.cosines, :omega), entries(full.cosines, :omega), ==) || return false
+    match_entries(entries(s.charge_cosines, :kappa), entries(full.charge_cosines, :kappa), ==) || return false
+    return all(p -> agree(p[1], p[2]), pairs_)
 end
 
 """
