@@ -1,7 +1,8 @@
 # ShiftInvert leaf solver (spec §20e decision 3): KrylovKit Lanczos on (H − σI)⁻¹ with H − σI
 # factored directly (CHOLMOD Cholesky, or UMFPACK LU) from the assembled sparse matrix, in real
 # arithmetic when the operator is real (`eltype(H) <: Real`). The Krylov tolerance applies to the inverted
-# operator; acceptance is the true residual against the package operator.
+# operator; one step of block inverse iteration polishes the pairs, and acceptance is the true residual against the
+# package operator.
 
 # The tolerance of the short Lanczos estimate of the lowest eigenvalue that places the automatic shift.
 const _EMIN_TOL = 1e-6
@@ -191,9 +192,10 @@ function _solve_slice(s::ShiftInvert, A::SparseMatrixCSC, a::Real, b::Real, c::I
     F, _ = _factor_shifted(A, σ, true)
     vals, vecs, info = _eigsolve(s, x -> F \ x, x0, c, max(2c + 10, s.krylovdim))
     nconv = min(info.converged, length(vals))
-    E = σ .+ inv.(real.(vals[1:nconv]))
+    nconv == 0 && return Float64[], typeof(vecs)()
+    E, W = _polish(A, F, reduce(hcat, vecs[1:nconv]))
     keep = findall(e -> a <= e < b, E)
-    return E[keep], vecs[keep]
+    return E[keep], [W[:, j] for j in keep]
 end
 
 # Duplicates removed from a union of slice results sorted by energy: a pair within 10·tol of a kept
@@ -269,12 +271,32 @@ _degeneracy_hint(s::ShiftInvert) =
     s.block == 1 ? "a degenerate level may hold more copies than single-vector Lanczos (block = 1) can resolve; try block = 2" :
                    "a degenerate level may hold more copies than block Lanczos with block = 2 can resolve; raise maxiter or use Dense()"
 
-# Acceptance: the true residual of every returned pair, with the package operator.
-function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix)
+# One step of block inverse iteration with the factorization `F` of H − σI, then Rayleigh–Ritz with `A`: the Ritz
+# pairs of span(F \ V). Lanczos stops a pair of the inverse with its Krylov residual r = F⁻¹v − θv just under
+# inner_tol, and H v − E v = −(E − σ)(H − σ) r: the components of r on states far above the wanted ones (E_k up to
+# ‖H‖, which grows like 1/h² on a grid and like ncut² in a charge basis) reach the true residual magnified by
+# |E − σ|·|E_k − σ|, up to 1e-5 on 8000-state leaves. The step damps each by (E − σ)/(E_k − σ), down to the roundoff
+# floor, and leaves the span of the wanted states unchanged.
+function _polish(A::SparseMatrixCSC, F, V::AbstractMatrix)
+    Q = Matrix(qr(F \ V).Q)
+    G = eigen(Hermitian(Q' * (A * Q)))
+    return G.values, Q * G.vectors
+end
+
+# The roundoff floor of acceptance: a backward-stable solve leaves true residuals of a few eps·‖H‖ (Dense measured
+# 0.4 to 5.4 eps·‖H‖ on stiff leaves), so a pair is accepted up to 10 eps·‖H‖ when that exceeds tol. ‖H‖ is bounded
+# by the ∞-norm of the assembled matrix.
+_residual_floor(A::SparseMatrixCSC) = 10 * eps(real(eltype(A))) * opnorm(A, Inf)
+
+# Acceptance: the true residual of every returned pair, with the package operator, at most max(tol, `floor`).
+function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix, floor::Real)
     worst, jw = _worst_true_residual(H, E, V)
-    worst <= s.tol ||
-        error("ShiftInvert: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) " *
+    bound = floor > s.tol ? "the roundoff floor 10 eps‖H‖ = $floor (above tol = $(s.tol))" : "tol = $(s.tol)"
+    worst <= max(s.tol, floor) ||
+        error("ShiftInvert: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds $bound " *
               "(inner_tol = $(s.inner_tol) on the inverted operator); tighten inner_tol")
+    worst > s.tol && @debug "ShiftInvert: the true residual $worst of pair $jw exceeds tol = $(s.tol) and is accepted " *
+                            "at the roundoff floor 10 eps‖H‖ = $floor"
     return nothing
 end
 
@@ -298,7 +320,7 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     if k > 1
         Es, Vs = _solve_sliced(s, A, Emin, m, k)
         E, V = Vector{real(eltype(H))}(Es), Matrix{eltype(H)}(Vs)
-        _check_residuals(s, H, E, V)
+        _check_residuals(s, H, E, V, _residual_floor(A))
         return E, V
     end
     if s.shift === :auto
@@ -324,11 +346,12 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     p = sortperm(Eall)
     Eall, Vall = Eall[p], reduce(hcat, vecs[p])
     cert && ((Eall, Vall) = _certify(s, A, F, ischol, σ, Eall, Vall, m))
+    Eall, Vall = _polish(A, F, Vall)
 
     E = Vector{real(eltype(H))}(Eall[1:m])
     V = Matrix{eltype(H)}(Vall[:, 1:m])
     try
-        _check_residuals(s, H, E, V)
+        _check_residuals(s, H, E, V, _residual_floor(A))
     catch err
         # An explicit shift within √eps of an eigenvalue factors (LU succeeds) but the inverse's huge
         # eigenvalue there swamps the others: name the shift rather than inner_tol.

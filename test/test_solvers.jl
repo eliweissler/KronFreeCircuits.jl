@@ -72,6 +72,48 @@ end
     @test_throws ArgumentError ShiftInvert(slices=2, shift=1.0)            # slicing targets the lowest m
 end
 
+@testset "ShiftInvert: stiff leaves pass the true-residual check (polish step, roundoff floor)" begin
+    # ‖H‖ grows like 1/h² on a grid and like ncut² in a charge basis. Lanczos stops the last pairs just under inner_tol on
+    # the inverted operator, and H v − E v = −(E − σ)(H − σ) r turns that Krylov residual r, which lies in stiff
+    # directions, into a true residual up to |E − σ|·‖H‖·inner_tol. Without the polish step these runs raised on 4 of the
+    # 10 seeds (fluxonium, 2000 states, ‖H‖ ≈ 1.8e5) and on 2 of 10 (transmon, 2001 states, ‖H‖ ≈ 4.0e6).
+    quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())    # the fluxonium grid warns on edge support
+    flux = (load_spec(fixture("fluxonium.json")), (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π),
+            [:varphi_1 => PhaseGrid(-6π, 6π, 2000; order=8)], 6)
+    trans = (load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3), [:varphi_1 => ChargeBasis(1000)], 20)
+    for (spec, θ, ch, m) in (flux, trans)
+        sd = quiet(() -> materialize(Node(ch; solver=Dense(), keep=lowest(m)), spec, θ))
+        H = KronFreeCircuits.operator(sd)
+        for seed in 1:10
+            Random.seed!(seed)
+            E, V = solve(ShiftInvert(), H, m)
+            @test E ≈ energies(sd) atol=1e-9
+            check_eigenpairs(H, E, V; tol=1e-8)
+        end
+    end
+    # tol below double precision's reach: on the fluxonium grid eps·‖H‖ ≈ 4e-11, so true residuals of 3e-11 to 9e-11
+    # exceed tol = 1e-11; they are accepted at the roundoff floor 10 eps·‖H‖ (debug message), not raised
+    spec, θ, ch, m = flux
+    sd = quiet(() -> materialize(Node(ch; solver=Dense(), keep=lowest(m)), spec, θ))
+    H = KronFreeCircuits.operator(sd)
+    A = sparse(H); A = (A + A') / 2
+    floor = KronFreeCircuits._residual_floor(A)
+    @test floor ≈ 10 * eps() * opnorm(A, Inf) && 1e-10 < floor < 1e-9
+    for seed in 1:3
+        Random.seed!(seed)
+        logs, (E, V) = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+            solve(ShiftInvert(tol=1e-11), H, m)
+        end
+        @test E ≈ energies(sd) atol=1e-9
+        check_eigenpairs(H, E, V; tol=floor)
+        @test count(r -> r.level == Base.CoreLogging.Debug && occursin("roundoff floor", string(r.message)), logs) == 1
+    end
+    # the floor does not hide a bad pair: a loose inner tolerance still raises, and the error names the floor
+    Random.seed!(1)
+    err = try solve(ShiftInvert(tol=1e-11, inner_tol=1e-5), H, m); nothing catch e; e end
+    @test err isa ErrorException && occursin("roundoff floor", err.msg) && occursin("tighten inner_tol", err.msg)
+end
+
 @testset "ShiftInvert: complex path, explicit shifts, LU fallback" begin
     using KronFreeCircuits: _factor_shifted
     Random.seed!(82)

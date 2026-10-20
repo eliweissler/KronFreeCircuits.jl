@@ -92,7 +92,12 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
 
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. A pair above it raises an error
-  naming the worst residual; pairs are never returned unvalidated.
+  naming the worst residual; pairs are never returned unvalidated. When `tol` lies below what double
+  precision can deliver, the threshold is the roundoff floor `10 eps·‖H‖` instead (`‖H‖` bounded by the
+  ∞-norm of the assembled matrix; a debug message reports a pair accepted there). A backward-stable
+  solve, `Dense` included, leaves residuals of a few `eps·‖H‖`, and `‖H‖` grows like `1/h²` on a phase
+  grid and like `ncut²` in a charge basis (7e5 on a 4000-point fluxonium grid, 1.6e7 at `ChargeBasis(2000)`
+  with `E_C = 1`).
 - `shift`: `:auto` puts `σ = E_min − shift_margin` below a short Lanczos estimate `E_min` of the
   lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky. If the
   estimate overshoots by more than `shift_margin` and the Cholesky fails, it is retried at
@@ -106,6 +111,11 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
   fixtures (GHz) and must be set for other energy scales.
 - `inner_tol`, `krylovdim`, `maxiter`: KrylovKit's tolerance on the inverted operator (not the
   acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
+  The converged pairs are then polished: one step of block inverse iteration with the same
+  factorization, and Rayleigh–Ritz with `H`. A Lanczos pair stops with Krylov residual `r` just under
+  `inner_tol`, and `H v − E v = −(E − σ)(H − σ) r`, so components of `r` on high-lying states reach the
+  true residual magnified by up to `|E − σ|·‖H‖` (up to 1e-5 on 8000-state leaves, with the vectors
+  accurate to 1e-11); the step damps them to the roundoff floor, at about 3 % of the solve time.
 - `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated
   eigenvalues). Block size 4 reported false convergence in KrylovKit 0.10.4 and is not offered.
   A block run that KrylovKit breaks off (the square root of a negative residual norm, on a nearly
