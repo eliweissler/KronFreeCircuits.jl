@@ -172,3 +172,55 @@ _primitive(mn) = foldl((acc, c) -> kron(_embed(c), acc), mn.children; init=ones(
 
 # Per column, the true residual norm ‖H v − λ v‖ with an independently assembled H.
 _residuals(H, E, V) = [norm(H * V[:, j] - E[j] * V[:, j]) for j in eachindex(E)]
+
+using Random
+
+"""
+    spec_equal(a::Spec, b::Spec) -> Bool
+
+`a` and `b` define the same functions: equal modes, parameter sets, `omega` and `kappa`, and every coefficient pair agreeing
+to `1e-12` relative at three fixed pseudo-random points in `[0.5, 2]` (seeded, sorted parameter order).
+"""
+function spec_equal(a::KronFreeCircuits.Spec, b::KronFreeCircuits.Spec)
+    a.modes == b.modes || return false
+    sort(a.parameters) == sort(b.parameters) || return false
+    length(a.cosines) == length(b.cosines) || return false
+    length(a.charge_cosines) == length(b.charge_cosines) || return false
+    all(p -> p[1].omega == p[2].omega, zip(a.cosines, b.cosines)) || return false
+    all(p -> p[1].kappa == p[2].kappa, zip(a.charge_cosines, b.charge_cosines)) || return false
+    pairs_ = Tuple{KronFreeCircuits.Coefficient,KronFreeCircuits.Coefficient}[]
+    append!(pairs_, zip(a.E_C, b.E_C), zip(a.E_L, b.E_L), zip(a.flux_linear, b.flux_linear), zip(a.n_g, b.n_g))
+    for (x, y) in zip(a.cosines, b.cosines)
+        push!(pairs_, (x.energy, y.energy), (x.offset, y.offset))
+    end
+    for (x, y) in zip(a.charge_cosines, b.charge_cosines)
+        push!(pairs_, (x.energy, y.energy), (x.offset, y.offset))
+    end
+    push!(pairs_, (a.constant, b.constant))
+    names = sort(a.parameters)
+    rng = Random.MersenneTwister(20261020)
+    for _ in 1:3
+        θ = NamedTuple{Tuple(names)}(Tuple(0.5 .+ 1.5 .* rand(rng, length(names))))
+        for (x, y) in pairs_
+            isapprox(x(θ), y(θ); rtol=1e-12, atol=0) || return false
+        end
+    end
+    return true
+end
+
+"""
+    minimal_spec_json(; constant) -> String
+
+A spec of one compact mode and the parameter `E_J` (no cosines) whose `constant` is the expression string `constant`.
+"""
+minimal_spec_json(; constant::AbstractString) =
+    """{"format": "kronfree-spec", "version": 1, "parameters": ["E_J"], "modes": [{"name": "varphi_1", "type": "c"}],
+        "E_C": [["1"]], "E_L": [["0"]], "flux_linear": ["0"], "n_g": ["0"], "cosines": [],
+        "constant": $(JSON3.write(constant))}"""
+
+"""
+    expr_text(json::AbstractString, key::AbstractString) -> String
+
+The expression string stored under the top-level `key` of the spec JSON `json`.
+"""
+expr_text(json::AbstractString, key::AbstractString) = String(JSON3.read(json)[Symbol(key)])
