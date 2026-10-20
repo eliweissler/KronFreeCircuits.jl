@@ -3,13 +3,13 @@
     # (two cosines, omega [1,1] and [1,-1], energy E_J/2). At n_g = 0.5 the two lowest bands cross at s = π/2.
     p = quiet_promote(crossing_spec(), :s)
     leaf = Node([:f => ChargeBasis(4)]; solver=Dense(), keep=lowest(4))
-    g = periodic_grid(16)         # each materialize costs about 30 ms, so the grid is kept small; g[5] == π/2
-    @test g == 2π .* (0:15) ./ 16 && periodic_grid(4; start=0.5) == 0.5 .+ 2π .* (0:3) ./ 4
+    g = periodic_grid(64)
+    @test g == 2π .* (0:63) ./ 64 && periodic_grid(4; start=0.5) == 0.5 .+ 2π .* (0:3) ./ 4
     # At s = π/2 the coupling vanishes, the kept states are bare charge states, and the third one has no weight on the phase mask.
     S = @test_logs (:warn, r"column 3 has no weight on the phase mask") match_mode=:any bo_surface(leaf, p, (E_C=1.0, E_J=0.2, n_g=0.5, n_gs=0.0), g; bands=2)
     @test S.energies ≈ dense_crossing_reference(g; E_C=1.0, E_J=0.2, n_g=0.5, ncut=4)[1:2, :] atol=1e-12
     @test all(S.energies[1, :] .<= S.energies[2, :])                          # envelope, not a followed branch
-    @test S.energies[1, 5] ≈ S.energies[2, 5] atol=1e-12                       # g[5] == π/2: exact crossing
+    @test S.energies[1, 17] ≈ S.energies[2, 17] atol=1e-12                     # g[17] == π/2: exact crossing
     @test S.grid == g && S.θ == (E_C=1.0, E_J=0.2, n_g=0.5, n_gs=0.0) && S.promoted === p
     Sa = @test_logs (:warn, r"column 3 has no weight on the phase mask") match_mode=:any bo_surface(leaf, p, (E_C=1.0, E_J=0.2, n_g=0.45, n_gs=0.0), g)   # avoided crossing
     @test minimum(Sa.energies[2, :] .- Sa.energies[1, :]) > 1e-3
@@ -26,12 +26,15 @@ end
     S = synthetic_surface(periodic_grid(32), θ -> 0.3 - 0.7cos(2θ) + 0.05sin(θ) + 0.01cos(5θ))
     a0, a, b = fourier_coefficients(S)
     @test a0 ≈ 0.3 && a[2] ≈ -0.7 && b[1] ≈ 0.05 && a[5] ≈ 0.01 && maximum(abs, a[[1,3,4]]) < 1e-14
-    @test length(a) == 16 && length(b) == 16 && b[16] == 0
+    @test length(a) == 16 && length(b) == 16 && abs(b[16]) < 1e-14
     for M in (8, 9)                                                             # arbitrary data is reproduced exactly at the grid points
         Sr = synthetic_surface(periodic_grid(M), θ -> sin(7θ + 0.3) + θ^2 / 10)
         c0, c, d = fourier_coefficients(Sr)
         @test c0 .+ [sum(c[k] * cos(k * x) + d[k] * sin(k * x) for k in eachindex(c)) for x in Sr.grid] ≈ Sr.energies[1, :]
     end
+    Sn = synthetic_surface(periodic_grid(8; start=0.3), θ -> cos(4θ) + 0.5sin(4θ) + 0.2)     # Nyquist harmonic on a shifted grid
+    n0, na, nb = fourier_coefficients(Sn)
+    @test maximum(abs, n0 .+ [na[4] * cos(4x) + nb[4] * sin(4x) for x in Sn.grid] .- Sn.energies[1, :]) < 1e-12
     spec, dropped = slow_spec(S; tol=1e-3)
     @test dropped < 1e-14
     spec2, dropped2 = slow_spec(S; K=2)

@@ -39,8 +39,15 @@ function bo_surface(fast_root::Node, p::PromotedSpec, θ::NamedTuple, grid::Abst
         throw(ArgumentError("bo_surface: θ contains :$(p.parameter), the slow parameter; the grid supplies it"))
     g = Vector{Float64}(grid)
     E = zeros(Float64, bands, length(g))
+    # Build the term list and constant once: every `Coefficient` compiles a fresh generated function, so rebuilding them
+    # per grid point (as the spec method of `materialize` would) costs about 30 ms each.
+    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in p.fast.modes)
+    _check_bases(fast_root, modetypes)
+    bases = _tree_bases(fast_root)
+    terms = circuit_terms(p.fast, bases)
+    c = constant_term(p.fast, bases)
     for (j, x) in enumerate(g)
-        sys = materialize(fast_root, p.fast, merge(θ, NamedTuple{(p.parameter,)}((x,))))
+        sys = materialize(fast_root, terms, merge(θ, NamedTuple{(p.parameter,)}((x,))); constant=c, modetypes=modetypes)
         e = energies(sys)
         length(e) >= bands ||
             throw(ArgumentError("bo_surface: bands = $bands, but the fast tree keeps only $(length(e)) states"))
@@ -81,8 +88,9 @@ end
 
 The discrete Fourier coefficients of band `band` of a surface on a uniform periodic grid (`M` points, spacing `2π/M`):
 `U(θ) = a0 + Σ_k a_k cos kθ + b_k sin kθ`, exact at the grid points, with `a0` the mean, `k = 1..⌊M/2⌋`,
-`a_k = (2/M) Σ U_j cos kθ_j`, `b_k = (2/M) Σ U_j sin kθ_j`, and for even `M` the Nyquist harmonic `a_{M/2} = (1/M) Σ U_j cos(Mθ_j/2)`, `b_{M/2} = 0`.
-(For even `M` the Nyquist term reproduces the data exactly when `start` of the grid is a multiple of `2π/M`, as for `periodic_grid(M)`.)
+`a_k = (2/M) Σ U_j cos kθ_j`, `b_k = (2/M) Σ U_j sin kθ_j`, and for even `M` the Nyquist harmonic with the factor `1/M` instead of `2/M`.
+Since `cos(Mθ_j/2)` and `sin(Mθ_j/2)` are both `(-1)^j` times a constant, the Nyquist pair reproduces the data exactly for any grid start
+(for the default start `b_{M/2}` is zero up to rounding).
 Throws `ArgumentError` if the slow mode is not compact or the grid is not uniform and periodic.
 """
 function fourier_coefficients(s::BOSurface; band::Integer=1)
@@ -95,7 +103,7 @@ function fourier_coefficients(s::BOSurface; band::Integer=1)
     for k in 1:K
         c = 2k == M ? 1 / M : 2 / M
         a[k] = c * sum(U[j] * cos(k * s.grid[j]) for j in 1:M)
-        2k == M || (b[k] = c * sum(U[j] * sin(k * s.grid[j]) for j in 1:M))
+        b[k] = c * sum(U[j] * sin(k * s.grid[j]) for j in 1:M)
     end
     return (sum(U) / M, a, b)
 end
