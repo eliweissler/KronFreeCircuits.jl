@@ -40,7 +40,12 @@ Proposed by Eli (2026-10-20), not yet designed:
    The "marginal true-residual failure on block = 2 over random-multiplicity spectra" recorded here before was likely the same mechanism; block 2 had none in the scan.
    Shared rule (2026-10-21, Eli: the two leaf solvers are alternatives for the same node): `ChebyshevFilter` accepts by the same `max(tol, 10 eps·‖H‖)`, `‖H‖` from `gershgorin_bound(H)` in both (`_residual_floor`), and locks below half of it.
    Its reach stays shorter: its residuals stall at about 2.6, 10 and 25 eps·‖H‖ on 1000-, 4000- and 8000-point fluxonium grids (polished `ShiftInvert`: 1 to 3), so it raises at `maxiter` on the 8000-point grid at `tol = 1e-8`, energies converged to 1e-12; a Jacobi-corrected Rayleigh–Ritz step would fix charge bases (184 → 2 eps·‖H‖) but gains only about 4× per step on an 8th-order grid, and was not added.
-   Separately, `ChebyshevFilter` at m = 6 on the 7999-state transmon leaf did not converge in 40 to 50 iterations (residual 2e-5; m = 20 converges); not investigated.
+   Separately, `ChebyshevFilter` at m = 6 on the 7999-state transmon leaf did not converge in 40 to 50 iterations (residual 2e-5; m = 20 converges).
+  Investigated (2026-10-21): no stall and no solver defect, but a weak filter (inherent to the method at a fixed degree).
+  With `λ_cut = θ_46 ≈ 2080` against `λ_max ≈ 6.4e7` the residuals fall steadily by 1.72 per iteration, as `cosh(100 · acosh|x(θ_6)|) ≈ 1.71` predicts, so reaching the lock threshold takes 52 iterations.
+  At m = 20 the cut is `θ_60 ≈ 3550`, with 2.19 per iteration (predicted 2.17) and 37 iterations.
+  The amplification cap does not bind (it allows degree ≈ 1600), the guards lock within two iterations of the wanted columns, and the energies agree with `ShiftInvert` to 5e-13.
+  `degree = 200` converges in 18 iterations (3600 block applies against 5200); documented in the `ChebyshevFilter` docstring.
    `LOBPCG` keeps its own acceptance (Eli, 2026-10-21: it serves branches, a different situation): it returns pairs validated by LOBPCGEigensolver's residual estimate at `tol`, without a fresh true residual (one fresh residual measured 1.2e-8 at `tol = 1e-8` on an explicit 8000-point leaf), and at an explicit 8000-state zero-pi leaf it needs `maxiter` above the default 1000 (4000 converges).
 6. Real arithmetic at special parameter values (a parameter `n_g` at 0 or ½ on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex.
 7. Pre-existing: `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).

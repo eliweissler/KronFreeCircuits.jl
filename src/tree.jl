@@ -225,6 +225,12 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   orthogonalization). On a narrow spectrum the cap binds hard (the three-oscillator test runs at
   degree 14 of 100); on a grid leaf with a large bound it binds moderately (the small zero-pi leaf
   runs at degree 65–81 of 100). The applied degree is reported to `callback` and in the `maxiter` error.
+  It is never raised, so a weak filter (`λ_max` far above `λ_cut`) converges slowly but steadily: the
+  residuals fall by about `cosh(degree · acosh|x|)` per iteration, `x` the image of the `m`-th lowest Ritz
+  value on the filter interval mapped to `[−1, 1]`, about `cosh(degree · nb / ncut)` in a charge basis of
+  `2 ncut + 1` states. On the 7999-state transmon leaf at `m = 6` (`λ_cut ≈ 2080`, `λ_max ≈ 6.4e7`) that
+  is 1.7 per iteration and the defaults need 52 iterations, so `maxiter = 50` raises; `degree = 200`
+  converges in 18 and `m = 20` (`nb = 60`, 2.2 per iteration) in 37.
 - `extra ≥ 2`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states);
   at least two so at least one column serves as a convergence guard, since the top column sets the filter cut.
   Up to four of them double as guards that must converge before the iteration stops, as `LOBPCG`'s:
