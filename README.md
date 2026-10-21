@@ -58,7 +58,7 @@ If the given system is built from a materialized `System`, subtract it: `energie
 A term whose factors all lie on the given mode (a drive or a Stark shift) is applied at its parent through the given operators.
 
 Each node has a solver; the default, `Auto()`, picks one when the node is materialized.
-`Auto(; dense_cutoff=2500, on=Array)` resolves to `Dense()` for a node of at most 2 500 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
+`Auto(; dense_cutoff=1000, on=Array)` resolves to `Dense()` for a node of at most 1 000 product states; above that, to `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage, and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch.
 An explicit solver always wins, and `compute = 0` (all eigenpairs) needs a node whose solver is, or resolves to, `Dense`.
 `ShiftInvert()` is the CPU leaf solver: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored by sparse Cholesky from `sparse(H)` and `σ` below the lowest eigenvalue, in the operator's element type (real for a real node, see "Real arithmetic" below); it offers spectrum slicing across threads and a completeness certificate by inertia counts, on by default with the automatic shift, which recovers the copies of a degenerate level single-vector Lanczos misses by deflation.
 `ChebyshevFilter(; on=Array)` is the leaf solver for a device (it also runs on the host): Chebyshev-filtered block subspace iteration started from the lowest product states of the separable part (with a `1e-2` random admixture and guard columns, so a lower state outside the seed span usually surfaces; there is no completeness certificate, which `ShiftInvert` provides), with the filter's upper end from `gershgorin_bound(H)`.
@@ -98,7 +98,7 @@ Only kept vectors are stored, so a node with `compute > keep` fills its other `c
 `previous` also feeds the `follow` rule and the `:follow` phase convention, which compare physical overlaps with the previous kept states.
 
 On a CUDA machine, `using CUDA, cuTENSOR` loads the package extension, and `LOBPCG(on=CuArray)` or `ChebyshevFilter(on=CuArray)` stores a node's operator and block on the device.
-`Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (2 500) states resolves to `Dense()` on the host.
+`Auto(on=CuArray)` does so only for a node it resolves to a device solver; a node of at most `dense_cutoff` (1 000) states resolves to `Dense()` on the host.
 Energies, eigenvectors and ports return as host arrays; ports are formed on the host after the solve.
 
 ## Spec files
@@ -126,33 +126,17 @@ The operators are complex, except when the spec gives `n_g` as the literal `"0.5
 ```julia
 spec = load_spec("cos2phi.json")                     # 4 E_C (n - n_g)^2 - E_2 cos 2φ - E_1 cos φ, mode phi
 θ = (E_C=1.0, n_g=0.3, E_1=0.5, E_2=10.0)
-sys = materialize(Node([:phi => PeriodicGrid(128)]; keep=lowest(8)), spec, θ)
+sys = materialize(Node([:phi => PeriodicGrid(128)]; keep=lowest(8), ports=[(:phi, nport())]), spec, θ)
 energies(sys)
-KronFreeCircuits.charge_port(sys, :phi)              # the charge n in the kept eigenbasis (8 × 8, complex)
+port(sys, :phi, nport())                             # the charge n in the kept eigenbasis (8 × 8, complex)
 ```
 
-The basis serves no `:n` port, because the charge is assembled from the derivative pieces and the offset charge.
-So `ports=[(:phi, nport())]`, or a selection rule that needs `nport()`, on a `PeriodicGrid` mode throws; use `KronFreeCircuits.charge_port(sys, mode)` (not exported) for the physical charge matrix `V'(D₁)V + n_g I`.
-
-Above the leaf, request the three derivative pieces as ports and assemble the charge from them (here `ng` is the mode's offset charge):
-
-```julia
-ports = [(:phi, Port(:d1, 0)), (:phi, Port(:d1wrap, 1)), (:phi, Port(:d1wrap, -1))]   # on the ancestor node
-n = port(sys, :phi, Port(:d1, 0)) + cispi(2ng) * port(sys, :phi, Port(:d1wrap, 1)) +
-    cispi(-2ng) * port(sys, :phi, Port(:d1wrap, -1)) + ng * I
-```
-
-A hand-written coupling `g n ⊗ A` on a twisted mode becomes three terms, whose coefficients carry the twist factors from the exported `twist_factor(ng, ±1)` (with `ng` the offset charge as a `Coefficient`), plus the `n_g I` share folded into the remaining factors:
-
-```julia
-c = Coefficient(g); ngc = Coefficient("n_g", [:n_g]); A = Factor(:res, Port(:x, 0))
-coupling = [Term(c, [Factor(:phi, Port(:d1, 0)), A]),
-            Term(c * twist_factor(ngc, 1), [Factor(:phi, Port(:d1wrap, 1)), A]),
-            Term(c * twist_factor(ngc, -1), [Factor(:phi, Port(:d1wrap, -1)), A]),
-            Term(c * ngc, [A])]
-```
-
-The automatic expansion of `nport()` in `ports=` and `extra_terms` is a planned follow-up.
+The basis serves no `:n` port of its own, because the charge is assembled from the derivative pieces and the offset charge.
+The spec form of `materialize` expands `nport()` on a `PeriodicGrid` mode automatically wherever a charge is requested: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of an `extra_terms` term.
+It expands into `n = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I` on the ports `Port(:d1, 0)` and `Port(:d1wrap, ±1)`, a term's `n_g I` share multiplying its remaining factors.
+At the leaf, `port(sys, mode, nport())` equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
+The term-list form of `materialize` has no offset charge, so `nport()` on a twisted mode throws there; write the pieces out instead, with the twist factors `twist_factor(ng, ±1)` as coefficients.
+`n2port()` is not served on a `PeriodicGrid`.
 The design is in spec §20d.
 
 ## Real arithmetic
@@ -266,7 +250,7 @@ The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
 Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
-`Auto()`'s `dense_cutoff=2500` is a placeholder still to be tuned, and 3D leaves are tabled (spec §20e decision 8).
+`Auto()`'s `dense_cutoff` was benchmarked (`bench/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, and it was lowered from 2500 to 1000 once `ShiftInvert`'s spurious residual-check failures were fixed; 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.

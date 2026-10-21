@@ -210,19 +210,21 @@ function localop(b::PhaseGrid, p::Port)
     throw(_unavailable(b, p))
 end
 
-# How to obtain the charge of a `PeriodicGrid` mode, which the basis does not serve as a port.
+# How the charge of a `PeriodicGrid` mode, which the basis does not serve as a port, is obtained.
+const _PERIODIC_PIECES =
+    "n = d1 + cispi(2 n_g)·d1wrap₊ + cispi(−2 n_g)·d1wrap₋ + n_g·I, from the ports Port(:d1, 0), Port(:d1wrap, 1) and " *
+    "Port(:d1wrap, -1) (for a Term: three terms whose coefficients carry the twist factors twist_factor(n_g, ±1), plus " *
+    "the n_g·I share folded into the remaining factors)"
+
 const _PERIODIC_CHARGE_ROUTES =
-    "use KronFreeCircuits.charge_port(sys, mode) for the leaf's physical charge matrix; for a port or coupling at an " *
-    "ancestor, request the three pieces Port(:d1, 0), Port(:d1wrap, 1) and Port(:d1wrap, -1) and assemble " *
-    "n = d1 + cispi(2 n_g)·d1wrap₊ + cispi(−2 n_g)·d1wrap₋ + n_g·I (for a Term: three terms whose coefficients carry " *
-    "the twist factors twist_factor(n_g, ±1), plus the n_g·I share folded into the remaining factors); the automatic " *
-    "expansion of ports= and extra_terms is a planned follow-up"
+    "materialize from a spec, which expands nport() on a PeriodicGrid mode automatically (in ports=, selection rules " *
+    "and extra_terms) into " * _PERIODIC_PIECES
 
 const _PERIODIC_UNAVAILABLE = Dict(
-    :n => "the charge is assembled by term construction from the derivative ports :d1, :d1wrap and the offset charge; " *
+    :n => "the charge is assembled from the derivative ports :d1, :d1wrap and the offset charge; " *
           _PERIODIC_CHARGE_ROUTES,
     :n2 => "the charge squared is assembled by term construction from the derivative ports :d2, :d2wrap and the offset " *
-           "charge; for the charge n itself, " * _PERIODIC_CHARGE_ROUTES,
+           "charge; for the charge n itself, request nport(), which the spec form of materialize assembles automatically",
     :phi => "φ is multivalued on a circle; use expiphi(k) with integer k",
     :phi2 => "φ is multivalued on a circle; use expiphi(k) with integer k",
     :exp2pin => "exp2pin on a periodic grid is not implemented yet",

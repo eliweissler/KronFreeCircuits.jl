@@ -79,6 +79,18 @@ The second checks every `PeriodicGrid` against the harmonics `k` of every `expip
 mode in the term list (the spec's cosines and `extra_terms` alike): `k` must be an integer and
 divide the grid size ([`check_sectors`](@ref)).
 
+In the first form `nport()` on a `PeriodicGrid` mode, which the basis does not serve, is its physical charge
+`n = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I` with `n_g` the mode's offset charge from the spec.
+A factor `(mode, nport())` of an `extra_terms` term becomes three terms on the pieces `Port(:d1, 0)` and
+`Port(:d1wrap, ±1)`, with the coefficient times `1` and [`twist_factor`](@ref)`(n_g, ±1)`, and one term with
+coefficient `c n_g` and the factor removed (added to the constant when no factor remains); several such factors expand
+into the product.
+A requested port `(mode, nport())`, in a node's `ports` or a selection rule's, is assembled at every node that needs it
+from the pieces' ports, which are requested down the tree, as a `Matrix{ComplexF64}`; at the leaf it equals
+[`charge_port`](@ref).
+The second form has no offset charges, so `nport()` on a `PeriodicGrid` mode, as a factor or a requested port, throws
+an `ArgumentError` naming the mode.
+
 The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
 position) to the `:follow` phase convention, to selection rules, and to `LOBPCG` nodes as their
@@ -110,11 +122,33 @@ throws an `ArgumentError`.
 A term routed to a branch node with two or more factors inside the same child would need a
 composite (multi-mode) port of that child; these are not supported and throw an `ArgumentError`.
 """
-function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
-                     previous::Union{Nothing,System}=nothing,
-                     modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}())
+materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
+            previous::Union{Nothing,System}=nothing, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}()) =
+    _materialize_terms(root, terms, θ, constant, previous, modetypes, Dict{Symbol,Coefficient}())
+
+function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
+                     extra_terms::Vector{Term}=Term[])
+    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
+    _check_bases(root, modetypes)
+    bases = _tree_bases(root)
+    tw = _twisted(spec, bases)
+    charges = Dict{Symbol,Coefficient}(m.name => spec.n_g[i] for (i, m) in enumerate(spec.modes) if tw[i])
+    sys = _materialize_terms(root, vcat(circuit_terms(spec, bases), extra_terms), θ, constant_term(spec, bases),
+                             previous, modetypes, charges)
+    return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
+end
+
+# The term-list form, given the offset charges `charges` of the twisted modes (the spec form's; none for the public
+# term-list form): every `nport()` factor on a twisted mode is expanded into the physical charge
+# (`_expand_twisted_charge`, its factor-free share joining `constant`), and every `nport()` port on one is assembled
+# from the derivative pieces (`_node_port`).
+function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, previous,
+                            modetypes::Dict{Symbol,Symbol}, charges::Dict{Symbol,Coefficient})
     _check_real_parameters(θ)
     _check_bases(root, modetypes)
+    _check_offset_charges(root, terms, charges)
+    terms, share = _expand_twisted_charge(terms, charges)
+    _iszero(share) || (constant = constant + share)
     _check_periodic_harmonics(root, terms)
     routed = route(root, terms)
     _check_composite(routed)
@@ -122,18 +156,24 @@ function materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::
     needed = required_ports(root, routed)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, c, prev, realnodes)
+    mroot = _materialize(root, θ, routed, needed, c, prev, realnodes, charges)
     return System(mroot, nothing, terms, θ, constant)
 end
 
-function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
-                     extra_terms::Vector{Term}=Term[])
-    modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
-    _check_bases(root, modetypes)
-    bases = _tree_bases(root)
-    sys = materialize(root, vcat(circuit_terms(spec, bases), extra_terms), θ; constant=constant_term(spec, bases),
-                      previous=previous, modetypes=modetypes)
-    return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
+# Every `nport()` on a twisted mode, as a term factor or a requested port (`ports`, or a selection rule's
+# `ports_needed`), needs the mode's offset charge to be assembled; the term-list form has none.
+function _check_offset_charges(root::Node, terms::Vector{Term}, charges::AbstractDict)
+    twisted = Set(m for (m, b) in _tree_bases(root) if _is_twisted(b) && !haskey(charges, m))
+    isempty(twisted) && return nothing
+    requested = Iterators.flatten((((f.mode, f.port) for t in terms for f in t.factors),
+                                   (mp for node in _all_nodes(root) for mp in Iterators.flatten((ports_needed(node.keep), node.ports)))))
+    for (m, p) in requested
+        m in twisted && p == nport() &&
+            throw(ArgumentError("nport() on the PeriodicGrid mode :$m needs the mode's offset charge, which the " *
+                                "term-list form of materialize does not have; materialize from the spec, which expands " *
+                                "it automatically, or write the charge from its pieces: " * _PERIODIC_PIECES))
+    end
+    return nothing
 end
 
 # Every `PeriodicGrid` child against the harmonics `k` of every `expiphi(k)` factor on its mode, over the
@@ -340,9 +380,24 @@ end
 
 # The port `p` of `mode` on the columns of `V`, a node's vectors over its materialized `children`; its character is
 # the port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
-function _node_port(node::Node, leaves, children, dims::Vector{Int}, V::NodeMatrix, mode::Symbol, p::Port)
+# `nport()` on a twisted mode, a key of `charges` (its offset charge), is the physical charge assembled at `θ` from the
+# pieces' ports (`_assembled_charge`).
+function _node_port(node::Node, leaves, children, dims::Vector{Int}, V::NodeMatrix, mode::Symbol, p::Port,
+                    charges::AbstractDict, θ::NamedTuple)
     a = axis_of(node, mode)
-    return _port_matrix(V, dims, a, _childop(children[a], mode, p), _factor_character(leaves, Factor(mode, p)))
+    form(q) = _port_matrix(V, dims, a, _childop(children[a], mode, q), _factor_character(leaves, Factor(mode, q)))
+    p == nport() && haskey(charges, mode) && return _assembled_charge(form, charges[mode], θ, size(V, 2))
+    return form(p)
+end
+
+# The physical charge `Σ t(θ) P(q) + n_g(θ) I` (`k × k`) of a twisted mode with offset charge `ng`, from the port
+# matrices `P(q)` of its derivative pieces `q` with twists `t` (`_twisted_pieces`); a `Matrix{ComplexF64}`.
+function _assembled_charge(P, ng::Coefficient, θ::NamedTuple, k::Int)
+    Q = ng(θ) * Matrix{ComplexF64}(I, k, k)
+    for (t, q) in _twisted_pieces(ng, :d1)
+        Q .+= (t === nothing ? 1.0 : t(θ)) .* P(q)
+    end
+    return Q
 end
 
 # Per column of V, the 2-norm of its entries on the first and last `w` points of axis `axis`.
@@ -482,10 +537,10 @@ end
 _solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
 _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
 
-function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev, realnodes)
+function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev, realnodes, charges)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i), realnodes) :
+        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i), realnodes, charges) :
                         ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
@@ -524,7 +579,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     ports = Dict{Tuple{Symbol,Port},NodeMatrix}()
     leaves = _mode_leaves(node)
     for (mode, p) in ports_needed(node.keep)
-        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
+        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p, charges, θ)
     end
     idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev, reference)), size(V, 2), node.keep)
     E, V = E[idx], V[:, idx]
@@ -587,7 +642,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     # (8) The remaining required ports, on the kept vectors.
     for (mode, p) in needed[node]
         haskey(ports, (mode, p)) && continue
-        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
+        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p, charges, θ)
     end
 
     # (9) Grid edge support of the kept states.
@@ -692,9 +747,9 @@ For a [`PeriodicGrid`](@ref) mode it is `V'(D₁)V + n_g I`, with the twisted de
 `D₁ = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋` (which is `n - n_g` in the twisted gauge) and
 `n_g` the mode's offset charge from `sys.spec`, both evaluated at `sys.θ`; it needs a system built
 from a spec.
-For a `ChargeBasis` mode it is `V' n V`, equal to `port(sys, mode, nport(), leaf)` when that port was
-formed.
-A `PeriodicGrid` does not serve `nport()` itself, so this is the accessor for its charge.
+For a `ChargeBasis` mode it is `V' n V`.
+On either basis it equals `port(sys, mode, nport(), leaf)` when that port was formed (on a `PeriodicGrid` mode,
+which serves no `nport()` itself, the spec form of [`materialize`](@ref) assembles it from the same pieces).
 """
 function charge_port(sys::System, mode::Symbol)
     leaf = _leaf_holding(sys.root, mode)
@@ -708,12 +763,8 @@ function charge_port(sys::System, mode::Symbol)
                             "was built from a term list; materialize it from a spec"))
     idx = findfirst(m -> m.name === mode, sys.spec.modes)
     idx === nothing && throw(ArgumentError("mode :$mode is not a mode of the system's spec"))
-    ng = sys.spec.n_g[idx]
-    Q = ng(sys.θ) * Matrix{ComplexF64}(I, size(V, 2), size(V, 2))
-    for (t, p) in _twisted_pieces(ng, :d1)
-        Q .+= (t === nothing ? 1.0 : t(sys.θ)) .* _port_matrix(V, dims, a, localop(b, p), character(b, p))
-    end
-    return Q
+    return _assembled_charge(p -> _port_matrix(V, dims, a, localop(b, p), character(b, p)), sys.spec.n_g[idx], sys.θ,
+                             size(V, 2))
 end
 
 # The materialized node with a `mode => basis` child, or `nothing`.

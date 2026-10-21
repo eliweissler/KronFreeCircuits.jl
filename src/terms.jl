@@ -121,6 +121,37 @@ _twisted_pieces(ng::Coefficient, kind::Symbol) =
 _times(c::Coefficient, ::Nothing) = c
 _times(c::Coefficient, t::Coefficient) = c * t
 
+# Each `nport()` factor of `terms` on a twisted mode (a key of `charges`, its offset charge `n_g`) expanded into the
+# physical charge `d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I`: three terms on the pieces and one with
+# coefficient `c n_g` and the factor removed, a term with several such factors expanding into the product.
+# Returns the terms and the sum of the factor-free products (a scalar for the constant); other terms pass unchanged.
+function _expand_twisted_charge(terms::Vector{Term}, charges::AbstractDict)
+    out = Term[]
+    scalars = Coefficient[]
+    for t in terms
+        if !any(f -> f.port == nport() && haskey(charges, f.mode), t.factors)
+            push!(out, t)
+            continue
+        end
+        parts = [(t.coeff, Factor[])]
+        for f in t.factors
+            if f.port == nport() && haskey(charges, f.mode)
+                ng = charges[f.mode]
+                parts = [p for (c, fs) in parts
+                         for p in [[(_times(c, tw), [fs; Factor(f.mode, q)]) for (tw, q) in _twisted_pieces(ng, :d1)];
+                                   (c * ng, fs)]]
+            else
+                parts = [(c, [fs; f]) for (c, fs) in parts]
+            end
+        end
+        for (c, fs) in parts
+            _iszero(c) && continue
+            isempty(fs) ? push!(scalars, c) : push!(out, Term(c, fs))
+        end
+    end
+    return out, _sum(scalars)
+end
+
 """
     circuit_terms(spec::Spec) -> Vector{Term}
     circuit_terms(spec::Spec, bases) -> Vector{Term}

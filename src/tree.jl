@@ -92,16 +92,30 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
 
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. A pair above it raises an error
-  naming the worst residual; pairs are never returned unvalidated.
+  naming the worst residual; pairs are never returned unvalidated. When `tol` lies below what double
+  precision can deliver, the threshold is the roundoff floor `10 eps·‖H‖` instead (`‖H‖` bounded by the
+  ∞-norm of the assembled matrix; a debug message reports a pair accepted there). A backward-stable
+  solve, `Dense` included, leaves residuals of a few `eps·‖H‖`, and `‖H‖` grows like `1/h²` on a phase
+  grid and like `ncut²` in a charge basis (7e5 on a 4000-point fluxonium grid, 1.6e7 at `ChargeBasis(2000)`
+  with `E_C = 1`).
 - `shift`: `:auto` puts `σ = E_min − shift_margin` below a short Lanczos estimate `E_min` of the
-  lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky (with an
-  LU fallback, and a warning, if it is not). A number is used as `σ` itself; a shift at or above the
-  estimate is interior, `H − σI` is factored by LU, and the `m` eigenvalues nearest `σ` are returned.
+  lowest eigenvalue, so `H − σI` is positive definite and is factored by sparse Cholesky. If the
+  estimate overshoots by more than `shift_margin` and the Cholesky fails, it is retried at
+  `E_min − shift_margin·4^r` for `r = 1, 2, 3`, then at the Gershgorin lower bound of `H` minus
+  `shift_margin` (a debug message names the shift that worked); only if every retry fails does the
+  solve fall back to LU, with a warning. Slicing (`slices > 1`) does not retry.
+  A number is used as `σ` itself; a shift at or above the estimate is interior, `H − σI` is factored
+  by LU, and the `m` eigenvalues nearest `σ` are returned.
 - `shift_margin`: the distance of the automatic shift below the estimate, in the Hamiltonian's
-  energy units. The default is taken from the zero-pi fixtures (GHz) and must be set for other
-  energy scales.
+  energy units, and the base of the retry shifts above. The default is taken from the zero-pi
+  fixtures (GHz) and must be set for other energy scales.
 - `inner_tol`, `krylovdim`, `maxiter`: KrylovKit's tolerance on the inverted operator (not the
   acceptance criterion), Krylov dimension (`0` lets the solver choose `2m + 10`) and restart bound.
+  The converged pairs are then polished: one step of block inverse iteration with the same
+  factorization, and Rayleigh–Ritz with `H`. A Lanczos pair stops with Krylov residual `r` just under
+  `inner_tol`, and `H v − E v = −(E − σ)(H − σ) r`, so components of `r` on high-lying states reach the
+  true residual magnified by up to `|E − σ|·‖H‖` (up to 1e-5 on 8000-state leaves, with the vectors
+  accurate to 1e-11); the step damps them to the roundoff floor, at about 3 % of the solve time.
 - `block`: `1` (Lanczos) or `2` (block Lanczos, degeneracy insurance for exactly repeated
   eigenvalues). Block size 4 reported false convergence in KrylovKit 0.10.4 and is not offered.
   A block run that KrylovKit breaks off (the square root of a negative residual norm, on a nearly
@@ -289,7 +303,7 @@ ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, 
     ChebyshevFilter(tol, degree, extra, maxiter, rescale_every, ortho, bound, seed, on, callback)
 
 """
-    Auto(; dense_cutoff=2500, on=Array)
+    Auto(; dense_cutoff=1000, on=Array)
 
 The default solver of every [`Node`](@ref): it picks a solver for the node at materialization, from
 the node's kind, product dimension and storage (spec §20e decision 5).
@@ -302,7 +316,7 @@ the node's kind, product dimension and storage (spec §20e decision 5).
 The resolved solvers take their default settings; for other settings, pass the solver explicitly
 (an explicit solver always wins). `compute == 0` (all eigenpairs) is valid only for a node that
 resolves to `Dense`; otherwise `materialize` raises an `ArgumentError` naming the resolved solver.
-`dense_cutoff` is a placeholder (to be benchmarked). The warning for a large `Dense` node (above
+`dense_cutoff = 1000` is the most conservative crossover measured on the benchmark machine: the iterative solvers win from about 700 to 1000 states on a transmon leaf and from 100 to 350 on the other shapes (`bench/dense_cutoff/results.md`). The warning for a large `Dense` node (above
 10 000 states) applies to any `Dense` that runs, explicit or resolved (e.g. `Auto(dense_cutoff=20000)`
 on a 15 000-state node).
 """
@@ -314,7 +328,7 @@ struct Auto <: Solver
         return new(dense_cutoff, on)
     end
 end
-Auto(; dense_cutoff=2500, on=Array) = Auto(dense_cutoff, on)
+Auto(; dense_cutoff=1000, on=Array) = Auto(dense_cutoff, on)
 
 """
     SelectionRule
@@ -485,9 +499,13 @@ In order, deduplicated: the factors inside the node of terms routed to strict an
 strict ancestor's `ports_needed(keep)` and `ports` on modes inside the node, outermost ancestor
 first (an ancestor forms those ports from its children's, so every node on the path down to the
 mode's leaf exposes them); the node's own `ports_needed(keep)` and `ports`.
+An ancestor's `nport()` on a twisted ([`PeriodicGrid`](@ref)) mode is requested as its three derivative pieces
+`Port(:d1, 0)`, `Port(:d1wrap, ±1)`, from which each node that needs the charge assembles it.
 """
 function required_ports(root::Node, routed::IdDict)
     out = IdDict{Node,Vector{Tuple{Symbol,Port}}}()
+    twisted = Set(m for (m, b) in _tree_bases(root) if _is_twisted(b))
+    pieces = last.(_twisted_pieces(Coefficient(0), :d1))      # the charge's derivative ports (the twists are unused)
     function visit(node::Node, ancestors::Vector{Node})
         req = Tuple{Symbol,Port}[]
         if !isempty(ancestors)
@@ -496,7 +514,12 @@ function required_ports(root::Node, routed::IdDict)
                 f.mode in inside && push!(req, (f.mode, f.port))
             end
             for a in ancestors, (m, p) in Iterators.flatten((ports_needed(a.keep), a.ports))
-                m in inside && push!(req, (m, p))
+                m in inside || continue
+                if m in twisted && p == nport()
+                    append!(req, ((m, q) for q in pieces))
+                else
+                    push!(req, (m, p))
+                end
             end
         end
         append!(req, ports_needed(node.keep))
