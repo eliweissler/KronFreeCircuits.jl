@@ -96,9 +96,8 @@ end
     spec, θ, ch, m = flux
     sd = quiet(() -> materialize(Node(ch; solver=Dense(), keep=lowest(m)), spec, θ))
     H = KronFreeCircuits.operator(sd)
-    A = sparse(H); A = (A + A') / 2
-    floor = KronFreeCircuits._residual_floor(A)
-    @test floor ≈ 10 * eps() * opnorm(A, Inf) && 1e-10 < floor < 1e-9
+    floor = KronFreeCircuits._residual_floor(gershgorin_bound(H), energies(sd)[1])   # shared with ChebyshevFilter
+    @test floor ≈ 10 * eps() * gershgorin_bound(H) && 1e-10 < floor < 1e-9
     for seed in 1:3
         Random.seed!(seed)
         logs, (E, V) = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
@@ -383,6 +382,31 @@ end
     E5, V5 = solve(ShiftInvert(tol=1e-9, slices=5), H, 3)
     @test E5 ≈ E1[1:3] atol=1e-8; @test V5 * V5' ≈ V1[:, 1:3] * V1[:, 1:3]' atol=1e-7
     check_eigenpairs(H, E5, V5; tol=1e-9)
+end
+
+@testset "ChebyshevFilter accepts by ShiftInvert's rule: max(tol, the roundoff floor 10 eps·‖H‖)" begin
+    # The two leaf solvers are alternatives for the same node and share one acceptance rule. On the 1000-point
+    # fluxonium grid (eps·‖H‖ ≈ 1e-11) Chebyshev's residuals stall at about 2.6 eps·‖H‖, so with tol = 1e-12 no column
+    # could lock below tol/2; it locks below half the floor instead and is accepted at the floor (debug message).
+    quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())
+    spec, θ = load_spec(fixture("fluxonium.json")), (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)
+    sd = quiet(() -> materialize(Node([:varphi_1 => PhaseGrid(-6π, 6π, 1000; order=8)]; solver=Dense(), keep=lowest(6)), spec, θ))
+    H = KronFreeCircuits.operator(sd)
+    floor = KronFreeCircuits._residual_floor(gershgorin_bound(H), energies(sd)[1])
+    @test 1e-11 < floor < 1e-9
+    for seed in 1:2, s in (ChebyshevFilter(tol=1e-12), ShiftInvert(tol=1e-12))
+        Random.seed!(seed)
+        logs, (E, V) = Test.collect_test_logs(min_level=Base.CoreLogging.Debug) do
+            solve(s, H, 6)
+        end
+        @test E ≈ energies(sd) atol=1e-9
+        check_eigenpairs(H, E, V; tol=floor)
+        @test count(r -> r.level == Base.CoreLogging.Debug && occursin("roundoff floor", string(r.message)), logs) <= 1
+    end
+    # beyond Chebyshev's reach the floor does not hide unconverged columns: maxiter = 1 still raises, naming the floor
+    Random.seed!(1)
+    err = try solve(ChebyshevFilter(tol=1e-12, maxiter=1), H, 6); nothing catch e; e end
+    @test err isa ErrorException && occursin("maxiter", err.msg) && occursin("roundoff floor", err.msg)
 end
 
 @testset "ChebyshevFilter equals Dense; seeds; bound safety" begin

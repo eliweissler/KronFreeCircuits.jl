@@ -68,6 +68,12 @@ function _worst_true_residual(H::KronFreeOperator, E::AbstractVector, V::Abstrac
     return findmax(vec(Array(_colnorms(R))))
 end
 
+# The roundoff floor of the true-residual acceptance shared by the leaf solvers `ShiftInvert` and `ChebyshevFilter`,
+# alternatives for the same node: a pair is accepted when its residual is at most max(tol, floor). A backward-stable
+# solve leaves residuals of a few eps·‖H‖ (Dense measured 0.4 to 5.4 eps·‖H‖ on stiff leaves), so tol is never asked
+# below 10 eps·‖H‖, with ‖H‖ taken as max(|gershgorin_bound(H)|, |E₁|) and E₁ the lowest computed energy.
+_residual_floor(hbound::Real, E1::Real) = 10 * eps(float(typeof(hbound))) * max(abs(hbound), abs(E1))
+
 # Above this product dimension a Dense node is slow and memory-hungry (16 n² bytes); LOBPCG is advised at a branch, Lanczos or a warm-started LOBPCG at a stiff leaf.
 const _DENSE_WARN_DIM = 10_000
 _dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM

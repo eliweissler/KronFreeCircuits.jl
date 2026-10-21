@@ -93,8 +93,9 @@ Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, c
 - `tol`: the acceptance threshold on each true residual norm `‖H v − E v‖` of a unit vector, in the
   Hamiltonian's energy units, computed with the package operator. A pair above it raises an error
   naming the worst residual; pairs are never returned unvalidated. When `tol` lies below what double
-  precision can deliver, the threshold is the roundoff floor `10 eps·‖H‖` instead (`‖H‖` bounded by the
-  ∞-norm of the assembled matrix; a debug message reports a pair accepted there). A backward-stable
+  precision can deliver, the threshold is the roundoff floor `10 eps·‖H‖` instead (`‖H‖` taken as the
+  larger of `gershgorin_bound(H)` and the lowest energy's magnitude; a debug message reports a pair
+  accepted there), the rule `ChebyshevFilter` shares. A backward-stable
   solve, `Dense` included, leaves residuals of a few `eps·‖H‖`, and `‖H‖` grows like `1/h²` on a phase
   grid and like `ncut²` in a charge basis (7e5 on a 4000-point fluxonium grid, 1.6e7 at `ChargeBasis(2000)`
   with `E_C = 1`).
@@ -209,6 +210,12 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   iteration stops when the lowest `m + g` are locked (`g ≤ min(extra − 1, 4)` counted guard columns) and no
   unlocked Ritz value lies below the `m`-th locked energy. The returned pairs are the lowest `m` of all
   locked columns, accepted at `tol` with a fresh residual from a new application of the operator.
+  Acceptance follows `ShiftInvert`'s rule, the alternative for the same node: when `tol` lies below
+  the roundoff floor `10 eps·‖H‖`, the floor is the threshold instead and columns lock below half of it.
+  Chebyshev's residuals stall higher than `ShiftInvert`'s polished ones on a fine phase grid (about 2.6,
+  10 and 25 eps·‖H‖ at 1000, 4000 and 8000 points of the fluxonium grid, against 1 to 3), so at 8000
+  points and `tol = 1e-8` it raises at `maxiter` where `ShiftInvert` succeeds (4000 points pass); use
+  `ShiftInvert` on the CPU there, or loosen `tol`.
   No column locks, and the iteration does not stop, before the first filter application (unless the
   block spans the whole space, `nb = N`): the seed's own Rayleigh–Ritz is never accepted, since a seed
   spanning an invariant subspace has zero residuals there however far it lies from the lowest states.

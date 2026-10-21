@@ -7,7 +7,8 @@
 # Relative eigenvalue cutoff of the unit-diagonal Gram matrix in SVQB.
 const _SVQB_CUTOFF = 1e-12
 
-# Columns lock below this fraction of `tol`, leaving the fresh acceptance residual a margin over the Rayleigh–Ritz one.
+# Columns lock below this fraction of the acceptance threshold max(tol, roundoff floor), leaving the fresh acceptance
+# residual a margin over the Rayleigh–Ritz one.
 const _LOCK_FRACTION = 0.5
 
 # The Hermitian part of a small matrix, on the host.
@@ -297,6 +298,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     R = real(T)
     rng = Random.default_rng()
     λmax = R(s.bound === :gershgorin ? gershgorin_bound(H) : s.bound)
+    hbound = gershgorin_bound(H)                                               # for the roundoff floor, whatever the bound
     # Host data either way. The product seed gets a random admixture (`_SEED_ADMIXTURE`): its span can be
     # exactly invariant under H and miss a low state entirely, which no filter could then amplify.
     X0 = s.seed === :product ? _admixed_seed(T, product_seed(H, nb)) : randn(rng, T, N, nb)
@@ -331,7 +333,8 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
         # lock, so a small component along a state outside the seed's span is amplified first. A block
         # spanning the whole space (nb = N) is exact as it stands.
         filtered = it >= 1 || nb == N
-        while filtered && nlock < nb && res[nlock+1] <= _LOCK_FRACTION * s.tol
+        floor = _residual_floor(hbound, minimum(θ))
+        while filtered && nlock < nb && res[nlock+1] <= _LOCK_FRACTION * max(s.tol, floor)
             nlock += 1
         end
         s.callback === nothing ||
@@ -340,6 +343,7 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
         _chebyshev_done(θ, nlock, m, need) && break
         it >= s.maxiter &&
             error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol; need=need) *
+                  (floor > s.tol ? "; columns lock below half the roundoff floor 10 eps·‖H‖ = $floor, which exceeds tol" : "") *
                   (0 < deg < s.degree ? "; the last filter ran at degree $deg of $(s.degree), lowered by the amplification " *
                                         "cap 1/√eps (a narrow spectrum), so more iterations may be needed" : ""))
         it += 1
@@ -369,7 +373,11 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
     E = θ[idx]
     Vs = X[:, idx]
     worst, jw = _worst_true_residual(H, E, Vs)
-    worst <= s.tol ||
-        error("ChebyshevFilter: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds tol = $(s.tol) on return")
+    floor = _residual_floor(hbound, E[1])
+    bound = floor > s.tol ? "the roundoff floor 10 eps‖H‖ = $floor (above tol = $(s.tol))" : "tol = $(s.tol)"
+    worst <= max(s.tol, floor) ||
+        error("ChebyshevFilter: the true residual ‖H v − E v‖ = $worst of pair $jw exceeds $bound on return")
+    worst > s.tol && @debug "ChebyshevFilter: the true residual $worst of pair $jw exceeds tol = $(s.tol) and is accepted " *
+                            "at the roundoff floor 10 eps‖H‖ = $floor"
     return Vector{R}(E), Matrix{T}(Array(Vs))
 end

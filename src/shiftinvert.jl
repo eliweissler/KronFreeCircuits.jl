@@ -283,12 +283,8 @@ function _polish(A::SparseMatrixCSC, F, V::AbstractMatrix)
     return G.values, Q * G.vectors
 end
 
-# The roundoff floor of acceptance: a backward-stable solve leaves true residuals of a few eps·‖H‖ (Dense measured
-# 0.4 to 5.4 eps·‖H‖ on stiff leaves), so a pair is accepted up to 10 eps·‖H‖ when that exceeds tol. ‖H‖ is bounded
-# by the ∞-norm of the assembled matrix.
-_residual_floor(A::SparseMatrixCSC) = 10 * eps(real(eltype(A))) * opnorm(A, Inf)
-
-# Acceptance: the true residual of every returned pair, with the package operator, at most max(tol, `floor`).
+# Acceptance: the true residual of every returned pair, with the package operator, at most max(tol, `floor`), the
+# rule shared with ChebyshevFilter (`_residual_floor`).
 function _check_residuals(s::ShiftInvert, H::KronFreeOperator, E::AbstractVector, V::AbstractMatrix, floor::Real)
     worst, jw = _worst_true_residual(H, E, V)
     bound = floor > s.tol ? "the roundoff floor 10 eps‖H‖ = $floor (above tol = $(s.tol))" : "tol = $(s.tol)"
@@ -320,7 +316,7 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     if k > 1
         Es, Vs = _solve_sliced(s, A, Emin, m, k)
         E, V = Vector{real(eltype(H))}(Es), Matrix{eltype(H)}(Vs)
-        _check_residuals(s, H, E, V, _residual_floor(A))
+        _check_residuals(s, H, E, V, _residual_floor(gershgorin_bound(H), E[1]))
         return E, V
     end
     if s.shift === :auto
@@ -351,7 +347,7 @@ function solve(s::ShiftInvert, H::KronFreeOperator, m::Int)
     E = Vector{real(eltype(H))}(Eall[1:m])
     V = Matrix{eltype(H)}(Vall[:, 1:m])
     try
-        _check_residuals(s, H, E, V, _residual_floor(A))
+        _check_residuals(s, H, E, V, _residual_floor(gershgorin_bound(H), E[1]))
     catch err
         # An explicit shift within √eps of an eigenvalue factors (LU succeeds) but the inverse's huge
         # eigenvalue there swamps the others: name the shift rather than inner_tol.
