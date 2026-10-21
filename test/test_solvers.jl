@@ -659,6 +659,28 @@ using KronFreeCircuits: _svqb!, _not_done_reason
     @test !occursin("raise extra", _not_done_reason([1.0, 2.0, 3.0, 4.0], [0, 0, 1e-3, 1e-3], 2, 3, 1e-9; need=4))
 end
 
+@testset "ChebyshevFilter: the maxiter error names a weak filter" begin
+    # A 2001-state transmon charge basis: λ_cut ≈ θ_46 lies far below the Gershgorin bound ≈ 4e6, so at degree 25 the
+    # log-gain at θ_6 is ≈ 1.13 (the 7999-state leaf's at degree 100), 1.7 per iteration (50 iterations do not suffice).
+    spec, θ = load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3)
+    transmon(n) = KronFreeCircuits.operator(materialize(Node([:varphi_1 => ChargeBasis(n)]; solver=Dense(), keep=lowest(4)), spec, θ))
+    H = transmon(1000)
+    err = try solve(ChebyshevFilter(degree=25, maxiter=10), H, 6); nothing catch e; e end
+    @test err isa ErrorException && occursin("maxiter = 10", err.msg) && occursin("filter is weak", err.msg)
+    @test occursin("raise degree (at most 200, now 25) or maxiter", err.msg) && occursin("ShiftInvert", err.msg)
+    @test 1.0 < parse(Float64, match(r"acosh\|x\| = ([0-9.]+)", err.msg)[1]) < 1.3
+    # at the default degree the log-gain is ≈ 4.5 (45 per iteration): a small maxiter is the reason, no hint
+    err = try solve(ChebyshevFilter(maxiter=3), H, 6); nothing catch e; e end
+    @test err isa ErrorException && occursin("maxiter = 3", err.msg) && !occursin("weak", err.msg)
+    # a user bound far above the spectrum (log-gain ≈ 0.57 at degree 200): lower the bound; the degree is at its maximum
+    err = try solve(ChebyshevFilter(bound=1e9, degree=200, maxiter=5), transmon(300), 6); nothing catch e; e end
+    @test err isa ErrorException && occursin("filter is weak", err.msg) && occursin("raise maxiter, lower bound = 1.0e9", err.msg)
+    @test !occursin("raise degree", err.msg)
+    # a degree lowered by the amplification cap gets the cap's hint instead
+    err = try solve(ChebyshevFilter(tol=1e-9, maxiter=1), three_oscillators(6), 8); nothing catch e; e end
+    @test occursin("amplification cap", err.msg) && !occursin("weak", err.msg)
+end
+
 using KronFreeCircuits: LOBPCG, lobpcg_solve, FixedJacobi, RitzJacobi, solver_callback, with_block_capacity, _full_diagonal,
                          _perturbed_seed
 import LOBPCGEigensolver

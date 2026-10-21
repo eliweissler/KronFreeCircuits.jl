@@ -230,7 +230,8 @@ interval and amplifies everything below it, then orthonormalizes and performs Ra
   value on the filter interval mapped to `[−1, 1]`, about `cosh(degree · nb / ncut)` in a charge basis of
   `2 ncut + 1` states. On the 7999-state transmon leaf at `m = 6` (`λ_cut ≈ 2080`, `λ_max ≈ 6.4e7`) that
   is 1.7 per iteration and the defaults need 52 iterations, so `maxiter = 50` raises; `degree = 200`
-  converges in 18 and `m = 20` (`nb = 60`, 2.2 per iteration) in 37.
+  converges in 18 and `m = 20` (`nb = 60`, 2.2 per iteration) in 37. The `maxiter` error says so when
+  the last filter's `degree · acosh|x|` was below 2 (under about 3.8 per iteration).
 - `extra ≥ 2`: columns beyond `m` (they set the convergence rate and absorb near-degenerate states);
   at least two so at least one column serves as a convergence guard, since the top column sets the filter cut.
   Up to four of them double as guards that must converge before the iteration stops, as `LOBPCG`'s:

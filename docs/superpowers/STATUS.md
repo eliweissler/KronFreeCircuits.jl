@@ -46,6 +46,7 @@ Proposed by Eli (2026-10-20), not yet designed:
   At m = 20 the cut is `θ_60 ≈ 3550`, with 2.19 per iteration (predicted 2.17) and 37 iterations.
   The amplification cap does not bind (it allows degree ≈ 1600), the guards lock within two iterations of the wanted columns, and the energies agree with `ShiftInvert` to 5e-13.
   `degree = 200` converges in 18 iterations (3600 block applies against 5200); documented in the `ChebyshevFilter` docstring.
+  The `maxiter` error now names a weak filter: when the last filter's log-gain `degree · acosh|x(θ_m)|` is below 2 (1.13 here), it reports the per-iteration factor `cosh` of it and advises raising `degree` or `maxiter`, or `ShiftInvert` on the CPU (`_WEAK_FILTER_GAIN`).
    `LOBPCG` keeps its own acceptance (Eli, 2026-10-21: it serves branches, a different situation): it returns pairs validated by LOBPCGEigensolver's residual estimate at `tol`, without a fresh true residual (one fresh residual measured 1.2e-8 at `tol = 1e-8` on an explicit 8000-point leaf), and at an explicit 8000-state zero-pi leaf it needs `maxiter` above the default 1000 (4000 converges).
 6. Real arithmetic at special parameter values (a parameter `n_g` at 0 or ½ on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex.
 7. Pre-existing: `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).

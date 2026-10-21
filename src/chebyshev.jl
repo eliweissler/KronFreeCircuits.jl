@@ -270,6 +270,28 @@ function _not_done_reason(θ::AbstractVector, res::AbstractVector, nlock::Int, m
            "tol = $tol) lies below the $m-th locked energy $(partialsort(θ[1:nlock], m)), a lower state not yet converged"
 end
 
+# Below this log-gain of the last filter at the m-th lowest Ritz value, deg · acosh|x(θ_m)|, the maxiter error calls
+# the filter weak: the residuals fall by about cosh of it per iteration. Measured (transmon charge bases, three
+# oscillators, zero-pi and fluxonium leaves, the weak-filter traps): solves at log-gain 4 to 17 converge in 2 to 9
+# iterations, at 2.0 to 2.8 in 14 to 21, at 1.1 to 1.4 in 31 to 52 (the 7999-state transmon leaf at m = 6: 1.13, 52
+# iterations against maxiter = 50), and at 0.3 to 0.75 they fail within maxiter = 50; every maxiter error at a
+# log-gain above 4 came from a small maxiter (1 to 3).
+const _WEAK_FILTER_GAIN = 2.0
+
+# For the maxiter error, when the last filter (cut λcut, degree deg, not lowered by the cap) was weak.
+function _weak_filter_hint(s::ChebyshevFilter, θ::AbstractVector, m::Int, λcut::Real, λmax::Real, deg::Int)
+    deg == s.degree || return ""
+    gain = deg * _log_gain(partialsort(θ, m), λcut, λmax)
+    gain < _WEAK_FILTER_GAIN || return ""
+    sig(v) = round(v; sigdigits=3)
+    return "; the filter is weak: its log-gain at the $m-th lowest Ritz value is degree·acosh|x| = $(sig(gain)) " *
+           "(λ_cut = $(sig(λcut)) against λ_max = $(sig(λmax))), so the residuals fell by only about " *
+           "cosh($(sig(gain))) ≈ $(sig(cosh(gain))) per iteration; raise " *
+           (s.degree < 200 ? "degree (at most 200, now $(s.degree)) or maxiter" : "maxiter") *
+           (s.bound === :gershgorin ? "" : ", lower bound = $(s.bound) toward the largest eigenvalue of H") *
+           ", or use ShiftInvert on the CPU"
+end
+
 # Stop once the lowest `need` (m plus guards) columns are locked and no unlocked Ritz value lies below the
 # m-th locked energy.
 function _chebyshev_done(θ::AbstractVector, nlock::Int, m::Int, need::Int=m)
@@ -345,7 +367,8 @@ function solve(s::ChebyshevFilter, H::KronFreeOperator, m::Int)
             error("ChebyshevFilter: within maxiter = $(s.maxiter) iterations " * _not_done_reason(θ, res, nlock, m, s.tol; need=need) *
                   (floor > s.tol ? "; columns lock below half the roundoff floor 10 eps·‖H‖ = $floor, which exceeds tol" : "") *
                   (0 < deg < s.degree ? "; the last filter ran at degree $deg of $(s.degree), lowered by the amplification " *
-                                        "cap 1/√eps (a narrow spectrum), so more iterations may be needed" : ""))
+                                        "cap 1/√eps (a narrow spectrum), so more iterations may be needed" : "") *
+                  _weak_filter_hint(s, θ, m, λcut, λmax, deg))
         it += 1
         act = nlock+1:nb
         na = length(act)
