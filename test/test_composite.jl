@@ -101,7 +101,8 @@ end
     Hflat = primitive_hamiltonian(circuit_terms(spec), θ, [:a => ba, :b => ba, :c => ba])
     P = kron(_primitive(KronFreeCircuits.materialized(sys, c)), _primitive(KronFreeCircuits.materialized(sys, ab)))
     Hred = Hermitian(P' * Hflat * P)
-    @test norm(Hred - Hred') <= 1e-12 * norm(Hred)
+    M = Matrix(KronFreeCircuits.operator(sys))         # the root operator as the package assembles it
+    @test norm(M - M') <= 1e-12 * norm(M)
     @test energies(sys) ≈ eigvals(Hred) atol=1e-10
     @test_throws ArgumentError port(sys, [(:a, expiphi(2)), (:b, expiphi(2))], ab)
     @test port(sys, [(:a, expiphi(1))], ab) == port(sys, :a, expiphi(1), ab)             # a singleton key delegates to the (mode, Port) method
