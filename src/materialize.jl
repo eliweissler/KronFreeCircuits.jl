@@ -354,14 +354,24 @@ _child_overlap(prev::MaterializedNode, cur::MaterializedNode) =
 # Kronecker product of per-axis vectors, axis 1 fastest.
 _kronaxes(vs) = foldl((acc, v) -> kron(v, acc), vs; init=[true])
 
-# ⟨v_i| O_axis |v_j⟩ for the columns of V, with O acting on axis `axis` of the product basis.
+# ⟨v_i| ⊗ₐ Oₐ |v_j⟩ for the columns of V, with each Oₐ acting on its own axis a of the product basis (one operator per axis).
+# The operators are applied in increasing axis order, alternating two work blocks (apply_axis! forbids aliasing), and
+# contracted with V' once.
 # On real `V` it takes only real operators (the components the method below passes).
-function _port_matrix(V::NodeMatrix, dims::Vector{Int}, axis::Int, op::LocalOp)
+function _port_matrix(V::NodeMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tuple{Int,LocalOp}})
+    axes_ = [a for (a, _) in ops]
+    allunique(axes_) || throw(ArgumentError("a joint port takes one operator per axis; got axes $axes_"))
     X = reshape(V, dims..., size(V, 2))
     Y = similar(X)
-    apply_axis!(Y, op, X, axis)
-    return V' * reshape(Y, size(V))
+    Z = length(ops) > 1 ? similar(X) : Y
+    for (n, (a, op)) in enumerate(ops[sortperm(axes_)])
+        dest = isodd(n) ? Y : Z                    # V -> Y -> Z -> Y ...; V itself is never written
+        apply_axis!(dest, op, X, a)
+        X = dest
+    end
+    return V' * reshape(X, size(V))
 end
+_port_matrix(V::NodeMatrix, dims::Vector{Int}, axis::Int, op::LocalOp) = _port_matrix(V, dims, [(axis, op)])
 
 # The port with operator `op` and conjugation character `ch` (spec Section 20f).
 # On a complex node the character is not needed, and a real dense operator (a real child's port) is converted first,
