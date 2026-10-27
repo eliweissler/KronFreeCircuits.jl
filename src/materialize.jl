@@ -10,6 +10,10 @@ else `ComplexF64`.
 child's number of kept states); `vectors` is `prod(dims) × length(kept)` in that basis, with
 `energies` the kept eigenvalues (absolute, GHz) and `kept` their indices among the computed
 eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
+`joint_ports[key]` is the joint port of a sorted factor list `key` spanning several of the node's modes: the operator
+`V† (⊗ₐ Oₐ) V` in the kept eigenbasis, formed in the product basis before the projection, in its natural type by its
+key's character; every key has two or more factors.
+Each costs `kept²` of memory, plus two product-basis scratch blocks while it is formed.
 `children` holds, in axis order, the child's `Basis` or `MaterializedNode`.
 Ports have their natural type (spec Section 20f, "Outputs"): on a real node a real-character port is a
 `Matrix{Float64}` and an imaginary, paired or general one a `Matrix{ComplexF64}`; on a complex node every port is a
@@ -34,17 +38,20 @@ struct MaterializedNode{T<:Union{Float64,ComplexF64}}
     vectors::Matrix{T}
     kept::Vector{Int}
     ports::Dict{Tuple{Symbol,Port},NodeMatrix}
+    joint_ports::Dict{_FactorKey,NodeMatrix}
     children::Vector{Any}
     peak_component::Vector{Int}
     peak_amplitudes::Matrix{T}
 end
 
-# From any matrices: `vectors` and `peak_amplitudes` in their promoted element type, the ports as stored.
+# From any matrices: `vectors` and `peak_amplitudes` in their promoted element type, the ports as stored, no joint ports
+# unless given.
 # For nodes built by hand; `materialize` gives the element type of a node's classification explicitly (`_check_eltype`).
 function MaterializedNode(node, dims, energies, vectors::AbstractMatrix, kept, ports::AbstractDict, children,
-                          peak_component, peak_amplitudes::AbstractMatrix)
+                          peak_component, peak_amplitudes::AbstractMatrix; joint_ports=Dict{_FactorKey,NodeMatrix}())
     T = promote_type(eltype(vectors), eltype(peak_amplitudes))
-    return MaterializedNode{T}(node, dims, energies, vectors, kept, ports, children, peak_component, peak_amplitudes)
+    return MaterializedNode{T}(node, dims, energies, vectors, kept, ports, joint_ports, children, peak_component,
+                               peak_amplitudes)
 end
 
 """
@@ -277,8 +284,8 @@ function _materialize_given(g::GivenSystem)
     k = dimension(g)
     natural(kind, M) = character(g, Port(kind, 0)).kind === :real ? Matrix{Float64}(real(M)) : M
     ports = Dict{Tuple{Symbol,Port},NodeMatrix}((g.mode, Port(kind, 0)) => natural(kind, M) for (kind, M) in g.operators)
-    return MaterializedNode{Float64}(g, [k], g.energies, Matrix{Float64}(I, k, k), collect(1:k), ports, Any[g],
-                                     collect(1:k), Matrix{Float64}(I, k, k))
+    return MaterializedNode{Float64}(g, [k], g.energies, Matrix{Float64}(I, k, k), collect(1:k), ports,
+                                     Dict{_FactorKey,NodeMatrix}(), Any[g], collect(1:k), Matrix{Float64}(I, k, k))
 end
 
 # The previous solution of child `i`, or `nothing`.
@@ -398,6 +405,49 @@ function _node_port(node::Node, leaves, children, dims::Vector{Int}, V::NodeMatr
     form(q) = _port_matrix(V, dims, a, _childop(children[a], mode, q), _factor_character(leaves, Factor(mode, q)))
     p == nport() && haskey(charges, mode) && return _assembled_charge(form, charges[mode], θ, size(V, 2))
     return form(p)
+end
+
+# A node child's joint port on the sorted key `K`, which spans two or more of its modes.
+function _jointop(mn::MaterializedNode, K::_FactorKey)
+    haskey(mn.joint_ports, K) ||
+        error("internal error: child node on modes $(_child_modes(mn.node)) lacks the joint port $(_key_string(K))")
+    return DenseOp(mn.joint_ports[K])
+end
+
+# The children's operators for the factor key `K` of `node`, one per axis group of `K` (`_axis_groups`): a single
+# factor's port (a basis child's local operator, or a node child's port), or a node child's joint port for two or more
+# factors in one child; each with its axis and its group's sub-key.
+_axis_ops(node::Node, children, K::_FactorKey) =
+    Tuple{Int,LocalOp,_FactorKey}[(a, length(Ka) == 1 ? _childop(children[a], Ka[1]...) : _jointop(children[a], Ka), Ka)
+                                  for (a, Ka) in _axis_groups(node, K)]
+
+# The joint port `V† (⊗ₐ Oₐ) V` on the columns of `V`, a node's vectors over its materialized `children`, of the sorted
+# key `K` spanning several of its modes: each child's operator for its group of `K` (`_axis_ops`) applied in the
+# product basis, then one contraction (`_port_matrix`).
+# On a complex node a real dense operator (a real child's port) is converted first, as for a single port.
+# On a real node it is formed from components in real arithmetic, in its natural type by the key's character
+# (`_key_character`): `R = Re(⊗ₐ Oₐ)` and `I = Im(⊗ₐ Oₐ) = Re(−i ⊗ₐ Oₐ)` are each a sum of products of the operators'
+# real and imaginary components (`_real_expansion` with `s = 1`, on each group's own character); a real port is `R`
+# (`Matrix{Float64}`), an imaginary one `i I` and a paired or general one `R + i I` (`Matrix{ComplexF64}`).
+function _joint_port(node::Node, leaves, children, dims::Vector{Int}, V::Matrix{ComplexF64}, K::_FactorKey)
+    ops = Tuple{Int,LocalOp}[(a, op isa DenseOp ? DenseOp(convert(Matrix{ComplexF64}, op.M)) : op)
+                             for (a, op, _) in _axis_ops(node, children, K)]
+    return _port_matrix(V, dims, ops)
+end
+function _joint_port(node::Node, leaves, children, dims::Vector{Int}, V::Matrix{Float64}, K::_FactorKey)
+    ch = _key_character(leaves, K)
+    fs = Tuple{Int,LocalOp,Symbol,Int}[(a, op, _key_character(leaves, Ka).kind, 1) for (a, op, Ka) in _axis_ops(node, children, K)]
+    function component(c)
+        X = zeros(size(V, 2), size(V, 2))
+        for r in _real_expansion(c, fs)
+            X .+= r.coeff .* _port_matrix(V, dims, r.factors)
+        end
+        return X
+    end
+    ch.kind === :real && return component(1.0)
+    Im = component(-im)
+    ch.kind === :imaginary && return complex.(zero(Im), Im)
+    return complex.(component(1.0), Im)
 end
 
 # The physical charge `Σ t(θ) P(q) + n_g(θ) I` (`k × k`) of a twisted mode with offset charge `ng`, from the port
@@ -664,7 +714,8 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
     end
 
     T = _check_eltype(node, realnode, V, peak_amps, ports, leaves)
-    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, children, peak, peak_amps)
+    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, Dict{_FactorKey,NodeMatrix}(), children, peak,
+                               peak_amps)
 end
 
 # The element type a node is stored in, its classification's (`Float64` when `real`, else `ComplexF64`), asserted

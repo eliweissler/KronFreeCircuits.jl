@@ -95,6 +95,18 @@ function _factor_character(leaves::Dict{Symbol,Any}, f::Factor)
     end
 end
 
+# The conjugation character of the product `⊗ O` of a sorted factor key's operators, from its factors' characters:
+# `:general` if any factor is; else `:paired` if any factor is, its partner the sorted key of the factors' partners;
+# else `:real` or `:imaginary` by the product of the factors' signs `σ`, its partner the key itself.
+# For a singleton key it agrees with `_factor_character` (`kind`, and `[partner]`).
+function _key_character(leaves::Dict{Symbol,Any}, K::_FactorKey)
+    chars = PortCharacter[_factor_character(leaves, Factor(m, p)) for (m, p) in K]
+    any(c -> c.kind === :general, chars) && return (kind=:general, partner=K)
+    any(c -> c.kind === :paired, chars) &&
+        return (kind=:paired, partner=_sortkey!(Tuple{Symbol,Port}[(m, c.partner) for ((m, _), c) in zip(K, chars)]))
+    return (kind=prod(σ, chars; init=1) == 1 ? :real : :imaginary, partner=K)
+end
+
 # The three test points: every parameter any coefficient uses, each drawn uniformly in [0.5, 2] from the fixed seed in
 # sorted name order, so the values depend only on the set of parameters.
 # A point is laid out like `θ` (its names in order, then any parameter `θ` lacks), with `1.0` for entries no coefficient
@@ -272,19 +284,21 @@ end
 
 # The expansion of `Re(c ⊗_a O_a)` with `O_a = R_a + i I_a`: one real term `Re(c · i^{|S|}) ⊗_{a∈S} I_a ⊗_{a∉S} R_a` per
 # subset `S` of the factors whose character is `:imaginary` (always in `S`) or `:paired`, a zero coefficient dropped.
-# Each is `(coeff, sign, S, factors)`: `factors` are this term's own components, `coeff` its coefficient on them, and
-# `S[a]` whether factor `a` takes its imaginary component.
-# On the components of the canonical ports (`_canonical_port`) the coefficient is `coeff * sign`, with `sign` the product
-# of the factors' signs `s` over `S`, so expansions of different terms on the same modes, canonical ports and components
-# add by their coefficients: a conjugate pair's real terms coincide.
-function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}})
-    comps = map(factors) do (a, op, ch)
-        ch.kind === :general &&
-            error("internal error: the factor $(_portname(ch.partner)) on axis $a of a real node has a :general character")
-        s = last(_canonical_port(ch))
-        R = ch.kind === :imaginary ? nothing : realpart(op)
-        I = ch.kind === :real ? nothing : imagpart(op)
-        choices = ch.kind === :real ? (false,) : ch.kind === :imaginary ? (true,) : (false, true)
+# Each factor is `(axis, O_a, kind, s)`, with `kind` its character's kind and `s` the sign of its imaginary component
+# relative to its canonical factor's.
+# Each term is `(coeff, sign, S, factors)`: `factors` are this term's own components, `coeff` its coefficient on them,
+# and `S[a]` whether factor `a` takes its imaginary component.
+# On the canonical components the coefficient is `coeff * sign`, with `sign` the product of the factors' signs `s` over
+# `S`, so expansions of different terms on the same modes, canonical ports and components add by their coefficients:
+# a conjugate pair's real terms coincide.
+# A caller that needs only `Re(c ⊗_a O_a)` on the factors' own components passes `s = 1` and ignores `sign`.
+function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,Symbol,Int}})
+    comps = map(factors) do (a, op, kind, s)
+        kind in (:real, :imaginary, :paired) ||
+            error("internal error: the factor on axis $a of a real node has a :$kind character")
+        R = kind === :imaginary ? nothing : realpart(op)
+        I = kind === :real ? nothing : imagpart(op)
+        choices = kind === :real ? (false,) : kind === :imaginary ? (true,) : (false, true)
         (a, s, R, I, choices)
     end
     out = NamedTuple{(:coeff, :sign, :S, :factors),Tuple{Float64,Int,Vector{Bool},Vector{Tuple{Int,LocalOp}}}}[]
@@ -296,6 +310,15 @@ function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharac
         push!(out, (coeff=coeff, sign=sign, S=collect(Bool, S), factors=ops))
     end
     return out
+end
+
+# On factors `(axis, O_a, character)`: the signs `s` are those of the canonical ports (`_canonical_port`).
+function _real_expansion(c::Number, factors::Vector{Tuple{Int,LocalOp,PortCharacter}})
+    for (a, _, ch) in factors
+        ch.kind === :general &&
+            error("internal error: the factor $(_portname(ch.partner)) on axis $a of a real node has a :general character")
+    end
+    return _real_expansion(c, Tuple{Int,LocalOp,Symbol,Int}[(a, op, ch.kind, last(_canonical_port(ch))) for (a, op, ch) in factors])
 end
 
 """

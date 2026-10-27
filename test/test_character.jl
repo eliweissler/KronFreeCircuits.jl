@@ -235,3 +235,28 @@ end
     classified = Set(Iterators.flatten((_REAL_VALUED_CALLS, _COMPLEX_CALLS, _ANALYTIC_CALLS)))
     @test all(f -> f in classified, _ALLOWED_CALLS)
 end
+
+@testset "_key_character" begin
+    using KronFreeCircuits: _key_character, _mode_leaves, expiphi, nport, phiport
+    leaves = _mode_leaves(Node([Node([:c => ChargeBasis(3), :e => PhaseGrid(-2.0, 2.0, 8; order=2)]), :h => FockBasis(4; phi_zpf=0.6)]))
+    @test _key_character(leaves, [(:c, expiphi(1)), (:c, expiphi(1))]).kind === :real          # charge-basis expiphi is real
+    kc = _key_character(leaves, [(:c, expiphi(1)), (:e, expiphi(-1))])
+    @test kc.kind === :paired && kc.partner == [(:c, expiphi(1)), (:e, expiphi(1))]
+    @test _key_character(leaves, [(:e, nport()), (:h, phiport())]).kind === :imaginary
+    @test _key_character(leaves, [(:e, nport()), (:h, nport())]).kind === :real
+    @test _key_character(leaves, [(:e, nport()), (:h, expiphi(1))]).kind === :paired
+end
+
+@testset "_real_expansion: the (axis, op, kind, s) core carries the signs it is given" begin
+    using KronFreeCircuits: _real_expansion, _canonical_port, LocalOp, PortCharacter, dense
+    b = PhaseGrid(-2.0, 2.0, 8; order=2)
+    fs = Tuple{Int,LocalOp,PortCharacter}[(a, localop(b, p), character(b, p)) for (a, p) in enumerate((phiport(), nport(), expiphi(-1)))]
+    core(s) = Tuple{Int,LocalOp,Symbol,Int}[(a, op, ch.kind, s(ch)) for (a, op, ch) in fs]
+    c = 0.7 - 0.3im
+    old, new = _real_expansion(c, fs), _real_expansion(c, core(ch -> last(_canonical_port(ch))))
+    summary(rs) = [(r.coeff, r.sign, r.S, [(a, dense(op)) for (a, op) in r.factors]) for r in rs]
+    @test summary(old) == summary(new)
+    @test [r.sign for r in new] == [r.S[3] ? -1 : 1 for r in new]                   # expiphi(-1) has s = -1, n has s = 1
+    ones_ = _real_expansion(c, core(_ -> 1))
+    @test all(r -> r.sign == 1, ones_) && [r.coeff for r in ones_] == [r.coeff for r in new]
+end
