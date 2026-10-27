@@ -775,7 +775,7 @@ Decided 2026-10-26.
   `port(sys, key, node)` reads a joint port that a routed term caused to be formed, in any order of its factors, and throws otherwise.
   The adjoint of the `s = +1` joint port is not reused for the `s = −1` term of a cosine; both are formed, which is cheap.
 - **Tests.** `test/test_composite.jl` (fast tier: the multi-axis sandwich, forming on real and complex leaves, the truncated-child test where separate projection demonstrably fails, real versus complex agreement); `test/test_composite_slow.jl` (slow tier: mixed bases at both signs and at π and generic offsets, a `PeriodicGrid` real-path case against its complex twin, nesting through a grandchild); and a solver-agreement testset in `test/test_solvers.jl`.
-  The last compares `Dense` with `LOBPCG` on a degenerate spectrum, and all three solvers on a copy whose offset charges lift the degeneracy, because single-vector `Lanczos` does not resolve multiplets (Section 20c).
+  The last compares `Dense` with `LOBPCG` on a degenerate spectrum, and all three solvers on a copy whose offset charges lift the degeneracy, because single-vector `Lanczos` does not resolve multiplets (see the `Node` docstring in `src/tree.jl` and the `Lanczos` docstring).
 - **Z4 pilot.** The hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted.
   The rerun of the pilot with the root-operator Hermiticity check, and the convergence sweep (retentions, then primitive cutoffs), are pending on ewdesktop (Eli).
 

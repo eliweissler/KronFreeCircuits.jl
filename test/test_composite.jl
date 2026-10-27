@@ -1,4 +1,4 @@
-using KronFreeCircuits: _port_matrix, DenseOp
+using KronFreeCircuits: _port_matrix, DenseOp, Term, Factor, Coefficient, materialized, operator, _mode_leaves, _key_character
 
 # Two modes, `c` compact and `e` extended, coupled by one cosine on both: its factors `expiphi(±1)` on `c` and `e`.
 const ce_json = """
@@ -103,4 +103,78 @@ end
     @test arithmetic(sr, sr.root.node.children[1]) === :real && arithmetic(sc, sc.root.node.children[1]) === :complex
     @test port(sr, [(:a, expiphi(1)), (:b, expiphi(1))], sr.root.node.children[1]) isa Matrix{Float64}     # charge-basis expiphi: real character
     @test energies(sr) ≈ energies(sc) atol=1e-10
+end
+
+# The spectrum of the flat Hamiltonian `Hflat` projected onto the span of the root's children's kept states.
+projected_spectrum(sys, root, Hflat) = begin
+    P = foldl((acc, c) -> kron(_primitive(materialized(sys, c)), acc), root.children; init=ones(ComplexF64, 1, 1))
+    eigvals(Hermitian(P' * Hflat * P))
+end
+
+# `g n_b φ_c n_d` makes the key `(n_b, φ_c)` imaginary: the real-arithmetic child `bc` forms it as a purely imaginary matrix, which the real root consumes.
+@testset "imaginary joint key consumed at a real root, against the complex twin and the projected flat Hamiltonian" begin
+    using KronFreeCircuits: dense, localop
+    bg = PhaseGrid(-12.0, 12.0, 25; order=2)
+    bases = [:b => bg, :c => bg, :d => bg]
+    terms = Term[]
+    for (m, ec, el) in ((:b, 4.0, 0.5), (:c, 3.1, 0.7), (:d, 2.3, 0.9))   # distinct, so no degenerate truncation edge
+        push!(terms, Term(Coefficient(ec), [Factor(m, n2port())]))
+        push!(terms, Term(Coefficient(el), [Factor(m, phi2port())]))
+    end
+    push!(terms, Term(Coefficient(0.7), [Factor(:b, nport()), Factor(:c, phiport()), Factor(:d, nport())]))
+    θ = (;)
+    mk(arith) = Node([Node([:b => bg, :c => bg]; solver=Dense(), keep=lowest(9), arithmetic=arith),
+                      Node([:d => bg]; solver=Dense(), keep=lowest(5))]; solver=Dense(), arithmetic=arith)
+    rootr, rootc = mk(:auto), mk(:complex)
+    sr = materialize(rootr, terms, θ); sc = materialize(rootc, terms, θ)
+    bc = rootr.children[1]
+    @test arithmetic(sr) === :real && arithmetic(sr, bc) === :real
+    @test arithmetic(sc) === :complex
+    K = [(:b, nport()), (:c, phiport())]
+    @test _key_character(_mode_leaves(rootr), K).kind === :imaginary
+    Pj = port(sr, K, bc)
+    @test Pj isa Matrix{ComplexF64} && iszero(real(Pj))
+    Vbc = eigenvectors(sr, bc)
+    @test Pj ≈ Vbc' * kron(dense(localop(bg, phiport())), dense(localop(bg, nport()))) * Vbc atol=1e-11
+    M = Matrix(operator(sr))
+    @test eltype(M) === Float64
+    @test norm(M - M') <= 1e-12 * norm(M)
+    @test energies(sr) ≈ energies(sc) atol=1e-9
+    Hflat = primitive_hamiltonian(terms, θ, bases)
+    @test energies(sr) ≈ projected_spectrum(sr, rootr, Hflat) atol=1e-9
+end
+
+# Modes named so that the sorted order (ww, xx, yy, zz) differs from the tree order (zz, yy, xx, ww).
+@testset "a term hosted at an intermediate node with a joint group in its grandchild, non-alphabetical modes" begin
+    b = ChargeBasis(3)
+    zz, yy, xx, ww = :zz, :yy, :xx, :ww
+    bases = [zz => b, yy => b, xx => b, ww => b]
+    terms = Term[]
+    for (m, ec) in ((zz, 1.0), (yy, 1.3), (xx, 0.8), (ww, 1.1))
+        push!(terms, Term(Coefficient(ec), [Factor(m, n2port())]))
+    end
+    # hosted at the intermediate node [[zz, yy], xx]: factors on zz and yy (the grandchild's group) and on xx
+    push!(terms, Term(Coefficient(0.3), [Factor(xx, nport()), Factor(zz, nport()), Factor(yy, nport())]))
+    # hosted at the root: a cosine over all four modes, both signs
+    for s in (1, -1)
+        push!(terms, Term(Coefficient(0.5), [Factor(ww, expiphi(-s)), Factor(zz, expiphi(s)), Factor(xx, expiphi(s)), Factor(yy, expiphi(-s))]))
+    end
+    θ = (;)
+    zy = Node([zz => b, yy => b]; solver=Dense(), keep=lowest(6))
+    zyx = Node([zy, xx => b]; solver=Dense(), keep=lowest(10))
+    root = Node([zyx, Node([ww => b]; solver=Dense())]; solver=Dense())
+    sys = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(root, terms, θ)
+    @test arithmetic(sys) === :real
+    @test haskey(materialized(sys, zy).joint_ports, [(yy, nport()), (zz, nport())])
+    @test haskey(materialized(sys, zy).joint_ports, [(yy, expiphi(-1)), (zz, expiphi(1))])
+    @test haskey(materialized(sys, zyx).joint_ports, [(xx, expiphi(1)), (yy, expiphi(-1)), (zz, expiphi(1))])
+    Hflat = primitive_hamiltonian(terms, θ, bases)
+    @test energies(sys) ≈ projected_spectrum(sys, root, Hflat) atol=1e-10
+    M = Matrix(operator(sys))
+    @test norm(M - M') <= 1e-12 * norm(M)
+    zyc = Node([zz => b, yy => b]; solver=Dense(), keep=lowest(6), arithmetic=:complex)
+    zyxc = Node([zyc, xx => b]; solver=Dense(), keep=lowest(10), arithmetic=:complex)
+    rootc = Node([zyxc, Node([ww => b]; solver=Dense())]; solver=Dense(), arithmetic=:complex)
+    sysc = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(rootc, terms, θ)
+    @test energies(sys) ≈ energies(sysc) atol=1e-10
 end

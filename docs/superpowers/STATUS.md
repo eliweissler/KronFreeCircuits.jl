@@ -1,4 +1,4 @@
-# Status, 2026-10-20
+# Status, 2026-10-26
 
 ## Where things stand
 
@@ -11,6 +11,7 @@ All of this is on the branch `plan4-julia-integration`, which fast-forwards from
 Coefficients now share one compiled function per distinct expression (a fixed argument name in `_compile`), so a sweep through `materialize(spec)` no longer recompiles every coefficient at every point (about 35 ms per point before, 2.5 ms after on the zero-pi BO leaf).
 
 Verification on the branch (2026-10-20): the fast tier and the full suite (`KRONFREE_SLOW_TESTS=1`, every file, 600 s) pass on the Mac at dc4afc6; the device suite on ewdesktop (457/457) last passed at e2a6c62 and has not been rerun since the BO work.
+The full suite (`KRONFREE_SLOW_TESTS=1`, every file) passed on `composite-ports` at a199fe6 in 728 s on the Mac on 2026-10-26.
 The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the side-session notes folder of the session that ran them.
 
 Composite ports (joint ports) are done (2026-10-26) on the branch `composite-ports`, off `main`; merging and pushing are Eli's.

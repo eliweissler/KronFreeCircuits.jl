@@ -22,7 +22,7 @@ const abcd_json = """
  "cosines": [{"energy": "E_J", "omega": [1, -1, 1, -1], "offset": "pi"}]}
 """
 
-# Runs `f()`, passing if every record it logs it logs matches `rx` (an error-level record never matches); returns its value.
+# Runs `f()`, passing if every record it logs matches `rx` (an error-level record never matches); returns its value.
 function allowing(rx, f)
     logs, val = Test.collect_test_logs(f; min_level=Base.CoreLogging.Warn)
     unexpected = [l.message for l in logs if !(l.level == Base.CoreLogging.Warn && occursin(rx, l.message))]
@@ -67,6 +67,7 @@ end
     ce = Node([:c => bp, :e => be]; solver=Dense(), keep=lowest(8))
     sys = allowing(r"heavy hybridization", () -> materialize(Node([ce, Node([:h => bh]; solver=Dense())]; solver=Dense()), spec, θ))
     @test arithmetic(sys, ce) === :real                       # every factor is paired: the real-arithmetic joint-port path
+    @test arithmetic(sys) === :real                           # and the root is real too
     Vce = eigenvectors(sys, ce)
     @test port(sys, [(:c, expiphi(1)), (:e, expiphi(1))], ce) ≈ Vce' * kron(dense(localop(be, expiphi(1))), dense(localop(bp, expiphi(1)))) * Vce atol=1e-11
     # the real path is pinned against the complex one on the same tree

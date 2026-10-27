@@ -99,6 +99,7 @@ end
 # `:general` if any factor is; else `:paired` if any factor is, its partner the sorted key of the factors' partners;
 # else `:real` or `:imaginary` by the product of the factors' signs `σ`, its partner the key itself.
 # For a singleton key it agrees with `_factor_character` (`kind`, and `[partner]`).
+# For a `:paired` key the `partner` does not carry the product of the non-paired factors' `σ`, so a consumer that needs `conj(⊗O) = σ ⊗O_partner` must recompute `prod(σ)` itself (nothing on this branch consumes `partner`).
 function _key_character(leaves::Dict{Symbol,Any}, K::_FactorKey)
     chars = PortCharacter[_factor_character(leaves, Factor(m, p)) for (m, p) in K]
     any(c -> c.kind === :general, chars) && return (kind=:general, partner=K)

@@ -108,7 +108,7 @@ end
     @test arithmetic(sa) === :real && sa.root isa KronFreeCircuits.MaterializedNode{Float64}
     @test arithmetic(materialize(Node([:varphi_1 => PeriodicGrid(16; order=4)]; solver=Dense(), keep=lowest(3)), tr, θtr)) === :complex
     @test n.arithmetic === :complex && Node([:x => ChargeBasis(2)]).arithmetic === :auto
-    # a composite term on a :real node raises the composite error, not a conjugate-image one (checks run first)
+    # a composite term on a :real node raises the duplicate-mode error ("several factors on mode"), not a conjugate-image one (checks run first)
     comp = [Term(Coefficient("E*im", [:E]), [Factor(:a, nport()), Factor(:a, n2port())])]
     errc = try materialize(Node([:a => ChargeBasis(3)]; solver=Dense(), arithmetic=:real), comp, (E=1.0,)); nothing catch e; e end
     @test errc isa ArgumentError && occursin("several factors", errc.msg)
