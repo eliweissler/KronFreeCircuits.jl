@@ -95,14 +95,6 @@ function _factor_character(leaves::Dict{Symbol,Any}, f::Factor)
     end
 end
 
-const _FactorKey = Vector{Tuple{Symbol,Port}}
-
-_sortkey!(K::_FactorKey) = sort!(K; by=((m, p),) -> (m, p.kind, p.k))
-_factor_key(t::Term) = _sortkey!(Tuple{Symbol,Port}[(f.mode, f.port) for f in t.factors])
-
-_key_string(K::_FactorKey) = isempty(K) ? "no factors (a constant)" : join(("$(_portname(p)) on :$m" for (m, p) in K), " ⊗ ")
-_term_string(t::Term) = "$(_key_string(_factor_key(t))) with coefficient `$(t.coeff.ex)`"
-
 # The three test points: every parameter any coefficient uses, each drawn uniformly in [0.5, 2] from the fixed seed in
 # sorted name order, so the values depend only on the set of parameters.
 # A point is laid out like `θ` (its names in order, then any parameter `θ` lacks), with `1.0` for entries no coefficient

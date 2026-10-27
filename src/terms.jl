@@ -244,3 +244,11 @@ function constant_term(spec::Spec, bases::AbstractDict)
     quad = _sum(spec.n_g[i] * spec.E_C[i, j] * spec.n_g[j] for i in 1:N, j in 1:N if !tw[i] && !tw[j])
     return spec.constant + 4 * quad
 end
+
+const _FactorKey = Vector{Tuple{Symbol,Port}}
+
+_sortkey!(K::_FactorKey) = sort!(K; by=((m, p),) -> (m, p.kind, p.k))
+_factor_key(t::Term) = _sortkey!(Tuple{Symbol,Port}[(f.mode, f.port) for f in t.factors])
+
+_key_string(K::_FactorKey) = isempty(K) ? "no factors (a constant)" : join(("$(_portname(p)) on :$m" for (m, p) in K), " ⊗ ")
+_term_string(t::Term) = "$(_key_string(_factor_key(t))) with coefficient `$(t.coeff.ex)`"

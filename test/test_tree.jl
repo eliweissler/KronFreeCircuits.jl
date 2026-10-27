@@ -15,6 +15,24 @@ using KronFreeCircuits: Node, Dense, Lanczos, lowest, modes, isleaf, axis_of, ro
     @test_throws ArgumentError route(Node([:theta1 => c]), ts)
 end
 
+@testset "joint port requests" begin
+    using KronFreeCircuits: required_joint_ports, _axis_groups, Term, Factor, Coefficient, expiphi
+    ab = Node([:a => ChargeBasis(3), :b => ChargeBasis(3)]); abc = Node([ab, :c => ChargeBasis(3)])
+    root = Node([abc, Node([:d => ChargeBasis(3)])])
+    cosine(s) = Term(Coefficient("E", [:E]), [Factor(:a, expiphi(s)), Factor(:b, expiphi(-s)), Factor(:c, expiphi(s)), Factor(:d, expiphi(-s))])
+    single = Term(Coefficient("g", [:g]), [Factor(:b, nport()), Factor(:d, nport())])
+    r = route(root, [cosine(1), cosine(-1), single])
+    @test _axis_groups(root, cosine(1)) == [(1, [(:a, expiphi(1)), (:b, expiphi(-1)), (:c, expiphi(1))]), (2, [(:d, expiphi(-1))])]
+    jp = required_joint_ports(root, r)
+    @test jp[abc] == [[(:a, expiphi(1)), (:b, expiphi(-1)), (:c, expiphi(1))], [(:a, expiphi(-1)), (:b, expiphi(1)), (:c, expiphi(-1))]]
+    @test jp[ab] == [[(:a, expiphi(1)), (:b, expiphi(-1))], [(:a, expiphi(-1)), (:b, expiphi(1))]]
+    @test isempty(jp[root]) && isempty(jp[root.children[2]])
+    rp = required_ports(root, r)
+    @test rp[root.children[2]] == [(:d, expiphi(-1)), (:d, expiphi(1)), (:d, nport())]   # singles are still requested
+    @test rp[ab] == [(:b, nport())]                                                     # grouped factors are not
+    @test rp[abc] == [(:b, nport())]
+end
+
 @testset "Node validation" begin
     c = ChargeBasis(4)
     @test isleaf(Node([:a => c])) && !isleaf(Node([Node([:a => c])]))

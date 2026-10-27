@@ -505,12 +505,28 @@ function route(root::Node, terms::Vector{Term})
     return routed
 end
 
+# The key's entries grouped by the child of `node` they fall in: `(axis, sorted key)`, in increasing axis order.
+function _axis_groups(node::Node, K::_FactorKey)
+    groups = Dict{Int,_FactorKey}()
+    for (m, p) in K
+        push!(get!(groups, axis_of(node, m), Tuple{Symbol,Port}[]), (m, p))
+    end
+    return [(a, _sortkey!(groups[a])) for a in sort!(collect(keys(groups)))]
+end
+_axis_groups(node::Node, t::Term) = _axis_groups(node, _factor_key(t))
+
+# The sorted key of `t`'s factors that lie inside `node`.
+# For an ancestor's term these all fall in one child of that ancestor, so they are one group:
+# a single port if there is one factor, a joint port if there are two or more.
+_inside_key(node::Node, t::Term, inside=Set(modes(node))) = filter(((m, p),) -> m in inside, _factor_key(t))
+
 """
     required_ports(root, routed) -> IdDict{Node,Vector{Tuple{Symbol,Port}}}
 
 The `(mode, port)` operators each node must expose to its ancestors.
-In order, deduplicated: the factors inside the node of terms routed to strict ancestors; each
-strict ancestor's `ports_needed(keep)` and `ports` on modes inside the node, outermost ancestor
+In order, deduplicated: a factor of a term routed to a strict ancestor, when it is the term's only factor inside the node
+(two or more factors inside the node make a joint port, see [`required_joint_ports`](@ref));
+each strict ancestor's `ports_needed(keep)` and `ports` on modes inside the node, outermost ancestor
 first (an ancestor forms those ports from its children's, so every node on the path down to the
 mode's leaf exposes them); the node's own `ports_needed(keep)` and `ports`.
 An ancestor's `nport()` on a twisted ([`PeriodicGrid`](@ref)) mode is requested as its three derivative pieces
@@ -524,8 +540,9 @@ function required_ports(root::Node, routed::IdDict)
         req = Tuple{Symbol,Port}[]
         if !isempty(ancestors)
             inside = Set(modes(node))
-            for a in ancestors, t in get(routed, a, Term[]), f in t.factors
-                f.mode in inside && push!(req, (f.mode, f.port))
+            for a in ancestors, t in get(routed, a, Term[])
+                K = _inside_key(node, t, inside)
+                length(K) == 1 && push!(req, only(K))
             end
             for a in ancestors, (m, p) in Iterators.flatten((ports_needed(a.keep), a.ports))
                 m in inside || continue
@@ -538,6 +555,33 @@ function required_ports(root::Node, routed::IdDict)
         end
         append!(req, ports_needed(node.keep))
         append!(req, node.ports)
+        out[node] = unique!(req)
+        for ch in _subnodes(node)
+            visit(ch, vcat(ancestors, node))
+        end
+    end
+    visit(root, Node[])
+    return out
+end
+
+"""
+    required_joint_ports(root, routed) -> IdDict{Node,Vector{_FactorKey}}
+
+The joint ports each node must expose to its ancestors: the sorted keys of the factors inside the node
+of terms routed to strict ancestors, when a term has two or more.
+In order of first appearance, deduplicated; a node with no joint request maps to an empty vector.
+"""
+function required_joint_ports(root::Node, routed::IdDict)
+    out = IdDict{Node,Vector{_FactorKey}}()
+    function visit(node::Node, ancestors::Vector{Node})
+        req = _FactorKey[]
+        if !isempty(ancestors)
+            inside = Set(modes(node))
+            for a in ancestors, t in get(routed, a, Term[])
+                K = _inside_key(node, t, inside)
+                length(K) >= 2 && push!(req, K)
+            end
+        end
         out[node] = unique!(req)
         for ch in _subnodes(node)
             visit(ch, vcat(ancestors, node))
