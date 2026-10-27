@@ -370,7 +370,8 @@ end
     cS = constant_term(spec)(θs)
     truncated_child(mn::MaterializedNode{T}, k) where {T} =
         MaterializedNode{T}(mn.node, mn.dims, mn.energies[1:k], mn.vectors[:, 1:k], mn.kept[1:k],
-                         Dict(key => P[1:k, 1:k] for (key, P) in mn.ports), mn.children, mn.peak_component[1:k],
+                         Dict(key => P[1:k, 1:k] for (key, P) in mn.ports),
+                         Dict(key => P[1:k, 1:k] for (key, P) in mn.joint_ports), mn.children, mn.peak_component[1:k],
                          mn.peak_amplitudes[1:k, 1:k])
     s20 = LOBPCG(; on=ON)
     cut = Any[]
