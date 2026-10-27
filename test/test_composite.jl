@@ -11,6 +11,19 @@ const ce_json = """
  "cosines": [{"energy": "E_J", "omega": [1, 1], "offset": "0"}]}
 """
 
+# Three compact modes coupled by one cosine on all three: grouping `a` and `b` in one child makes its terms joint.
+# Every leaf of such a tree holds only charging terms, so its kept states are bare charge states, and those on negative
+# charges have no weight on the phase mask (a warning, captured below).
+const abc_json = """
+{"format": "kronfree-spec", "version": 1, "units": "GHz",
+ "parameters": ["E_C", "E_J"],
+ "modes": [{"name": "a", "type": "c"}, {"name": "b", "type": "c"}, {"name": "c", "type": "c"}],
+ "E_C": [["E_C", "0", "0"], ["0", "E_C", "0"], ["0", "0", "E_C"]],
+ "E_L": [["0", "0", "0"], ["0", "0", "0"], ["0", "0", "0"]],
+ "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
+ "cosines": [{"energy": "E_J", "omega": [1, 1, 1], "offset": "0"}]}
+"""
+
 @testset "_port_matrix over several axes equals the Kronecker sandwich" begin
     rng = MersenneTwister(11); dims = [3, 4, 2]
     V = randn(rng, ComplexF64, prod(dims), 5)
@@ -69,4 +82,37 @@ end
         @test P ≈ sandwich(pc, pe) atol=1e-12
         re0 && @test iszero(real(P))
     end
+end
+
+@testset "truncated child: joint port is V† A_joint V, separate projection is not" begin
+    spec = KronFreeCircuits.parse_spec(abc_json); θ = (E_C=1.0, E_J=1.0)
+    ba = ChargeBasis(4); ab = Node([:a => ba, :b => ba]; solver=Dense(), keep=lowest(6), ports=[(:a, expiphi(1))]); c = Node([:c => ba]; solver=Dense())
+    root = Node([ab, c]; solver=Dense())
+    sys = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(root, spec, θ)
+    Vab = eigenvectors(sys, ab)                        # 81 × 6, phase-fixed kept vectors
+    Ea = KronFreeCircuits.dense(KronFreeCircuits.localop(ba, expiphi(1)))
+    Ajoint = kron(Ea, Ea)                              # kron(B_b, A_a): axis 1 (a) fastest
+    Pj = port(sys, [(:a, expiphi(1)), (:b, expiphi(1))], ab)
+    @test Pj ≈ Vab' * Ajoint * Vab atol=1e-12
+    @test port(sys, [(:a, expiphi(-1)), (:b, expiphi(-1))], ab) ≈ Pj' atol=1e-12          # adjoint pair
+    Psep = (Vab' * kron(I(9), Ea) * Vab) * (Vab' * kron(Ea, I(9)) * Vab)   # ChargeBasis(4) has 9 states
+    @test norm(Psep - Pj) > 1e-3 * norm(Pj)            # the separate projection demonstrably differs
+    # the root's spectrum is that of the independently projected flat Hamiltonian
+    Hflat = primitive_hamiltonian(circuit_terms(spec), θ, [:a => ba, :b => ba, :c => ba])
+    P = kron(_primitive(KronFreeCircuits.materialized(sys, c)), _primitive(KronFreeCircuits.materialized(sys, ab)))
+    Hred = Hermitian(P' * Hflat * P)
+    @test norm(Hred - Hred') <= 1e-12 * norm(Hred)
+    @test energies(sys) ≈ eigvals(Hred) atol=1e-10
+    @test_throws ArgumentError port(sys, [(:a, expiphi(2)), (:b, expiphi(2))], ab)
+    @test port(sys, [(:a, expiphi(1))], ab) == port(sys, :a, expiphi(1), ab)             # a singleton key delegates to the (mode, Port) method
+end
+
+@testset "real and complex arithmetic agree on a joint-port tree" begin
+    spec = KronFreeCircuits.parse_spec(abc_json); θ = (E_C=1.0, E_J=1.0); ba = ChargeBasis(4)
+    mk(arith) = Node([Node([:a => ba, :b => ba]; solver=Dense(), keep=lowest(6), arithmetic=arith), Node([:c => ba]; solver=Dense())]; solver=Dense())
+    sr = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(mk(:auto), spec, θ)
+    sc = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(mk(:complex), spec, θ)
+    @test arithmetic(sr, sr.root.node.children[1]) === :real && arithmetic(sc, sc.root.node.children[1]) === :complex
+    @test port(sr, [(:a, expiphi(1)), (:b, expiphi(1))], sr.root.node.children[1]) isa Matrix{Float64}     # charge-basis expiphi: real character
+    @test energies(sr) ≈ energies(sc) atol=1e-10
 end

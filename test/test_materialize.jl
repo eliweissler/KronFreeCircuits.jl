@@ -191,7 +191,7 @@ end
     flux = load_spec(fixture("fluxonium.json"))
     @test_throws ArgumentError materialize(Node([:varphi_1 => ChargeBasis(5)]), flux, (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π))
 end
-@testset "composite ports are rejected" begin
+@testset "composite ports: untruncated hierarchy equals the flat spectrum" begin
     json = """
     {"format": "kronfree-spec", "version": 1, "units": "GHz",
      "parameters": ["E_C", "E_J"],
@@ -201,12 +201,13 @@ end
      "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
      "cosines": [{"energy": "E_J", "omega": [1, 1, 1], "offset": "0"}]}
     """
-    spec = KronFreeCircuits.parse_spec(json)
-    tree = Node([Node([:a => ChargeBasis(3), :b => ChargeBasis(3)]), Node([:c => ChargeBasis(3)])])
-    err = try materialize(tree, spec, (E_C=1.0, E_J=1.0)); nothing catch e e end
-    @test err isa ArgumentError
-    @test occursin("[:a, :b]", err.msg) && occursin("[:a, :b, :c]", err.msg) &&
-          occursin("composite (multi-mode) ports are not yet supported", err.msg)
+    using KronFreeCircuits: circuit_terms
+    spec = KronFreeCircuits.parse_spec(json); θ = (E_C=1.0, E_J=1.0)
+    tree = Node([Node([:a => ChargeBasis(3), :b => ChargeBasis(3)]; solver=Dense()), Node([:c => ChargeBasis(3)])]; solver=Dense())
+    # the leaves hold only charging terms: their states on negative charges have no weight on the phase mask (a warning)
+    sys = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(tree, spec, θ)
+    Hflat = primitive_hamiltonian(circuit_terms(spec), θ, [:a => ChargeBasis(3), :b => ChargeBasis(3), :c => ChargeBasis(3)])
+    @test energies(sys) ≈ eigvals(Hermitian(Matrix(Hflat))) atol=1e-10
 end
 @testset "previous with a changed child kept count" begin
     θ = two_transmons_params(g=0.3); spec = load_spec(fixture("two_transmons.json"))
@@ -913,6 +914,11 @@ end
     @test_throws ErrorException _check_eltype(mn.node, true, complex(mn.vectors), mn.peak_amplitudes)
     leaves = KronFreeCircuits._mode_leaves(mn.node)
     key = (:varphi_1, nport())                                  # a ChargeBasis n is a real-character port
-    @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)), leaves) === Float64
-    @test_throws ErrorException _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(ComplexF64, 2, 2)), leaves)
+    none = Dict{KronFreeCircuits._FactorKey,KronFreeCircuits.NodeMatrix}()
+    @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)), none, leaves) === Float64
+    @test_throws ErrorException _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(ComplexF64, 2, 2)), none, leaves)
+    jkey = [(:varphi_1, nport()), (:varphi_1, n2port())]       # a stand-in joint key: real ⊗ real is real-character
+    @test _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)), Dict(jkey => zeros(2, 2)), leaves) === Float64
+    @test_throws ErrorException _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)),
+                                              Dict(jkey => zeros(ComplexF64, 2, 2)), leaves)
 end

@@ -126,8 +126,10 @@ Every node is classified once, from the term list and the tree, as real or compl
 option; see [`Node`](@ref)); a node with `arithmetic = :real` whose structure does not guarantee a real Hamiltonian
 throws an `ArgumentError`.
 
-A term routed to a branch node with two or more factors inside the same child would need a
-composite (multi-mode) port of that child; these are not supported and throw an `ArgumentError`.
+A term routed to a branch node with two or more factors inside the same child is applied through that child's joint
+port (`joint_ports` of [`MaterializedNode`](@ref)): the operator `V† (⊗ₐ Oₐ) V` of those factors, formed in the child's
+product basis before its projection onto the kept states, never a product of separately projected single ports.
+A term with two or more factors on one mode throws an `ArgumentError`.
 """
 materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
             previous::Union{Nothing,System}=nothing, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}()) =
@@ -158,12 +160,13 @@ function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, con
     _iszero(share) || (constant = constant + share)
     _check_periodic_harmonics(root, terms)
     routed = route(root, terms)
-    _check_composite(routed)
+    _check_duplicate_modes(routed)
     realnodes = classify(root, routed, constant, θ)
     needed = required_ports(root, routed)
+    needed_joint = required_joint_ports(root, routed)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, c, prev, realnodes, charges)
+    mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes, charges)
     return System(mroot, nothing, terms, θ, constant)
 end
 
@@ -231,20 +234,17 @@ function _check_bases(root::Node, modetypes::Dict{Symbol,Symbol})
     return nothing
 end
 
-# A term routed to a branch with two or more factors inside one child node would need a port on
-# several of that child's modes at once (a composite port); plan 1 does not form them.
-function _check_composite(routed)
+# A term with two or more factors on one mode would need a port of that mode's product of operators, which nothing
+# forms; several factors on distinct modes inside one child are applied through the child's joint port.
+function _check_duplicate_modes(routed)
     for (node, ts) in routed, t in ts
-        axes_ = [axis_of(node, f.mode) for f in t.factors]
-        for a in unique(axes_)
-            count(==(a), axes_) > 1 || continue
-            ch = node.children[a]
-            ch isa Node ||
-                throw(ArgumentError("a term on modes $(modes(t)) has several factors on mode :$(only(_child_modes(ch)))"))
-            throw(ArgumentError("a term on modes $(modes(t)) has several factors inside the child node " *
-                                "with modes $(modes(ch)); composite (multi-mode) ports are not yet supported"))
+        ms = [f.mode for f in t.factors]
+        for m in unique(ms)
+            count(==(m), ms) > 1 &&
+                throw(ArgumentError("a term on modes $(modes(t)) has several factors on mode :$m"))
         end
     end
+    return nothing
 end
 
 _childdim(b::Basis) = dimension(b)
@@ -508,8 +508,9 @@ function _resolve_node_solver(node::Node, children)
     return s
 end
 
-# (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators (a basis
-# child's, or a node child's ports), each node child's kept energies on its axis, and `constant`.
+# (2)-(3) The node's operator at θ: its routed `terms` on the children's local operators, one per axis (`_axis_ops`: a
+# basis child's, a node child's port, or a node child's joint port for two or more factors inside it), each node child's
+# kept energies on its axis, and `constant`.
 # With `real` (a node classified real) it is built from real data only: `Float64` terms from
 # `_real_node_terms` and `real(constant)`; otherwise it is `ComplexF64`, whatever the types of its data (a real child's
 # ports and energies are converted).
@@ -524,12 +525,7 @@ function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term
         constant = ComplexF64(constant)
         axisterms = AxisTerm[]
         for t in terms
-            fs = Tuple{Int,LocalOp}[]
-            for f in t.factors
-                a = axis_of(node, f.mode)
-                push!(fs, (a, _childop(children[a], f.mode, f.port)))
-            end
-            sort!(fs; by=first)          # one factor per axis: checked by _check_composite
+            fs = Tuple{Int,LocalOp}[(a, op) for (a, op, _) in _axis_ops(node, children, _factor_key(t))]
             push!(axisterms, AxisTerm(t.coeff(θ), fs))
         end
     end
@@ -542,26 +538,38 @@ function _node_operator(node::Node, solver::Solver, children, terms::Vector{Term
     return KronFreeOperator(dims, axisterms; constant=constant, block_capacity=capacity, on=storage(solver))
 end
 
-# The real terms of a real node: each routed term's expansion of `Re(c ⊗ O)` (`_real_expansion`), with the real terms
-# on equal keys summed, so a conjugate pair contributes its real terms once, doubled.
-# A key lists, per factor, `(axis, mode, canonical port, component)`: the mode is needed because a node child's axis
-# carries several modes, whose ports on that axis are different operators.
+# The real terms of a real node: each routed term's expansion of `Re(c ⊗ O)` (`_real_expansion`) on its operators, one
+# per axis (`_axis_ops`), with the real terms on equal keys summed, so a conjugate pair contributes its real terms once,
+# doubled.
+# A key lists, per axis, `(axis, canonical sub-key, component)`.
+# A single factor's sub-key is `[(mode, canonical port)]` with the sign of `_canonical_port`: the mode is needed because a
+# node child's axis carries several modes, whose ports on that axis are different operators.
+# A joint port's sub-key is its own key with sign `+1`: conjugate joint ports are not merged, and each term's expansion
+# is a real operator on its own.
 # A summed term keeps the components of the first term on its key, its coefficient mapped onto them by that term's sign.
-# A factor's character is its port's in the leaf of its mode, which a real node child's ports carry (spec Section 20f).
+# A factor's character is its port's in the leaf of its mode, and a joint port's its key's (`_key_character`), which a
+# real node child's ports carry (spec Section 20f).
 function _real_node_terms(node::Node, children, terms::Vector{Term}, θ::NamedTuple)
     leaves = _mode_leaves(node)
-    index = Dict{Vector{Tuple{Int,Symbol,Port,Bool}},Int}()
+    index = Dict{Vector{Tuple{Int,_FactorKey,Bool}},Int}()
     sums = Float64[]                       # summed coefficient on the canonical components
     firsts = Tuple{Int,Vector{Tuple{Int,LocalOp}}}[]   # the first term's sign and components
     for t in terms
-        fs = Tuple{Int,Symbol,LocalOp,PortCharacter}[]
-        for f in t.factors
-            a = axis_of(node, f.mode)
-            push!(fs, (a, f.mode, _childop(children[a], f.mode, f.port), _factor_character(leaves, f)))
+        fs = Tuple{Int,LocalOp,Symbol,Int}[]
+        canon = _FactorKey[]                # each axis's canonical sub-key
+        for (a, op, Ka) in _axis_ops(node, children, _factor_key(t))
+            if length(Ka) == 1
+                ch = _factor_character(leaves, Factor(only(Ka)...))
+                p, sgn = _canonical_port(ch)
+                push!(fs, (a, op, ch.kind, sgn))
+                push!(canon, Tuple{Symbol,Port}[(first(only(Ka)), p)])
+            else
+                push!(fs, (a, op, _key_character(leaves, Ka).kind, 1))
+                push!(canon, Ka)
+            end
         end
-        sort!(fs; by=first)          # one factor per axis: checked by _check_composite
-        for r in _real_expansion(t.coeff(θ), Tuple{Int,LocalOp,PortCharacter}[(a, op, ch) for (a, _, op, ch) in fs])
-            key = Tuple{Int,Symbol,Port,Bool}[(a, m, first(_canonical_port(ch)), inS) for ((a, m, _, ch), inS) in zip(fs, r.S)]
+        for r in _real_expansion(t.coeff(θ), fs)
+            key = Tuple{Int,_FactorKey,Bool}[(a, Kc, inS) for ((a, _, _, _), Kc, inS) in zip(fs, canon, r.S)]
             i = get!(index, key, length(sums) + 1)
             if i > length(sums)
                 push!(sums, r.coeff * r.sign)
@@ -597,10 +605,10 @@ end
 _solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
 _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
 
-function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev, realnodes, charges)
+function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, constant, prev, realnodes, charges)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, 0.0, _prev_child(prev, i), realnodes, charges) :
+        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes, charges) :
                         ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
     dims = Int[_childdim(c) for c in children]
@@ -699,10 +707,14 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         end
     end
 
-    # (8) The remaining required ports, on the kept vectors.
+    # (8) The remaining required ports, then the joint ports, on the phase-fixed kept vectors.
     for (mode, p) in needed[node]
         haskey(ports, (mode, p)) && continue
         ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p, charges, θ)
+    end
+    joint_ports = Dict{_FactorKey,NodeMatrix}()
+    for K in needed_joint[node]
+        joint_ports[K] = _joint_port(node, leaves, children, dims, V, K)
     end
 
     # (9) Grid edge support of the kept states.
@@ -713,21 +725,22 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, constant, prev
         isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
-    T = _check_eltype(node, realnode, V, peak_amps, ports, leaves)
-    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, Dict{_FactorKey,NodeMatrix}(), children, peak,
-                               peak_amps)
+    T = _check_eltype(node, realnode, V, peak_amps, ports, joint_ports, leaves)
+    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, joint_ports, children, peak, peak_amps)
 end
 
 # The element type a node is stored in, its classification's (`Float64` when `real`, else `ComplexF64`), asserted
-# against the data (vectors, peak amplitudes, and every port: `Float64` for a real-character port of a real node,
-# `ComplexF64` otherwise), so that a type leak cannot change a node's arithmetic silently in either direction.
-function _check_eltype(node::Node, real::Bool, V, peak_amps, ports=Dict(), leaves=nothing)
+# against the data (vectors, peak amplitudes, every port and every joint port: `Float64` for a real-character port or
+# joint port (`_key_character`) of a real node, `ComplexF64` otherwise), so that a type leak cannot change a node's
+# arithmetic silently in either direction.
+function _check_eltype(node::Node, real::Bool, V, peak_amps, ports=Dict(), joint_ports=Dict(), leaves=nothing)
     T = real ? Float64 : ComplexF64
     port_ok((key, P)) = eltype(P) === (real && _factor_character(leaves, Factor(key...)).kind === :real ? Float64 : ComplexF64)
-    eltype(V) === T && eltype(peak_amps) === T && all(port_ok, ports) ||
+    joint_ok((K, P)) = eltype(P) === (real && _key_character(leaves, K).kind === :real ? Float64 : ComplexF64)
+    eltype(V) === T && eltype(peak_amps) === T && all(port_ok, ports) && all(joint_ok, joint_ports) ||
         error("internal error: the node on modes $(modes(node)) is classified $(real ? "real" : "complex"), but its " *
-              "vectors are $(eltype(V)), its peak amplitudes $(eltype(peak_amps)) and its port types " *
-              "$(unique(eltype.(values(ports))))")
+              "vectors are $(eltype(V)), its peak amplitudes $(eltype(peak_amps)), its port types " *
+              "$(unique(eltype.(values(ports)))) and its joint port types $(unique(eltype.(values(joint_ports))))")
     return T
 end
 
@@ -786,6 +799,25 @@ function port(sys::System, mode::Symbol, p::Port, node::Node=sys.root.node)
     haskey(mn.ports, (mode, p)) && return mn.ports[(mode, p)]
     avail = join(("(:$m, $(_portname(q)))" for (m, q) in sort!(collect(keys(mn.ports)); by=string)), ", ")
     throw(ArgumentError("port $(_portname(p)) on mode :$mode was not formed for this node; available: " *
+                        (isempty(avail) ? "none" : avail)))
+end
+
+"""
+    port(sys, key::AbstractVector{Tuple{Symbol,Port}}, node=root) -> Matrix{Float64} or Matrix{ComplexF64}
+
+The joint port of the factors `key`, `[(mode, port), ...]` on distinct modes of `node`, in its kept eigenbasis, as
+stored: `V† (⊗ₐ Oₐ) V`, formed before the projection (see [`MaterializedNode`](@ref)).
+A key of one factor is the single port `port(sys, mode, p, node)`; a longer one is looked up in any order of its
+factors, and throws an `ArgumentError` when that joint port was not formed for `node` (only the joint ports that terms
+routed to its ancestors apply are formed).
+"""
+function port(sys::System, key::AbstractVector{Tuple{Symbol,Port}}, node::Node=sys.root.node)
+    length(key) == 1 && return port(sys, only(key)..., node)
+    mn = materialized(sys, node)
+    K = _sortkey!(collect(Tuple{Symbol,Port}, key))
+    haskey(mn.joint_ports, K) && return mn.joint_ports[K]
+    avail = join((_key_string(J) for J in sort!(collect(keys(mn.joint_ports)); by=string)), "; ")
+    throw(ArgumentError("joint port $(_key_string(K)) was not formed for this node; available: " *
                         (isempty(avail) ? "none" : avail)))
 end
 

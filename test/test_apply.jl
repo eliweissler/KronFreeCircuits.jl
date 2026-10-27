@@ -411,7 +411,9 @@ end
         x = randn(rng, ComplexF64, prod(dims))
         @test norm(H * x - (Tp + Tm) * x) <= 1e-10 * norm(x) * norm(M)
     end
-    # Grouping two of the cosine's modes inside one child needs a composite port: rejected.
+    # Grouping two of the cosine's modes inside one child: the term is applied through the child's joint port, and with
+    # the child keeping all its states the hierarchy is exact.
+    # Keeping every state of the grid on `e` puts kept states on its edges, which warns at any grid width.
     json = """
     {"format": "kronfree-spec", "version": 1, "units": "GHz",
      "parameters": ["E_C", "E_J", "E_L"],
@@ -421,11 +423,13 @@ end
      "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
      "cosines": [{"energy": "E_J", "omega": [1, 1, -1], "offset": "0.37*pi"}]}
     """
-    spec = KronFreeCircuits.parse_spec(json)
-    tree = Node([Node([:c => bc, :e => be]), Node([:h => bh])])
-    err = try materialize(tree, spec, (E_C=1.0, E_J=EJ, E_L=0.5)); nothing catch e e end
-    @test err isa ArgumentError
-    @test occursin("[:c, :e]", err.msg) && occursin("composite (multi-mode) ports are not yet supported", err.msg)
+    spec = KronFreeCircuits.parse_spec(json); θ = (E_C=1.0, E_J=EJ, E_L=0.5)
+    tree = Node([Node([:c => bc, :e => be]; solver=Dense()), Node([:h => bh]; solver=Dense())]; solver=Dense(), keep=lowest(6))
+    sys = @test_logs (:warn, r"PhaseGrid on mode :e is too small") match_mode=:any materialize(tree, spec, θ)
+    Hflat = primitive_hamiltonian(KronFreeCircuits.circuit_terms(spec, Dict(:c => bc, :e => be, :h => bh)), θ,
+                                  [:c => bc, :e => be, :h => bh])
+    Eflat = eigvals(Hermitian(Matrix(Hflat)))[1:6]
+    @test energies(sys) ≈ Eflat rtol=1e-9
 end
 
 @testset "sparse(H), gershgorin_bound, separable_eigenbases, product_seed" begin
