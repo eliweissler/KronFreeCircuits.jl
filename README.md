@@ -31,6 +31,7 @@ decompose(sys, top, 1)                 # bare product-state content of dressed s
 dressed_index(sys, top, (2, 1))        # dressed state that best matches bare state (2, 1)
 ```
 
+A term with several factors inside one child (a phase factor over several modes of a KITE, say) is applied through that child's joint port, formed in the child's product basis before its truncation (spec §20i); `port(sys, [(:varphi_1, expiphi(1)), (:varphi_4, expiphi(-1))], node)` reads one.
 Selection rules are `lowest`, `indices`, `connected`, and `follow`.
 By default each kept state's phase makes its full-space amplitude real and positive at one point: at a leaf, its largest entry with nonnegative coordinates; at a branch, the joint peak of its dominant product component.
 The spec's scalar constant is added at the root only, so the `energies` of child nodes exclude it.

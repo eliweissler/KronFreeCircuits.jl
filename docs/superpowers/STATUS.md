@@ -13,14 +13,19 @@ Coefficients now share one compiled function per distinct expression (a fixed ar
 Verification on the branch (2026-10-20): the fast tier and the full suite (`KRONFREE_SLOW_TESTS=1`, every file, 600 s) pass on the Mac at dc4afc6; the device suite on ewdesktop (457/457) last passed at e2a6c62 and has not been rerun since the BO work.
 The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the side-session notes folder of the session that ran them.
 
+Composite ports (joint ports) are done (2026-10-26) on the branch `composite-ports`, off `main`; merging and pushing are Eli's.
+A term with several factors inside one child is applied through that child's joint port, formed before the projection (architecture §20i; requirements `docs/superpowers/specs/2026-10-26-composite-ports-requirements.md`).
+The Z4 hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted; the pilot rerun and the convergence sweep are pending on ewdesktop.
+
 ## Next plan
 
 Pre-autodiff quick wins done (2026-10-20): test tiers, reduced specs cross-checked numerically against circuit-quantization, BO hardening, and the duplicate `_primitive` test helper removed; merging this branch into `main` is Eli's.
 Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3, deferred to plan 5).
+Z4 three-way pilot rerun on ewdesktop with the `composite-ports` branch (Eli): the command is in the requirements document; check that the hierarchy materializes, the root operator is Hermitian to roundoff, and record the lowest eight energies and the run time in the pilot's `run.json`; then the convergence sweep.
 Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "What stays complex": derivative operators and pullbacks promote to complex where a cotangent or derivative operator is complex).
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).
 Proposed by Eli (2026-10-20), not yet designed:
-- Local matrix-element queries in the full space after materialization (a single-mode operator, or a product across subsystems, between the root's kept states, lifted on demand through the stored eigenvectors); this is the core the noise plan's element operators would use. A product of factors on modes inside one child needs the composite port that is still design debt (§20a).
+- Local matrix-element queries in the full space after materialization (a single-mode operator, or a product across subsystems, between the root's kept states, lifted on demand through the stored eigenvectors); this is the core the noise plan's element operators would use. A product of factors on modes inside one child needs a joint port; the joint port now exists (§20i) for terms of the Hamiltonian, and only the user-requested form (`Node(ports=...)`, selection rules) is missing.
 - A more robust circuit ingest than the JSON interchange in the long term, such as a direct SymPy interface to circuit-quantization; today the interchange is guarded by load checks and, for the BO reduced specs, a numeric cross-check of spectra and potentials (`test/fixtures/bo/validate_reduced.py` → `test/fixtures/bo_reference/python_reduced_levels.json`, compared in `test/test_bo.jl`).
 
 ## Open items, in priority order

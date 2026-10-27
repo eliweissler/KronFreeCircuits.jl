@@ -513,7 +513,7 @@ Recorded here so the document stays the authority; each is also in the plan-1 le
 
 - Section 9: Dense returns the lowest `compute` pairs when `compute > 0` (above). `Lanczos` has `maxiter` (default 1000; KrylovKit's 100 did not converge a 9k-dimensional zero-pi leaf) and `verbosity` fields.
 - Section 9.1: `:follow` phase with no previous materialization (the first point of a sweep) falls back to `:positive_sector` instead of erroring; a node whose rule is `follow` defaults to the `:follow` phase.
-- Section 4 / 7.3: composite ports (a term routed to a branch with two factors inside the same child) are not supported in plan 1 and raise a clear error; multi-mode port keys are design debt for a later plan. `Factor` carries only a single-mode `Port`, so a data-valued operator (Section 13.1's surface fed back as a potential) has no entry into a `Term` yet; the mechanism is to be designed before plan 2 wraps `materialize` in differentiation rules.
+- Section 4 / 7.3: composite ports (a term routed to a branch with two factors inside the same child) were not supported in plan 1 and raised a clear error; multi-mode port keys were design debt for a later plan, since paid by the joint ports of Section 20i. `Factor` carries only a single-mode `Port`, so a data-valued operator (Section 13.1's surface fed back as a potential) has no entry into a `Term` yet; the mechanism is to be designed before plan 2 wraps `materialize` in differentiation rules.
 - Section 5.3: coefficient expressions are restricted to an allowlist of arithmetic and elementary functions and may not execute arbitrary code; the allowlist must include SymPy's dotted operators (`.* ./ .^ .+ .-`), which plan 1's implementation still lacks (ledger: parked, load-bearing for plan 5).
 - Section 6: the grid `exp2pin(k)` shift has the opposite sign from the plan's first draft (`ShiftOp(N, -2πk/Δ)`), fixed during implementation and pinned by a plane-wave test; the Fock `n` port is the charge operator $i n_{\rm zpf}(a^\dagger - a)$, not the number operator.
 - Section 16: the two-zero-pi acceptance test is gated behind `KRONFREE_SLOW_TESTS=1`; the ITensor reference implementation is deferred to plan 3. The scqubits references were generated with scqubits 4.3.1 from `/opt/anaconda3/envs/circuit_quantization`; the zero-pi leaf test does not pin port sign conventions (the symmetric spectrum is invariant under θ→−θ and φ→−φ), so matrix-element sign tests belong in plan 4.
@@ -747,6 +747,37 @@ The Born–Oppenheimer workflow of Section 13.1 is designed in `docs/superpowers
 Promotion is spec-level: `promote_mode` turns a mode of a `Spec` into a parameter and returns the fast `Spec`, so the term list, `materialize` and the tree are unchanged; a charge coupling between the slow and fast modes is rejected by expression, never by value.
 The surface reaches the slow stage only as a reduced one-mode spec (a Fourier `slow_spec` or a linear least-squares `fit_surfaces`), written with `save_spec`; the data-valued `DiagonalOp` entry into a `Term` (Section 20a) is still deferred to plan 5.
 Acceptance: the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ (arXiv:1811.07921v1, Appendix B) to 0.2% with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
+
+### 20i. Composite ports (2026-10-26)
+
+A term routed to a branch with several factors inside one child is now applied through a joint port of that child, the operator `V† (⊗ₐ Oₐ) V` of those factors, formed in the child's product basis before its projection onto the kept states.
+A product of separately projected single ports, `(V† A V)(V† B V)`, inserts the projector between the factors and drops excursions through discarded states; it is not an approximation of the joint port at a truncated child.
+The requirements and the motivating Z4 three-way hierarchy are in `docs/superpowers/specs/2026-10-26-composite-ports-requirements.md`; the plan is `docs/superpowers/plans/2026-10-26-composite-ports.md`.
+Decided 2026-10-26.
+
+- **Key.** A joint port is keyed by the sorted list of its `(mode, port)` factors (`_FactorKey`, `src/terms.jl`), stored in `MaterializedNode.joint_ports`; every key has two or more factors, and single-factor ports stay in `ports`.
+  A term's factors inside a node form one key, because all of them lie inside the one child of the ancestor that holds the term; only the node that forms the port splits the key by its own axes (`_axis_groups`, `src/tree.jl`).
+- **Request.** `required_joint_ports` (`src/tree.jl`) lists, for each node, the keys of terms routed to strict ancestors that have two or more factors inside the node.
+  `required_ports` no longer requests single ports for factors that belong to such a group.
+- **Forming.** `_joint_port` (`src/materialize.jl`) takes each child's operator for its group of the key (`_axis_ops`: a basis child's local operator, a node child's single port, or a node child's own joint port when the group has several factors, so joint ports nest), applies them in increasing axis order, and contracts with `V'` once (`_port_matrix`).
+  Forming needs two scratch blocks of `prod(dims) × kept`, and the stored result is a dense `kept × kept` matrix like every port.
+  The same `_axis_ops` feeds `_node_operator`, so a node's operator applies a joint port as one factor on its axis.
+- **Character.** `_key_character` (`src/character.jl`) gives a key the character `:general` if any factor has it, else `:paired` if any factor does, else `:real` or `:imaginary` by the product of the factors' signs σ.
+  A paired key's partner is the sorted key of the factors' partners; the σ sign of the non-paired factors is not carried in the partner, and any future consumer of the partner must recompute it.
+- **Real path.** On a real node a joint port is formed from real components by the subset expansion of Section 20f (`_real_expansion`, coefficient 1 for the real part and −i for the imaginary part, on each group's own character), so a real node never forms a complex product-basis block.
+  A real joint port is `Matrix{Float64}`; an imaginary, paired or general one is `Matrix{ComplexF64}`, and `_check_eltype` asserts this.
+  At the ancestor a joint factor enters the real operator with its own stored components, and conjugate joint pairs are not merged: each term's `Re(c O)` expansion is a correct real operator by itself, and merging would need the partner's sign.
+  This costs a few extra axis terms at the root, judged negligible.
+- **Which nodes are real.** A cosine mixing a charge-basis mode with a grid or Fock mode has no conjugate image in the term list, so its node is complex; a cosine over charge-basis modes only, or over paired bases only (`PhaseGrid`, `PeriodicGrid`, `FockBasis`), is real.
+  The three- and four-charge-mode test trees are real, and the mixed `ChargeBasis`/`PhaseGrid`/`FockBasis` tree is complex.
+- **Still rejected.** Two factors on the same mode in one term (`_check_duplicate_modes`: "has several factors on mode"), since nothing forms the product of two operators of one mode.
+- **Not implemented (a later item, for the matrix-element query work).** User-requested joint ports in `Node(ports=...)` and in a selection rule's `ports_needed` stay single-mode keys.
+  `port(sys, key, node)` reads a joint port that a routed term caused to be formed, in any order of its factors, and throws otherwise.
+  The adjoint of the `s = +1` joint port is not reused for the `s = −1` term of a cosine; both are formed, which is cheap.
+- **Tests.** `test/test_composite.jl` (fast tier: the multi-axis sandwich, forming on real and complex leaves, the truncated-child test where separate projection demonstrably fails, real versus complex agreement); `test/test_composite_slow.jl` (slow tier: mixed bases at both signs and at π and generic offsets, a `PeriodicGrid` real-path case against its complex twin, nesting through a grandchild); and a solver-agreement testset in `test/test_solvers.jl`.
+  The last compares `Dense` with `LOBPCG` on a degenerate spectrum, and all three solvers on a copy whose offset charges lift the degeneracy, because single-vector `Lanczos` does not resolve multiplets (Section 20c).
+- **Z4 pilot.** The hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted.
+  The rerun of the pilot with the root-operator Hermiticity check, and the convergence sweep (retentions, then primitive cutoffs), are pending on ewdesktop (Eli).
 
 ## 21. Builder check
 
