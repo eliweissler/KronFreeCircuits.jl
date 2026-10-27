@@ -1329,3 +1329,34 @@ end
     @test eltype(Vc) === ComplexF64
     @test Ec ≈ Ed[1:m] atol=1e-7
 end
+
+@testset "composite ports: Dense, LOBPCG and Lanczos agree on a joint-port root" begin
+    using KronFreeCircuits: operator, energies, Node, ChargeBasis, lowest, materialize, parse_spec
+    # The `abc_json` tree is symmetric, so its levels come in multiplets (up to four-fold) that a single-vector Lanczos
+    # does not resolve (see the `Lanczos` docstring): Dense and LOBPCG are compared on it as given, and all three solvers
+    # on a copy whose offset charges `n_g` differ and so lift the multiplets.
+    lifted = replace(abc_json, "\"n_g\": [\"0\", \"0\", \"0\"]" => "\"n_g\": [\"0.1\", \"0.25\", \"0.4\"]")
+    @test lifted != abc_json
+    θ = (E_C=1.0, E_J=1.0); b = ChargeBasis(8)                                   # 17 states per leaf, 289 in the child
+    function build(spec, solver)
+        ab = Node([:a => b, :b => b]; solver=Dense(), keep=lowest(12))
+        root = Node([ab, Node([:c => b]; solver=Dense())]; solver, compute=8)
+        return @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(root, spec, θ)
+    end
+    for (label, json, names) in (("symmetric", abc_json, (:dense, :lobpcg)), ("lifted", lifted, (:dense, :lobpcg, :lanczos)))
+        spec = parse_spec(json)
+        solvers = Dict(:dense => Dense(), :lobpcg => LOBPCG(), :lanczos => Lanczos())
+        sys = Dict(n => build(spec, solvers[n]) for n in names)
+        E = Dict(n => energies(sys[n]) for n in names)
+        @test all(length(E[n]) == 8 for n in names)
+        for (i, n1) in enumerate(names), n2 in names[i+1:end]
+            @test E[n1] ≈ E[n2] atol=1e-8
+        end
+        # the root operator applied to a block equals its assembled matrix times that block
+        for n in names
+            op = operator(sys[n]); M = Matrix(op)
+            X = randn(MersenneTwister(5), ComplexF64, size(M, 2), 4)
+            @test norm(op * X - M * X) <= 1e-10 * norm(M * X)
+        end
+    end
+end

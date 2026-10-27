@@ -381,3 +381,16 @@ function dense_zero_pi_bo_reference(θ, grid, basis)
     end
     return out
 end
+
+# Three compact modes coupled by one cosine on all three: grouping `a` and `b` in one child makes its terms joint.
+# Every leaf of such a tree holds only charging terms, so its kept states are bare charge states, and those on negative
+# charges have no weight on the phase mask (a warning, captured by the tests).
+const abc_json = """
+{"format": "kronfree-spec", "version": 1, "units": "GHz",
+ "parameters": ["E_C", "E_J"],
+ "modes": [{"name": "a", "type": "c"}, {"name": "b", "type": "c"}, {"name": "c", "type": "c"}],
+ "E_C": [["E_C", "0", "0"], ["0", "E_C", "0"], ["0", "0", "E_C"]],
+ "E_L": [["0", "0", "0"], ["0", "0", "0"], ["0", "0", "0"]],
+ "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
+ "cosines": [{"energy": "E_J", "omega": [1, 1, 1], "offset": "0"}]}
+"""
