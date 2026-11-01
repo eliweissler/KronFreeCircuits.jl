@@ -18,7 +18,7 @@ Composite ports (joint ports) are done (2026-10-26) on the branch `composite-por
 A term with several factors inside one child is applied through that child's joint port, formed before the projection (architecture §20i; requirements `docs/superpowers/specs/2026-10-26-composite-ports-requirements.md`).
 The Z4 hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted; the pilot rerun and the convergence sweep are pending on ewdesktop.
 
-The periodic-gauge change (2026-10-30/11-01) is on the branch `periodic-gauge`, off `main`; merging and pushing are Eli's.
+The periodic-gauge change (2026-10-30/11-01) is merged into `main` (fast-forward, 2026-11-01); pushing is Eli's.
 
 ## Next plan
 
