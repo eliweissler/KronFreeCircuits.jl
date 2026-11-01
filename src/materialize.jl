@@ -833,16 +833,10 @@ port(sys::System, kind::Symbol, mode::Symbol, node::Node=sys.root.node; k::Real=
 """
     charge_port(sys, mode) -> Matrix{Float64} or Matrix{ComplexF64}
 
-The physical charge `n` of `mode` in the kept eigenbasis of the leaf that holds it, computed on
-demand from that leaf's kept vectors, in its natural type (as [`port`](@ref)): real for a `ChargeBasis` mode of a leaf
-in real arithmetic, complex otherwise (always on a `PeriodicGrid` mode).
-For a [`PeriodicGrid`](@ref) mode it is `V'(D₁)V + n_g I`, with the twisted derivative
-`D₁ = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋` (which is `n - n_g` in the twisted gauge) and
-`n_g` the mode's offset charge from `sys.spec`, both evaluated at `sys.θ`; it needs a system built
-from a spec.
-For a `ChargeBasis` mode it is `V' n V`.
-On either basis it equals `port(sys, mode, nport(), leaf)` when that port was formed (on a `PeriodicGrid` mode,
-which serves no `nport()` itself, the spec form of [`materialize`](@ref) assembles it from the same pieces).
+The physical charge `n` of `mode` in the kept eigenbasis of the leaf that holds it, `V′ n V`, computed on demand from
+that leaf's kept vectors, in the port's natural type (as [`port`](@ref)): real for a real-character `n` (a `ChargeBasis`
+mode of a leaf in real arithmetic), complex for a grid's imaginary `n` or on a complex node.
+It equals `port(sys, mode, nport(), leaf)` when that port was formed.
 """
 function charge_port(sys::System, mode::Symbol)
     leaf = _leaf_holding(sys.root, mode)
@@ -850,14 +844,7 @@ function charge_port(sys::System, mode::Symbol)
     a = axis_of(leaf.node, mode)
     b = leaf.children[a]
     V, dims = leaf.vectors, leaf.dims
-    b isa PeriodicGrid || return _port_matrix(V, dims, a, localop(b, nport()), character(b, nport()))
-    sys.spec === nothing &&
-        throw(ArgumentError("charge_port on the PeriodicGrid mode :$mode needs its offset charge, but the system " *
-                            "was built from a term list; materialize it from a spec"))
-    idx = findfirst(m -> m.name === mode, sys.spec.modes)
-    idx === nothing && throw(ArgumentError("mode :$mode is not a mode of the system's spec"))
-    return _assembled_charge(p -> _port_matrix(V, dims, a, localop(b, p), character(b, p)), sys.spec.n_g[idx], sys.θ,
-                             size(V, 2))
+    return _port_matrix(V, dims, a, localop(b, nport()), character(b, nport()))
 end
 
 # The materialized node with a `mode => basis` child, or `nothing`.

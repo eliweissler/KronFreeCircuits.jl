@@ -40,11 +40,10 @@ PhaseGrid(a::Real, b::Real, N::Integer; order::Integer=8) = PhaseGrid(a, b, N, o
 
 Compact-mode phase grid on `[-π, π)` without the endpoint, `φ_i = -π + 2π i/N` for
 `i = 0..N-1`, spacing `Δ = 2π/N`, with central finite-difference stencils of the given `order`
-(2, 4, 6 or 8) that wrap around the circle.
-The basis carries no offset charge, so its operators are parameter-free.
-A wrapped stencil is split into an interior band and two wrap corners; the twisted boundary
-`ψ(φ + 2π) = e^{-2πi n_g} ψ(φ)` enters through the coefficients `e^{±2πi n_g}` that term
-construction puts on the corners.
+(2, 4, 6 or 8) that wrap around the circle (periodic boundary condition, the *periodic gauge*).
+The basis carries no offset charge and its operators are parameter-free: the offset charge enters
+only through the coefficients of the canonical quadratic form `4 (n - n_g)ᵀ E_C (n - n_g)` (see
+[`circuit_terms`](@ref)), exactly as on every other basis.
 `sectors` adds the requirement that `N` be divisible by it, beyond the harmonics declared on the
 mode (see `check_sectors`).
 
@@ -52,24 +51,14 @@ Ports:
 
 | port | operator |
 |:-----|:---------|
-| `Port(:d1, 0)` | interior band of `-i ∂_φ` (stencil entries that stay inside `1:N`) |
-| `Port(:d1wrap, ±1)` | wrap corners of `-i ∂_φ` (convention below) |
-| `Port(:d2, 0)`, `Port(:d2wrap, ±1)` | the same split of `-∂_φ²` |
+| `nport()` | the cyclic central stencil of `-i ∂_φ` (imaginary, Hermitian) |
+| `n2port()` | the cyclic central stencil of `-∂_φ²` (real, symmetric) |
 | `expiphi(k)`, integer `k` | diagonal `e^{ikφ}` |
 
-Corner convention, for each stencil reach `j = 1..order/2`:
-`Port(:d·wrap, +1)` is the upper-right corner, rows `i ≤ j`, column `i - j + N` (`BandedOp`
-offset `N - j`), and carries `e^{+2πi n_g}`, since `ψ(φ - 2π) = e^{+2πi n_g} ψ(φ)`;
-`Port(:d·wrap, -1)` is the lower-left corner, rows `i > N - j`, column `i + j - N` (offset
-`j - N`), the exact adjoint of `+1`, and carries `e^{-2πi n_g}`.
-
-The twisted operators `d + e^{2πi n_g} d₊ + e^{-2πi n_g} d₋` are Hermitian for real `n_g` since
-`d₋ = d₊'`.
-The twisted second derivative `d2 + e^{2πi n_g} d2wrap₊ + e^{-2πi n_g} d2wrap₋` is real when the
-twist phase is ±1, i.e. `n_g ∈ {0, ½}`, so a single uncoupled mode's Hamiltonian is real there.
-The `d1` pieces are imaginary-antisymmetric like `PhaseGrid`'s `:n`.
-The ports `:n` and `:n2` are not served: term construction assembles the charge from the
-derivative pieces and the offset charge.
+Plane waves `e^{ikφ}` with integer `k` are exact eigenvectors of both stencils, with symbols
+`σ₁(k) = Σ_j w¹_j sin(jkΔ)/Δ ≈ k` and `σ₂(k) = -Σ_j w²_j cos(jkΔ)/Δ² ≈ k²`, so the free rotor's
+discrete spectrum is `4 E_C (σ₂(k) - 2 n_g σ₁(k) + n_g²)`; at `n_g = ½` the pairs `(k, 1 - k)` are
+degenerate only to `O(Δ^order)`.
 `:phi` and `:phi2` are not served because `φ` is multivalued on a circle, and `:exp2pin` is a
 later item.
 """
@@ -87,8 +76,6 @@ struct PeriodicGrid <: Basis
     end
 end
 PeriodicGrid(N::Integer; order::Integer=8, sectors::Integer=1) = PeriodicGrid(N, order, sectors)
-
-_is_twisted(::PeriodicGrid) = true          # term construction uses its derivative pieces (terms.jl)
 
 """
     FockBasis(N; phi_zpf)
@@ -210,52 +197,38 @@ function localop(b::PhaseGrid, p::Port)
     throw(_unavailable(b, p))
 end
 
-# How the charge of a `PeriodicGrid` mode, which the basis does not serve as a port, is obtained.
+# Kept until the twisted-gauge charge assembly in materialize.jl is removed (its error message cites it).
 const _PERIODIC_PIECES =
     "n = d1 + cispi(2 n_g)·d1wrap₊ + cispi(−2 n_g)·d1wrap₋ + n_g·I, from the ports Port(:d1, 0), Port(:d1wrap, 1) and " *
     "Port(:d1wrap, -1) (for a Term: three terms whose coefficients carry the twist factors twist_factor(n_g, ±1), plus " *
     "the n_g·I share folded into the remaining factors)"
 
-const _PERIODIC_CHARGE_ROUTES =
-    "materialize from a spec, which expands nport() on a PeriodicGrid mode automatically (in ports=, selection rules " *
-    "and extra_terms) into " * _PERIODIC_PIECES
-
 const _PERIODIC_UNAVAILABLE = Dict(
-    :n => "the charge is assembled from the derivative ports :d1, :d1wrap and the offset charge; " *
-          _PERIODIC_CHARGE_ROUTES,
-    :n2 => "the charge squared is assembled by term construction from the derivative ports :d2, :d2wrap and the offset " *
-           "charge; for the charge n itself, request nport(), which the spec form of materialize assembles automatically",
     :phi => "φ is multivalued on a circle; use expiphi(k) with integer k",
     :phi2 => "φ is multivalued on a circle; use expiphi(k) with integer k",
     :exp2pin => "exp2pin on a periodic grid is not implemented yet",
 )
 
-# Interior band (corner = 0) or one wrap corner of the wrapped central stencil
-# `Y[i] = Σ_j c[j+h+1] X[mod1(i + j, N)]`, `j = -h..h`. The upper corner (corner = +1) holds the
-# entries with `i + j < 1` (rows `i ≤ -j`, column `i + j + N`), the lower corner (corner = -1)
-# those with `i + j > N` (rows `i > N - j`, column `i + j - N`).
-function _periodic_stencil(N::Int, h::Int, c::Vector{T}, corner::Int) where {T}
+# The cyclic central stencil `Y[i] = Σ_{j=-h..h} c[j+h+1] X[mod1(i + j, N)]` as one `BandedOp`: every nonzero
+# `j` is an interior offset, and a wrapped neighbour `i + j` outside `1:N` is column `mod1(i + j, N)`, i.e. the
+# extra offsets `j + N` (for `j < 0`) and `j - N` (for `j > 0`); each weight vector is zero on the rows where its
+# offset leaves `1:N`.
+function _cyclic_stencil(N::Int, h::Int, c::Vector{T}) where {T}
     js = [j for j in -h:h if !iszero(c[j+h+1])]
-    corner == 1 && filter!(<(0), js)
-    corner == -1 && filter!(>(0), js)
-    # a wrapped neighbour i + j outside 1:N is column mod1(i + j, N): offset j + N below 1, j - N above N
-    offs = [j + (corner == 1 ? N : corner == -1 ? -N : 0) for j in js]
-    ws = [T[1 <= i + o <= N ? c[j+h+1] : zero(T) for i in 1:N] for (j, o) in zip(js, offs)]
+    offs = Int[]; ws = Vector{T}[]
+    for j in js, o in (j < 0 ? (j, j + N) : j > 0 ? (j, j - N) : (j,))
+        push!(offs, o)
+        push!(ws, T[1 <= i + o <= N ? c[j+h+1] : zero(T) for i in 1:N])
+    end
     return BandedOp(N, offs, ws)
 end
 
 function localop(b::PeriodicGrid, p::Port)
     N, Δ, h = b.N, spacing(b), b.order ÷ 2
-    if p.kind in (:d1, :d2, :d1wrap, :d2wrap)
-        wrap = p.kind in (:d1wrap, :d2wrap)
-        if wrap
-            p.k in (1, -1) || throw(ArgumentError("PeriodicGrid: port $(_portname(p)) needs k = +1 or -1 (the corner)"))
-        else
-            iszero(p.k) || throw(ArgumentError("PeriodicGrid: port $(p.kind) takes k = 0, got k = $(p.k)"))
-        end
-        c = p.kind in (:d1, :d1wrap) ? ComplexF64.(-im .* fd_weights(b.order, 1) ./ Δ) :   # -i ∂_φ
-                                       -fd_weights(b.order, 2) ./ Δ^2                       # -∂_φ²
-        return _periodic_stencil(N, h, c, wrap ? Int(p.k) : 0)
+    if p.kind in (:n, :n2)
+        iszero(p.k) || throw(ArgumentError("PeriodicGrid: port $(p.kind) takes k = 0, got k = $(p.k)"))
+        return p.kind === :n ? _cyclic_stencil(N, h, ComplexF64.(-im .* fd_weights(b.order, 1) ./ Δ)) :   # -i ∂_φ
+                               _cyclic_stencil(N, h, -fd_weights(b.order, 2) ./ Δ^2)                       # -∂_φ²
     elseif p.kind === :expiphi
         abs(p.k - round(p.k)) <= 1e-12 ||
             throw(ArgumentError("PeriodicGrid: port expiphi($(p.k)) needs an integer k on a 2π-periodic grid"))

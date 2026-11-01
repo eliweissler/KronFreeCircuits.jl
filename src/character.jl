@@ -45,8 +45,8 @@ end
 
 function character(b::PeriodicGrid, p::Port)
     localop(b, p)                                           # validates the port exactly as `localop` does
-    p.kind in (:d2, :d2wrap) && return _real_char(p)
-    p.kind in (:d1, :d1wrap) && return _imag_char(p)
+    p.kind === :n2 && return _real_char(p)
+    p.kind === :n && return _imag_char(p)
     return _paired_char(p)                                  # :expiphi, the only other served kind
 end
 

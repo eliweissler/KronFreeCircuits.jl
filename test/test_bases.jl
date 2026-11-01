@@ -75,38 +75,41 @@ end
     @test edge_support(g, V, 2) ≈ [5.0, 0.0]
 end
 
-@testset "PeriodicGrid: twisted stencil equals the thesis construction; sectors" begin
+@testset "PeriodicGrid: cyclic stencils of -i∂ and -∂²; plane-wave symbols; sectors" begin
     using KronFreeCircuits: check_sectors
     for order in (2, 4, 6, 8), N in (16, 24)
         b = PeriodicGrid(N; order=order)
-        Δ = 2π / N; w = KronFreeCircuits.fd_weights(order, 2); h = order ÷ 2
-        for ng in (0.0, 0.25, 0.5)
-            # thesis listing: roll-based shifts with phases on the wrapped block, D2 = Σ_j w_j (S_j + S_-j) + w_0 I, divided by Δ²
-            shift(j) = (S = circshift(Matrix{ComplexF64}(I, N, N), (j, 0)); j > 0 ? (S[1:j, :] .*= cis(2π * ng); S) : j < 0 ? (S[end+j+1:end, :] .*= cis(-2π * ng); S) : S)
-            D2 = -(w[h+1] * I + sum(w[j+h+1] * (shift(j) + shift(-j)) for j in 1:h)) / Δ^2
-            ours = dense(localop(b, Port(:d2, 0))) + cis(2π * ng) * dense(localop(b, Port(:d2wrap, 1))) + cis(-2π * ng) * dense(localop(b, Port(:d2wrap, -1)))
-            @test ours ≈ D2
-            @test ours ≈ ours'
-            d1 = dense(localop(b, Port(:d1, 0))) + cis(2π * ng) * dense(localop(b, Port(:d1wrap, 1))) + cis(-2π * ng) * dense(localop(b, Port(:d1wrap, -1)))
-            @test d1 ≈ d1'
-            if ng == 0.5    # twist phase -1: the operator is real (exact -1 here, since cis(π) carries a 1e-16 imaginary part)
-                real_half = dense(localop(b, Port(:d2, 0))) - dense(localop(b, Port(:d2wrap, 1))) - dense(localop(b, Port(:d2wrap, -1)))
-                @test maximum(abs, imag(real_half)) == 0
-                @test real_half ≈ D2
-            end
+        Δ = 2π / N; h = order ÷ 2
+        w1 = KronFreeCircuits.fd_weights(order, 1); w2 = KronFreeCircuits.fd_weights(order, 2)
+        # the cyclic matrices built directly with mod1
+        D1 = zeros(ComplexF64, N, N); D2 = zeros(N, N)
+        for i in 1:N, j in -h:h
+            D1[i, mod1(i + j, N)] += -im * w1[j+h+1] / Δ
+            D2[i, mod1(i + j, N)] += -w2[j+h+1] / Δ^2
+        end
+        n = dense(localop(b, nport())); n2 = dense(localop(b, n2port()))
+        @test n ≈ D1 && n2 ≈ D2
+        @test n ≈ n' && maximum(abs, real(n)) == 0          # Hermitian, purely imaginary
+        @test n2 ≈ n2' && eltype(n2) <: Real                 # real symmetric
+        # plane waves diagonalize both, with the symbols σ₁(k) = Σ_j w¹_j sin(jkΔ)/Δ and σ₂(k) = -Σ_j w²_j cos(jkΔ)/Δ²
+        φ = coordinates(b)
+        for k in (0, 1, -2, 3)
+            ψ = cis.(k .* φ)
+            σ1 = sum(w1[j+h+1] * sin(j * k * Δ) for j in -h:h) / Δ
+            σ2 = -sum(w2[j+h+1] * cos(j * k * Δ) for j in -h:h) / Δ^2
+            @test n * ψ ≈ σ1 .* ψ atol=1e-12
+            @test n2 * ψ ≈ σ2 .* ψ atol=1e-12
         end
         @test dense(localop(b, expiphi(2))) ≈ Diagonal(cis.(2 .* coordinates(b)))
-        @test dense(localop(b, Port(:d2wrap, -1))) == dense(localop(b, Port(:d2wrap, 1)))'
-        @test dense(localop(b, Port(:d1wrap, -1))) == dense(localop(b, Port(:d1wrap, 1)))'
-        @test_throws ArgumentError localop(b, Port(:d2wrap, 0))
-        @test_throws ArgumentError localop(b, Port(:d1, 1))
-        @test_throws ArgumentError localop(b, nport())
-        @test_throws ArgumentError localop(b, Port(:exp2pin, 1))
+        @test sparse(localop(b, nport())) ≈ n && sparse(localop(b, n2port())) ≈ n2
+        for p in (Port(:d1, 0), Port(:d2, 0), Port(:d1wrap, 1), Port(:d2wrap, -1), Port(:n, 1), Port(:n2, 1), Port(:exp2pin, 1))
+            @test_throws ArgumentError localop(b, p)
+        end
     end
     @test KronFreeCircuits._check_bases(Node([:phi => PeriodicGrid(16)]), Dict(:phi => :c)) === nothing
     @test_throws ArgumentError KronFreeCircuits._check_bases(Node([:phi => PeriodicGrid(16)]), Dict(:phi => :e))
-    @test sparse(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1))) ≈ dense(localop(PeriodicGrid(16; order=8), Port(:d2wrap, 1)))
     @test_throws ArgumentError localop(PeriodicGrid(16), phiport())
+    @test_throws ArgumentError localop(PeriodicGrid(16), phi2port())
     @test_throws ArgumentError localop(PeriodicGrid(16), expiphi(0.5))
     @test_throws ArgumentError check_sectors(PeriodicGrid(15), [2], :phi)
     @test check_sectors(PeriodicGrid(16; sectors=4), [2, 4], :phi) === nothing
