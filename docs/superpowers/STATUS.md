@@ -1,4 +1,4 @@
-# Status, 2026-10-26
+# Status, 2026-11-01
 
 ## Where things stand
 
@@ -17,6 +17,8 @@ The SDD ledgers of plans 3 and 4 (every ruling and deferred minor) are in the si
 Composite ports (joint ports) are done (2026-10-26) on the branch `composite-ports`, off `main`; merging and pushing are Eli's.
 A term with several factors inside one child is applied through that child's joint port, formed before the projection (architecture §20i; requirements `docs/superpowers/specs/2026-10-26-composite-ports-requirements.md`).
 The Z4 hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted; the pilot rerun and the convergence sweep are pending on ewdesktop.
+
+The periodic-gauge change (2026-10-30/11-01) is on the branch `periodic-gauge`, off `main`; merging and pushing are Eli's.
 
 ## Next plan
 
@@ -54,11 +56,11 @@ Proposed by Eli (2026-10-20), not yet designed:
   `degree = 200` converges in 18 iterations (3600 block applies against 5200); documented in the `ChebyshevFilter` docstring.
   The `maxiter` error now names a weak filter: when the last filter's log-gain `degree · acosh|x(θ_m)|` is below 2 (1.13 here), it reports the per-iteration factor `cosh` of it and advises raising `degree` or `maxiter`, or `ShiftInvert` on the CPU (`_WEAK_FILTER_GAIN`).
    `LOBPCG` keeps its own acceptance (Eli, 2026-10-21: it serves branches, a different situation): it returns pairs validated by LOBPCGEigensolver's residual estimate at `tol`, without a fresh true residual (one fresh residual measured 1.2e-8 at `tol = 1e-8` on an explicit 8000-point leaf), and at an explicit 8000-state zero-pi leaf it needs `maxiter` above the default 1000 (4000 converges).
-6. Real arithmetic at special parameter values (a parameter `n_g` at 0 or ½ on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex.
+6. Real arithmetic at special parameter values (a parameter `n_g` at 0 on a `PeriodicGrid`, zero flux in a charge-basis SQUID) is a recorded later item (§20f); such circuits run complex. Since the periodic gauge (2026-10-30) a grid node is real only at the literal `n_g = "0"`.
 7. Pre-existing: `ChebyshevFilter` at degree ≤ 3 with tol ≥ 1e-2 can still race (documented).
 8. The cos 2φ fixture has no generated counterpart (one compact mode with junction harmonics 2 and 1 is not a lumped circuit).
 
-9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the twisted `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
+9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
    The gap is the one recorded in §20a: a data-valued operator (the surface fed back as a potential) has no entry into a `Term`, so stage 2 cannot go through `materialize`; it should be designed with plan 5, since autodiff wraps `materialize`.
    The promotion transformation is now in the package as a spec-level `promote_mode` (BO plan, §20h); the data-valued entry is still open.
 
@@ -72,6 +74,7 @@ Proposed by Eli (2026-10-20), not yet designed:
 
 ## Decided recently (for reference)
 
+- `PeriodicGrid` in the periodic gauge (2026-10-30, design `2026-10-30-periodic-gauge-design.md`): fixed cyclic `n`, `n2`; offset charge only in the quadratic form; `twist_factor` and the derivative-piece ports removed; the sweet-spot pairs degenerate to `O(Δ^order)` on the grid.
 - Real arithmetic only when structurally guaranteed; all parameters real; spec expressions never use `im`, `cis`, `cispi` (§20f).
 - Native output types for real nodes; `ShiftInvert` follows the operator's element type (`isreal_assembled` retired).
 - The exporter moved ahead of autodiff for fixture provenance; it is a general `circuit-quantization` save/load module (`io.py`).

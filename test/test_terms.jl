@@ -24,7 +24,7 @@ end
     @test port_of_kind(:exp2pin, -1) == exp2pin(-1)
     @test_throws ArgumentError port_of_kind(:n, 1.0)
     @test_throws ArgumentError port_of_kind(:cos)
-    for (kind, k) in ((:d2, 0), (:d1wrap, -1), (:d1, 0), (:d2wrap, 1))     # the twisted-gauge derivative pieces are gone
+    for (kind, k) in ((:d2, 0), (:d1wrap, -1), (:d1, 0), (:d2wrap, 1))     # the retired derivative-piece port kinds
         @test_throws ArgumentError port_of_kind(kind, k)
     end
 end

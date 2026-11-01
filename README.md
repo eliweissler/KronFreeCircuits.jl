@@ -120,9 +120,9 @@ The documented convention differences between the two sets are asserted in the t
 `PeriodicGrid(N; order=8, sectors=1)` is a phase grid for a compact mode, on `[-π, π)` without the endpoint, with central stencils of order 2 to 8 that wrap around the circle.
 Use it for non-standard compact modes: a cos 2φ element, higher harmonics, or a numerically supplied 2π-periodic potential given to the spec as a Fourier series of cosines.
 The charge basis stays the default, and the better choice, for a single cos φ.
-The basis is parameter-free: the offset charge enters only through the coefficients `e^{±2πi n_g}` that term construction puts on the stencil's two wrap-corner pieces (the twisted boundary `ψ(φ + 2π) = e^{-2πi n_g} ψ(φ)`).
+The basis is parameter-free and strictly periodic: it serves `nport()` (the cyclic `-i ∂_φ`), `n2port()` (the cyclic `-∂_φ²`) and `expiphi(k)` for integer `k`, and the offset charge enters only through the coefficients of `4 (n - n_g)ᵀ E_C (n - n_g)`, as on every other basis.
 `N` must be divisible by every integer harmonic of a cosine on the mode and by `sectors`, so that translations by `2π/ω` map the grid to itself and the charge-parity sectors are exact; a non-integer harmonic on a compact mode is rejected when the spec is loaded.
-The operators are complex, except when the spec gives `n_g` as the literal `"0.5"` (the twist phase is then the constant −1; see "Real arithmetic").
+The operators are complex unless the spec gives `n_g` as the literal `"0"` (the imaginary linear charge term is then absent; see "Real arithmetic").
 
 ```julia
 spec = load_spec("cos2phi.json")                     # 4 E_C (n - n_g)^2 - E_2 cos 2φ - E_1 cos φ, mode phi
@@ -132,13 +132,10 @@ energies(sys)
 port(sys, :phi, nport())                             # the charge n in the kept eigenbasis (8 × 8, complex)
 ```
 
-The basis serves no `:n` port of its own, because the charge is assembled from the derivative pieces and the offset charge.
-The spec form of `materialize` expands `nport()` on a `PeriodicGrid` mode automatically wherever a charge is requested: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of an `extra_terms` term.
-It expands into `n = d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I` on the ports `Port(:d1, 0)` and `Port(:d1wrap, ±1)`, a term's `n_g I` share multiplying its remaining factors.
-At the leaf, `port(sys, mode, nport())` equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
-The term-list form of `materialize` has no offset charge, so `nport()` on a twisted mode throws there; write the pieces out instead, with the twist factors `twist_factor(ng, ±1)` as coefficients.
-`n2port()` is not served on a `PeriodicGrid`.
-The design is in spec §20d.
+`nport()` on a `PeriodicGrid` mode is an ordinary port in both forms of `materialize`: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of a term; at the leaf it equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
+For a gate drive `n_g(t) = n_g + n_g^{AC}(t)`, the Hamiltonian is `H₀ - 8 E_C n_g^{AC}(t) n̂` up to a c-number, so the kept-basis `nport()` matrix is the drive operator.
+Two costs of this gauge: a grid node is real only at the literal `n_g = "0"`, and at `n_g = ½` the sweet-spot pairs are degenerate only to the discretization error, `O(Δ^order)` (order 8, free rotor: 1.1e-8 at `N = 32`, 4.4e-11 at 64, roundoff at 128; pure cos 2φ at `E_2 = 15 E_C`: 1.8e-11 and 4.3e-10 for the lowest two pairs at `N = 128`).
+The design is in spec §20d (2026-10-30) and `docs/superpowers/specs/2026-10-30-periodic-gauge-design.md`.
 
 ## Real arithmetic
 
@@ -156,12 +153,12 @@ Each basis declares how complex conjugation acts on the ports it serves:
 |---|---|---|---|
 | `ChargeBasis` | `n`, `n2`, `expiphi(k)` | | `exp2pin(k)` with `exp2pin(-k)` |
 | `PhaseGrid` | `n2`, `phi`, `phi2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
-| `PeriodicGrid` | `d2`, `d2wrap(±1)` | `d1`, `d1wrap(±1)` | `expiphi(k)` with `expiphi(-k)` |
+| `PeriodicGrid` | `n2` | `n` | `expiphi(k)` with `expiphi(-k)` |
 | `FockBasis` | `phi`, `phi2`, `n2`, `exp2pin(k)` | `n` | `expiphi(k)` with `expiphi(-k)` |
 | `GivenSystem` | operator with real data | operator with purely imaginary data | none (an operator with both real and imaginary parts nonzero is general and makes its node complex) |
 
 In practice the transmon and fluxonium leaves, the symmetric zero-pi at any flux and `n_g`, and the two-zero-pi parent are real.
-The asymmetric zero-pi and a `PeriodicGrid` mode whose `n_g` is a parameter are complex; a literal `"0.5"` in the spec is real.
+The asymmetric zero-pi and a `PeriodicGrid` mode whose `n_g` is a parameter or the literal `"0.5"` are complex; the literal `"0"` is real.
 A circuit that is complex by structure but real at special parameter values (a charge-basis SQUID at zero flux) stays complex.
 
 `Node(...; arithmetic=:auto)` follows the classification; `:complex` forces complex arithmetic for the node and every ancestor, and `:real` asserts the classification and raises an `ArgumentError` naming the node's modes and the first reason it is not real (for example a term with no conjugate image, a general-character factor, a non-analytic or throwing coefficient, or a complex child).

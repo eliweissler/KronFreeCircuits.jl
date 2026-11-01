@@ -582,6 +582,12 @@ Motivation (Eli, 2026-10-17): non-standard compact modes (cos 2φ, higher harmon
 - **Arithmetic and structure.** Complex except at n_g ∈ {0, ½}, where the twist phase is ±1 and the operators are real (relevant to the real-arithmetic plan). The wrapped corners make the mode's operators sparse but not banded; a leaf solver that relies on bandedness (Section 20c notes, the leaf-solver spike) must use the sparse path for such leaves.
 - **Validation.** Against the charge basis on identical physics: the free rotor, cos φ, pure cos 2φ with both sectors, cos 2φ with a weak cos φ, at n_g ∈ {0, ½, generic}, including convergence in N and the exact half-period translation symmetry on even N; ports and gauge convention cross-checked against the charge basis (the audit's REAL-WARM report lists these cases).
 
+**Decided 2026-10-30: the periodic gauge (design `2026-10-30-periodic-gauge-design.md`).**
+The twisted gauge above is retired; the bullets above it are historical.
+`PeriodicGrid` serves `n`, `n2` and integer `expiphi(k)` as parameter-free cyclic operators with `PhaseGrid`'s characters, wavefunctions are strictly periodic, and the offset charge enters only through the canonical quadratic form, so term construction is basis-independent (`circuit_terms(spec)`, `constant_term(spec)`) and `nport()` on a grid mode is an ordinary port in both forms of `materialize`.
+Reasons: fidelity to the paper's quantization, and charge driving — the twisted gauge is `U(t) = e^{-i n_g(t) φ}` applied to the periodic-gauge state, whose time derivative for an AC gate voltage adds the generator `ṅ_g φ`, not an operator on the circle; in the periodic gauge a drive is `f(t) n̂` with a fixed `n̂`.
+Costs, accepted by Eli (2026-10-30/31): a grid node is real only when the linear `n` term is structurally absent (literal `n_g = "0"`), not at `"0.5"`; and the `n_g = ½` sweet-spot pairs are degenerate only to `O(Δ^order)` on the grid (order 8, free rotor: 1.1e-8 at N = 32, 4.4e-11 at 64, roundoff at 128; pure cos 2φ at E_2 = 15 E_C, lowest two pairs: 4.5e-9 and 1.1e-7 at N = 64, 1.8e-11 and 4.3e-10 at 128), pinned by `test_periodic.jl`.
+
 ### 20e. Leaf and branch solver policy, `Auto()`, and the solver extension API (decided 2026-10-17)
 
 Source: the leaf-solver spike `docs/spikes/2026-10-17-leaf-solvers/results.md` (every row validated against exact references) and the discussion of 2026-10-17. Amends Sections 8 and 9 and the execution notes of 20c.
@@ -623,7 +629,7 @@ The measured motivation is Section 20e decision 1 and the audit (Section 20c): r
 **The rule (decided).** A node runs in real arithmetic only when its structure guarantees that its Hamiltonian is real, at every θ.
 Realness is decided once from the term list and the tree, never from the parameter values at which a node is materialized, and never from small or exactly zero imaginary parts of evaluated data.
 A circuit that is complex by structure but real at special parameter values (a `PeriodicGrid` mode at a parameter `n_g` that equals 0 or ½, a charge-basis SQUID at zero flux) stays complex; using such special values is a recorded later item, not part of plan 3 (Eli: "a small benefit for what I see as a big headache").
-A spec literal is structure: a `PeriodicGrid` mode whose `n_g` entry is the number `"0.5"` has the constant twist phase −1 and qualifies.
+A spec literal is structure: a `PeriodicGrid` mode whose `n_g` entry is the number `"0"` has no linear charge term and qualifies (periodic gauge, §20d 2026-10-30; `"0.5"` does not).
 
 **Port character (decided).** Every basis declares, for every port it serves, how complex conjugation acts on its operator: `conj(O_p) = σ_p O_{π(p)}` with a sign `σ_p = ±1` and an involution `π` on ports.
 A port is *real* (`σ = +1`, `π(p) = p`), *imaginary* (`σ = −1`, `π(p) = p`), or *paired* (`σ = +1`, `π(p) ≠ p`, its conjugate partner); anything else is *general* and has no relation.
@@ -633,7 +639,7 @@ Section 20c's three characters (real, imaginary, general) gain *paired*, because
 |---|---|---|---|
 | `ChargeBasis` | `n`, `n2`, `expiphi(k)` | | `exp2pin(k) ↦ exp2pin(−k)` |
 | `PhaseGrid` | `n2`, `phi`, `phi2`, `exp2pin(k)` | `n` | `expiphi(k) ↦ expiphi(−k)` |
-| `PeriodicGrid` | `d2`, `d2wrap(±1)` | `d1`, `d1wrap(±1)` | `expiphi(k) ↦ expiphi(−k)` |
+| `PeriodicGrid` | `n2` | `n` | `expiphi(k) ↦ expiphi(−k)` |
 | `FockBasis` | `phi`, `phi2`, `n2`, `exp2pin(k)` | `n` | `expiphi(k) ↦ expiphi(−k)` |
 | `GivenSystem` | an operator whose data is real | one whose data is purely imaginary | (none) |
 
@@ -649,7 +655,7 @@ A node is real only when every node below it is real (decided in the brainstorm;
 A real node child's ports carry the characters of the same ports in the leaf basis of their mode.
 **Real inputs (decided, Eli 2026-10-18).** All system parameters are real: an entry of θ that is not of a `Real` Julia type raises an `ArgumentError` naming it (a complex drive amplitude is passed as two real parameters).
 The spec's charging and inductive matrices (`E_C`, `E_L`), `flux_linear`, `n_g`, and every cosine's and charge cosine's `energy` and `offset`, and `constant`, are real-valued expressions: the loader rejects any that uses `im`, `cis` or `cispi`; the multipliers `omega` and `kappa` (from the incidence structure) are numbers already.
-Complex structure in a circuit therefore enters only through the package's own phase factors (`phase_factor`, `twist_factor`) and through the bases' operators.
+Complex structure in a circuit therefore enters only through the package's own phase factor (`phase_factor`) and through the bases' operators.
 **(my call, from the plan-3 Task 3 review)** The three-point test proves an identity for every θ only for coefficients that are real-analytic in θ, so a coefficient that calls `abs` or `sign`, or applies `sqrt`, `log` or a non-integer power to a possibly complex-valued argument (possible in user-built terms), fails the test and its node is complex.
 **(my call)** The identity is established by evaluating both sides at three fixed pseudo-random parameter points (each parameter drawn in [0.5, 2] from a fixed seed), never at the user's θ, with agreement required to 1e-12 relative to the larger modulus; a coefficient that throws at a test point fails the test (complex, safe).
 This is a test of an identity between functions, so its answer is the same at every θ.
