@@ -133,7 +133,7 @@ port(sys, :phi, nport())                             # the charge n in the kept 
 ```
 
 `nport()` on a `PeriodicGrid` mode is an ordinary port in both forms of `materialize`: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of a term; at the leaf it equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
-For a gate drive `n_g(t) = n_g + n_g^{AC}(t)`, the Hamiltonian is `H₀ - 8 E_C n_g^{AC}(t) n̂` up to a c-number, so the kept-basis `nport()` matrix is the drive operator.
+For a gate drive `n_g(t) = n_g + n_g^{AC}(t)` on a single mode, the Hamiltonian is `H₀ - 8 E_C n_g^{AC}(t) n̂` up to a c-number (for several modes, the drive on mode `i` is `-4 Σ_j (E_C[i,j] + E_C[j,i]) n_g,j^{AC}(t) n̂_i`), so the kept-basis `nport()` matrix is the drive operator.
 Two costs of this gauge: a grid node is real only at the literal `n_g = "0"`, and at `n_g = ½` the sweet-spot pairs are degenerate only to the discretization error, `O(Δ^order)` (order 8, free rotor: 1.1e-8 at `N = 32`, 4.4e-11 at 64, roundoff at 128; pure cos 2φ at `E_2 = 15 E_C`: 1.8e-11 and 4.3e-10 for the lowest two pairs at `N = 128`).
 The design is in spec §20d (2026-10-30) and `docs/superpowers/specs/2026-10-30-periodic-gauge-design.md`.
 

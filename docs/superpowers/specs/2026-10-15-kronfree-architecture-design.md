@@ -160,9 +160,9 @@ Adding a basis is adding one such type; nothing above the mode changes.
 | `ChargeBasis(ncut)` | compact | diagonal | diagonal | not available | shift by $k$ (integer), truncated at the edge | diagonal phase |
 | `PhaseGrid(a, b, N; order)` | extended | banded, antisymmetric first-derivative stencil | banded, second-derivative stencil | diagonal | diagonal | shift by $2\pi k/\Delta\varphi$ points, requires that to be an integer |
 | `FockBasis(N; phi_zpf)` | harmonic (and extended if chosen) | banded, two off-diagonals | banded | diagonal / banded | dense displacement matrix | dense |
-| `PeriodicGrid(N; order, sectors)` | compact (chosen by the user) | not served: term construction assembles it from `d1`, `d1wrap(±1)` and the offset charge | not served: assembled from `d2`, `d2wrap(±1)` | `phi`, `phi2` not available (φ is multivalued on the circle) | diagonal, integer $k$ | not available |
+| `PeriodicGrid(N; order, sectors)` | compact (chosen by the user) | banded cyclic antisymmetric first-derivative stencil (wraps around the circle), imaginary | banded cyclic second-derivative stencil, real | `phi`, `phi2` not available (φ is multivalued on the circle) | diagonal, integer $k$ | not available |
 
-`PeriodicGrid` (added 2026-10-17) is specified in Section 20d.
+`PeriodicGrid` (added 2026-10-17) is specified in Section 20d; it works in the periodic gauge since 2026-10-30 (the offset charge enters only through term construction).
 
 Defaults per mode type: charge for compact, grid for extended, Fock for harmonic.
 Every mode's basis is overridable by the user.
@@ -628,7 +628,7 @@ The measured motivation is Section 20e decision 1 and the audit (Section 20c): r
 
 **The rule (decided).** A node runs in real arithmetic only when its structure guarantees that its Hamiltonian is real, at every θ.
 Realness is decided once from the term list and the tree, never from the parameter values at which a node is materialized, and never from small or exactly zero imaginary parts of evaluated data.
-A circuit that is complex by structure but real at special parameter values (a `PeriodicGrid` mode at a parameter `n_g` that equals 0 or ½, a charge-basis SQUID at zero flux) stays complex; using such special values is a recorded later item, not part of plan 3 (Eli: "a small benefit for what I see as a big headache").
+A circuit that is complex by structure but real at special parameter values (a `PeriodicGrid` mode at a parameter `n_g` that equals 0, a charge-basis SQUID at zero flux) stays complex; using such special values is a recorded later item, not part of plan 3 (Eli: "a small benefit for what I see as a big headache").
 A spec literal is structure: a `PeriodicGrid` mode whose `n_g` entry is the number `"0"` has no linear charge term and qualifies (periodic gauge, §20d 2026-10-30; `"0.5"` does not).
 
 **Port character (decided).** Every basis declares, for every port it serves, how complex conjugation acts on its operator: `conj(O_p) = σ_p O_{π(p)}` with a sign `σ_p = ±1` and an involution `π` on ports.
@@ -695,7 +695,7 @@ The CUDA extension needs no new device code beyond confirming the real path (cuT
 **What stays complex.** Complex nodes; imaginary and paired ports in their natural type; `charge_port` on a `PeriodicGrid` mode; derivative operators and the autodiff pullbacks of plan 4, which promote to complex where a cotangent or a derivative operator is complex.
 
 **Validation (decided).** For every fixture with a real node, materializing with `arithmetic=:auto` and with `arithmetic=:complex` gives energies equal to about 1e-12 with `Dense` and to the solver tolerance otherwise, ports equal up to the per-state signs (inside an exactly degenerate level, where the two paths may pick different bases, the comparison uses rotation-invariant quantities such as the cluster projector and the port's block norms), and the expected arithmetic per node (the classification above is a test).
-Tests that relied on `isreal_assembled` change meaning: the `PeriodicGrid` transmon at a parameter `n_g` of 0 or ½ is now complex by structure, so those assertions become element-type checks (the exact-zero imaginary part of its assembled matrix can still be asserted as a property of the operator data).
+Tests that relied on `isreal_assembled` change meaning: the `PeriodicGrid` transmon at a parameter `n_g` of 0 is now complex by structure, so those assertions become element-type checks (the exact-zero imaginary part of its assembled matrix at `n_g = 0` can still be asserted as a property of the operator data; at ½ it is nonzero in the periodic gauge, §20d 2026-10-30).
 A solver change is reviewed with adversarial completeness probes compared against `Dense` (degenerate levels, invariant-seed traps, near crossings), not residual checks alone.
 The default, gated (`KRONFREE_SLOW_TESTS=1`) and device suites pass, and the plan-2b end-to-end benchmark reruns on ewdesktop in both arithmetics (a new `BENCH_ARITHMETIC=auto|complex` knob).
 
