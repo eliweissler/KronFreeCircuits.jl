@@ -2,11 +2,8 @@
     Port(kind, k)
 
 A named single-mode operator: `:n` (charge), `:n2` (charge squared), `:phi`, `:phi2`,
-`:expiphi` (`exp(i k φ)`) or `:exp2pin` (`exp(2π i k n)`), or a derivative piece of a
-`PeriodicGrid`: `:d1`, `:d2` (interior bands of `-i ∂_φ`, `-∂_φ²`) and `:d1wrap`, `:d2wrap`
-(their wrap corners).
-`k` is the exponent coefficient (zero for the polynomial ports and `:d1`, `:d2`), or the corner
-`±1` of the wrap ports.
+`:expiphi` (`exp(i k φ)`) or `:exp2pin` (`exp(2π i k n)`).
+`k` is the exponent coefficient (zero for the polynomial ports).
 """
 struct Port
     kind::Symbol
@@ -29,9 +26,8 @@ const _POLY_PORTS = (n=nport, n2=n2port, phi=phiport, phi2=phi2port)
 """
     port_of_kind(kind::Symbol, k=0.0) -> Port
 
-The `Port` named by `kind` (`:n, :n2, :phi, :phi2, :expiphi, :exp2pin, :d1, :d1wrap, :d2, :d2wrap`);
-`k` is the exponent coefficient of the exponential ports, the corner `±1` of the wrap ports
-`:d1wrap, :d2wrap`, and must be zero for the others.
+The `Port` named by `kind` (`:n, :n2, :phi, :phi2, :expiphi, :exp2pin`);
+`k` is the exponent coefficient of the exponential ports and must be zero for the others.
 """
 function port_of_kind(kind::Symbol, k::Real=0.0)
     if haskey(_POLY_PORTS, kind)
@@ -40,16 +36,7 @@ function port_of_kind(kind::Symbol, k::Real=0.0)
     end
     kind === :expiphi && return expiphi(k)
     kind === :exp2pin && return exp2pin(k)
-    if kind in (:d1, :d2)
-        iszero(k) || throw(ArgumentError("port kind :$kind takes no exponent, got k = $k"))
-        return Port(kind, 0)
-    end
-    if kind in (:d1wrap, :d2wrap)
-        k in (1, -1) || throw(ArgumentError("port kind :$kind needs the corner k = +1 or -1, got k = $k"))
-        return Port(kind, k)
-    end
-    throw(ArgumentError("unknown port kind :$kind; expected :n, :n2, :phi, :phi2, :expiphi, :exp2pin, " *
-                        ":d1, :d1wrap, :d2 or :d2wrap"))
+    throw(ArgumentError("unknown port kind :$kind; expected :n, :n2, :phi, :phi2, :expiphi or :exp2pin"))
 end
 
 """
@@ -104,105 +91,35 @@ function _sum(cs)
     return acc === nothing ? Coefficient(0) : acc
 end
 
-# Whether a mode on basis `b` is twisted (its offset charge enters through the boundary condition);
-# the `PeriodicGrid` method is in bases.jl.
-_is_twisted(::Any) = false
-
-# Per mode, whether it is twisted under `bases` (modes absent from `bases` are not).
-_twisted(spec::Spec, bases::AbstractDict) = [haskey(bases, m.name) && _is_twisted(bases[m.name]) for m in spec.modes]
-
-# The twisted first (`kind = :d1`) or second (`:d2`) derivative of a mode with offset charge `ng`, as
-# `(twist, port)` pieces: the interior band (twist `nothing`, coefficient 1) and the two wrap corners
-# with their twist phases `e^{±2πi n_g}`.
-_twisted_pieces(ng::Coefficient, kind::Symbol) =
-    [(nothing, Port(kind, 0)), (twist_factor(ng, 1), Port(Symbol(kind, :wrap), 1)),
-     (twist_factor(ng, -1), Port(Symbol(kind, :wrap), -1))]
-
-_times(c::Coefficient, ::Nothing) = c
-_times(c::Coefficient, t::Coefficient) = c * t
-
-# Each `nport()` factor of `terms` on a twisted mode (a key of `charges`, its offset charge `n_g`) expanded into the
-# physical charge `d1 + e^{2πi n_g} d1wrap₊ + e^{-2πi n_g} d1wrap₋ + n_g I`: three terms on the pieces and one with
-# coefficient `c n_g` and the factor removed, a term with several such factors expanding into the product.
-# Returns the terms and the sum of the factor-free products (a scalar for the constant); other terms pass unchanged.
-function _expand_twisted_charge(terms::Vector{Term}, charges::AbstractDict)
-    out = Term[]
-    scalars = Coefficient[]
-    for t in terms
-        if !any(f -> f.port == nport() && haskey(charges, f.mode), t.factors)
-            push!(out, t)
-            continue
-        end
-        parts = [(t.coeff, Factor[])]
-        for f in t.factors
-            if f.port == nport() && haskey(charges, f.mode)
-                ng = charges[f.mode]
-                parts = [p for (c, fs) in parts
-                         for p in [[(_times(c, tw), [fs; Factor(f.mode, q)]) for (tw, q) in _twisted_pieces(ng, :d1)];
-                                   (c * ng, fs)]]
-            else
-                parts = [(c, [fs; f]) for (c, fs) in parts]
-            end
-        end
-        for (c, fs) in parts
-            _iszero(c) && continue
-            isempty(fs) ? push!(scalars, c) : push!(out, Term(c, fs))
-        end
-    end
-    return out, _sum(scalars)
-end
-
 """
     circuit_terms(spec::Spec) -> Vector{Term}
-    circuit_terms(spec::Spec, bases) -> Vector{Term}
 
 Expand the spec into product terms (the constant is excluded; see [`constant_term`](@ref)).
 Terms whose coefficient is identically zero are dropped.
 
-`bases` maps mode names to their `Basis` (modes absent from it are expanded in the charge basis, and
-the first form means every compact mode in the charge basis).
-A compact mode `m` on a [`PeriodicGrid`](@ref) is *twisted*: in the quadratic form
-`4 Σ_ij (n_i - n_g,i) E_C[i,j] (n_j - n_g,j)` its `(n_m - n_g,m)` is the twisted derivative
-`D₁ = d1 + e^{2πi n_g,m} d1wrap₊ + e^{-2πi n_g,m} d1wrap₋`, so its diagonal kinetic term is
-`4 E_C[m,m]` times `D₂ = d2 + e^{2πi n_g,m} d2wrap₊ + e^{-2πi n_g,m} d2wrap₋` (three terms), a cross
-term with mode `j` is `4 (E_C[m,j] + E_C[j,m]) D₁ ⊗ n_j` (three terms, nine when `j` is twisted too),
-and its linear term is `D₁` times `-4 Σ_j (E_C[m,j] + E_C[j,m]) n_g,j` over the non-twisted `j`.
-The canonical linear and constant pieces are formed only from non-twisted modes (see
-[`constant_term`](@ref)).
-The twist phases are coefficients ([`twist_factor`](@ref)), so the operators stay parameter-free.
-Cosines on a twisted mode keep `expiphi(ω)` with integer `ω`.
+The expansion is the same for every basis: the quadratic form `4 (n - n_g)ᵀ E_C (n - n_g)` becomes
+the diagonal terms `4 E_C[i,i] n_i²` (`n2port()`), the cross terms `4 (E_C[i,j] + E_C[j,i]) n_i n_j`
+(`nport() ⊗ nport()`), the linear terms `-4 Σ_j (E_C[i,j] + E_C[j,i]) n_g,j n_i` (`nport()`) and the
+constant of [`constant_term`](@ref), so the offset charge enters only through the linear and constant
+pieces.
+A compact mode on a [`PeriodicGrid`](@ref) is expanded exactly like one in the charge basis (the
+periodic gauge, design 2026-10-30); a literal `n_g = "0"` drops its linear term.
 """
-circuit_terms(spec::Spec) = circuit_terms(spec, Dict{Symbol,Any}())
-
-function circuit_terms(spec::Spec, bases::AbstractDict)
+function circuit_terms(spec::Spec)
     N = length(spec.modes)
     names = [m.name for m in spec.modes]
-    tw = _twisted(spec, bases)
     terms = Term[]
     add!(c, fs) = _iszero(c) || push!(terms, Term(c, fs))
-    # (n_i - n_g,i) without its offset: the charge port, or the twisted derivative's pieces
-    charge(i) = tw[i] ? _twisted_pieces(spec.n_g[i], :d1) : [(nothing, nport())]
 
     for i in 1:N
-        if tw[i]
-            for (t, p) in _twisted_pieces(spec.n_g[i], :d2)
-                add!(_times(4 * spec.E_C[i, i], t), [Factor(names[i], p)])
-            end
-        else
-            add!(4 * spec.E_C[i, i], [Factor(names[i], n2port())])
-        end
+        add!(4 * spec.E_C[i, i], [Factor(names[i], n2port())])
     end
     for i in 1:N, j in i+1:N
-        c = 4 * (spec.E_C[i, j] + spec.E_C[j, i])
-        for (ti, p_i) in charge(i), (tj, p_j) in charge(j)
-            add!(_times(_times(c, ti), tj), [Factor(names[i], p_i), Factor(names[j], p_j)])
-        end
+        add!(4 * (spec.E_C[i, j] + spec.E_C[j, i]), [Factor(names[i], nport()), Factor(names[j], nport())])
     end
     for i in 1:N
-        lin = _sum((spec.E_C[i, j] + spec.E_C[j, i]) * spec.n_g[j] for j in 1:N if !tw[j])
-        for (t, p) in charge(i)
-            add!(_times(-4 * lin, t), [Factor(names[i], p)])
-        end
+        lin = _sum((spec.E_C[i, j] + spec.E_C[j, i]) * spec.n_g[j] for j in 1:N)
+        add!(-4 * lin, [Factor(names[i], nport())])
     end
     for i in 1:N
         add!(0.5 * spec.E_L[i, i], [Factor(names[i], phi2port())])
@@ -230,18 +147,12 @@ end
 
 """
     constant_term(spec::Spec) -> Coefficient
-    constant_term(spec::Spec, bases) -> Coefficient
 
-The scalar part `constant + 4 n_gᵀ E_C n_g` produced by expanding `(n - n_g)`.
-With `bases` (see [`circuit_terms`](@ref)), the quadratic form keeps only the entries `(i, j)` where
-neither mode is twisted, since a twisted mode's `(n_m - n_g,m)` is its twisted derivative as a whole.
+The scalar part `constant + 4 n_gᵀ E_C n_g` produced by expanding `(n - n_g)`, the same for every basis.
 """
-constant_term(spec::Spec) = constant_term(spec, Dict{Symbol,Any}())
-
-function constant_term(spec::Spec, bases::AbstractDict)
+function constant_term(spec::Spec)
     N = length(spec.modes)
-    tw = _twisted(spec, bases)
-    quad = _sum(spec.n_g[i] * spec.E_C[i, j] * spec.n_g[j] for i in 1:N, j in 1:N if !tw[i] && !tw[j])
+    quad = _sum(spec.n_g[i] * spec.E_C[i, j] * spec.n_g[j] for i in 1:N, j in 1:N)
     return spec.constant + 4 * quad
 end
 

@@ -169,16 +169,6 @@ The coefficient `exp(sign * im * offset)`.
 phase_factor(offset::Coefficient, sign::Int) =
     _make(:(exp($(sign) * im * $(offset.ex))), copy(offset.deps))
 
-"""
-    twist_factor(ng::Coefficient, sign::Int) -> Coefficient
-
-The twist phase `e^{sign · 2πi n_g}` of a `PeriodicGrid` wrap corner, built with `cispi` so that it
-is exactly real (±1, zero imaginary part) at `n_g ∈ {0, ½}`.
-Exported for hand-written terms on a twisted mode's charge (the README's periodic-grid section).
-"""
-twist_factor(ng::Coefficient, sign::Int) =
-    _make(:(cispi($(2 * sign) * $(ng.ex))), copy(ng.deps))
-
 iszero_expr(c::Coefficient) = c.ex isa Number && iszero(c.ex)
 
 free_symbols(c::Coefficient) = free_symbols(c.ex)

@@ -108,8 +108,7 @@ end
     # with a per-build recompile it costs over 10x.
     leaf = Node([:varphi_1 => ChargeBasis(6)]; keep=lowest(2))
     spec, θ = load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3)
-    bases = KronFreeCircuits._tree_bases(leaf)
-    terms, c = KronFreeCircuits.circuit_terms(spec, bases), KronFreeCircuits.constant_term(spec, bases)
+    terms, c = KronFreeCircuits.circuit_terms(spec), KronFreeCircuits.constant_term(spec)
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     materialize(leaf, spec, θ); materialize(leaf, terms, θ; constant=c, modetypes=modetypes)     # warm
     t_spec = minimum(@elapsed(materialize(leaf, spec, θ)) for _ in 1:10)

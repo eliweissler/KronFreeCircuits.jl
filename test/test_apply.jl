@@ -426,7 +426,7 @@ end
     spec = KronFreeCircuits.parse_spec(json); θ = (E_C=1.0, E_J=EJ, E_L=0.5)
     tree = Node([Node([:c => bc, :e => be]; solver=Dense()), Node([:h => bh]; solver=Dense())]; solver=Dense(), keep=lowest(6))
     sys = @test_logs (:warn, r"PhaseGrid on mode :e is too small") match_mode=:any materialize(tree, spec, θ)
-    Hflat = primitive_hamiltonian(KronFreeCircuits.circuit_terms(spec, Dict(:c => bc, :e => be, :h => bh)), θ,
+    Hflat = primitive_hamiltonian(KronFreeCircuits.circuit_terms(spec), θ,
                                   [:c => bc, :e => be, :h => bh])
     Eflat = eigvals(Hermitian(Matrix(Hflat)))[1:6]
     @test energies(sys) ≈ Eflat rtol=1e-9

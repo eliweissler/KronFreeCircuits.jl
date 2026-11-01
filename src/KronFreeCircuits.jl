@@ -21,7 +21,7 @@ export Spec, load_spec, parse_spec, spec_json, save_spec, substitute, promote_mo
        System, energies, port, eigenvectors, materialized, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
-       separable_eigenbases, product_seed, infnorm, twist_factor,
+       separable_eigenbases, product_seed, infnorm,
        PortCharacter, character, arithmetic
 
 include("parameters.jl")

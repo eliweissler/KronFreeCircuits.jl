@@ -54,7 +54,7 @@ end
     using KronFreeCircuits: _joint_port, _mode_leaves, dense, localop, Term, Factor, Coefficient
     bc, be = ChargeBasis(3), PhaseGrid(-3.0, 3.0, 7; order=2)
     spec = KronFreeCircuits.parse_spec(ce_json); θ = (E_C=1.0, E_J=2.0, E_L=0.5)
-    terms = filter(t -> length(t.factors) == 1, circuit_terms(spec, Dict(:c => bc, :e => be)))
+    terms = filter(t -> length(t.factors) == 1, circuit_terms(spec))
     push!(terms, Term(Coefficient(0.3), [Factor(:c, nport()), Factor(:e, phiport())]))
     leaf = Node([:c => bc, :e => be]; solver=Dense(), keep=lowest(5))
     sys = @test_logs (:warn, r"PhaseGrid on mode :e is too small") match_mode=:any materialize(leaf, terms, θ)

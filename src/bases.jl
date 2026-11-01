@@ -143,7 +143,6 @@ end
 
 function _portname(p::Port)
     p.kind in (:expiphi, :exp2pin) && return "$(p.kind)($(p.k))"
-    p.kind in (:d1wrap, :d2wrap) && return "$(p.kind)($(isinteger(p.k) ? Int(p.k) : p.k))"
     return string(p.kind)
 end
 _unavailable(b::Basis, p::Port) =
@@ -196,12 +195,6 @@ function localop(b::PhaseGrid, p::Port)
     end
     throw(_unavailable(b, p))
 end
-
-# Kept until the twisted-gauge charge assembly in materialize.jl is removed (its error message cites it).
-const _PERIODIC_PIECES =
-    "n = d1 + cispi(2 n_g)·d1wrap₊ + cispi(−2 n_g)·d1wrap₋ + n_g·I, from the ports Port(:d1, 0), Port(:d1wrap, 1) and " *
-    "Port(:d1wrap, -1) (for a Term: three terms whose coefficients carry the twist factors twist_factor(n_g, ±1), plus " *
-    "the n_g·I share folded into the remaining factors)"
 
 const _PERIODIC_UNAVAILABLE = Dict(
     :phi => "φ is multivalued on a circle; use expiphi(k) with integer k",

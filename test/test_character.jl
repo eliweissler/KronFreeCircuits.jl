@@ -26,8 +26,7 @@
     @test character(g, Port(:a, 0)).kind === :real && character(g, Port(:y, 0)).kind === :imaginary && character(g, Port(:z, 0)).kind === :general
 end
 
-classified(root, spec, θ) = (b = KronFreeCircuits._tree_bases(root); terms = circuit_terms(spec, b);
-                             r = KronFreeCircuits.route(root, terms); KronFreeCircuits.classify(root, r, constant_term(spec, b), θ))
+classified(root, spec, θ) = (r = KronFreeCircuits.route(root, circuit_terms(spec)); KronFreeCircuits.classify(root, r, constant_term(spec), θ))
 
 @testset "structural classification of the fixtures" begin
     zp = load_spec(fixture("zero_pi.json")); θzp = zero_pi_params()
@@ -50,7 +49,9 @@ classified(root, spec, θ) = (b = KronFreeCircuits._tree_bases(root); terms = ci
     @test !classified(pg, tr, θtr)[pg]
     @test !classified(pg, tr, (θtr..., n_g=0.5))[pg]                                         # Review Focus 1: exact value, still complex
     lit = parse_spec(replace(read(fixture("transmon.json"), String), "\"n_g\": [\"n_g\"]" => "\"n_g\": [\"0.5\"]"))
-    @test classified(pg, lit, (E_J=20.0, E_C=1.0))[pg]                                       # a spec literal is structure
+    @test !classified(pg, lit, (E_J=20.0, E_C=1.0))[pg]   # the literal ½ is complex in the periodic gauge (its linear n term is imaginary)
+    lit0 = parse_spec(replace(read(fixture("transmon.json"), String), "\"n_g\": [\"n_g\"]" => "\"n_g\": [\"0\"]"))
+    @test classified(pg, lit0, (E_J=20.0, E_C=1.0))[pg]                                      # a spec literal is structure: the linear term is dropped
     @test classified(Node([:varphi_1 => FockBasis(12; phi_zpf=0.6)]), load_spec(fixture("fluxonium.json")), (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)) |> d -> all(values(d))
 end
 
@@ -64,7 +65,7 @@ end
     @test_throws ArgumentError Node([:x => ChargeBasis(2)]; arithmetic=:fast)
     pg = Node([:varphi_1 => PeriodicGrid(16; order=4)]; arithmetic=:real)
     err = try classified(pg, load_spec(fixture("transmon.json")), (E_J=20.0, E_C=1.0, n_g=0.3)); nothing catch e; e end
-    @test err isa ArgumentError && occursin("d2wrap", err.msg)
+    @test err isa ArgumentError && occursin(":varphi_1", err.msg) && occursin("purely imaginary", err.msg)
     # a SQUID-like cosine with a flux offset on a charge mode: complex even at zero flux (Review Focus 1)
     sq = parse_spec("""{"format":"kronfree-spec","version":1,"units":"GHz","parameters":["E_J","E_C","x"],
         "modes":[{"name":"q","type":"c"}],"E_C":[["E_C"]],"E_L":[["0"]],"flux_linear":["0"],"n_g":["0"],
@@ -150,9 +151,9 @@ end
                            (load_spec(fixture("fluxonium.json")), Any[:varphi_1 => FockBasis(14; phi_zpf=0.6)], (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π)),
                            (load_spec(fixture("transmon.json")), Any[:varphi_1 => ChargeBasis(8)], (E_J=20.0, E_C=1.0, n_g=0.3)))
         node = Node(ch; solver=Dense(), keep=lowest(4))
-        b = KronFreeCircuits._tree_bases(node); terms = circuit_terms(spec, b); r = KronFreeCircuits.route(node, terms)
-        Hr = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec, b)(θ_); real=true)
-        Hc = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec, b)(θ_); real=false)
+        terms = circuit_terms(spec); r = KronFreeCircuits.route(node, terms)
+        Hr = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec)(θ_); real=true)
+        Hc = KronFreeCircuits._node_operator(node, Dense(), Any[c.second for c in ch], r[node], θ_, constant_term(spec)(θ_); real=false)
         @test eltype(Hr) === Float64 && eltype(Hc) === ComplexF64
         A, B = Matrix(Hr), Matrix(Hc)
         @test maximum(abs, A - B) <= 1e-13 * max(1, maximum(abs, B))
@@ -223,9 +224,9 @@ end
     pair = Node(Any[:varphi_1 => ChargeBasis(6), :varphi_2 => ChargeBasis(6)]; solver=Dense(), keep=lowest(8))
     top = Node(Any[pair, :varphi_3 => ChargeBasis(6)]; solver=Dense(), keep=lowest(4))
     sysc = materialize(top, chain, θc)
-    b = KronFreeCircuits._tree_bases(top); rc = KronFreeCircuits.route(top, circuit_terms(chain, b))
+    rc = KronFreeCircuits.route(top, circuit_terms(chain))
     @test any(t -> any(f -> f.mode === :varphi_1, t.factors), rc[top]) && any(t -> any(f -> f.mode === :varphi_2, t.factors), rc[top])
-    c = constant_term(chain, b)(θc)
+    c = constant_term(chain)(θc)
     Ar = Matrix(KronFreeCircuits._node_operator(top, Dense(), sysc.root.children, rc[top], θc, c; real=true))
     Ac = Matrix(KronFreeCircuits._node_operator(top, Dense(), sysc.root.children, rc[top], θc, c; real=false))
     @test maximum(abs, Ar - Ac) <= 1e-13 * max(1, maximum(abs, Ac))
