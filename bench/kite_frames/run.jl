@@ -8,7 +8,8 @@
 #
 # Exits nonzero if two frames' energies differ by more than FRAME_TOL, if a coefficient of a loop spec is not a
 # constant, if the RuntimeGeneratedFunctions cache of KronFreeCircuits grows during the loop (or does not grow for the
-# probe coefficient), or if load_record does not return the frame and values written.
+# probe coefficient), if Julia compiles anything between a frame change and the end of its materialize in the timed
+# loop, or if load_record does not return the frame and values written.
 
 using KronFreeCircuits, PythonCall, LinearAlgebra, Logging, Printf, Random
 using KronFreeCircuits: _Constant
@@ -35,7 +36,11 @@ Threads.nthreads() == 1 || error("run single-threaded (julia -t 1), got $(Thread
 const ITERS = parse(Int, get(ENV, "KITE_FRAMES_ITERS", "200"))
 const OUT = get(ENV, "KITE_FRAMES_OUT", joinpath(@__DIR__, "results"))
 const NEV = 4
-const FRAME_TOL = 1e-4          # GHz, the largest allowed spread of any of the four energies across the frames
+# GHz, the largest allowed spread of any of the four energies across the frames.
+# The refined and wider trees move the grid tree's levels by at most 7.9e-6 GHz (the normal frame's leaf truncation;
+# 1.4e-7 in the other frames), so frames that agree to their discretization differ by under 1e-5; 2e-5 leaves a factor
+# of two over that and fails on anything larger.
+const FRAME_TOL = 2e-5
 
 # The grids: ChargeBasis(ncut) on a compact mode; a PhaseGrid (order 8) of npts points over center ± halfwidth on an
 # extended mode, centered at the minimum of the extended block's quadratic part, -E_L⁻¹ flux_linear.
@@ -96,6 +101,7 @@ fmt(E) = join((@sprintf("%.6f", x) for x in E), "  ")
 
 # Entries of the RuntimeGeneratedFunctions body cache of KronFreeCircuits: one per distinct compiled coefficient
 # expression ever built (entries are never removed), so it grows exactly when a new coefficient is compiled.
+# This reads private internals of RuntimeGeneratedFunctions 0.5.27 (the module's cache constant and its `levels` field).
 const _RGF_CACHE = getfield(KronFreeCircuits, Symbol("#_RuntimeGeneratedFunctions_cache"))
 rgf_count() = sum(length, @atomic _RGF_CACHE.levels; init=0)
 
@@ -212,6 +218,8 @@ for (label, f) in ("frame change through materialize setup" => :compile_setup,
     @printf("  Julia compile time, %s: %.3f ms total, in %d of %d iterations%s\n", label, sum(c), length(hit), ITERS,
             isempty(hit) ? "" : " (" * join((@sprintf("#%d: %.3f ms", k, c[k]) for k in hit[1:min(end, 8)]), ", ") *
                                 ")")
+    isempty(hit) || push!(failures, @sprintf("Julia compiled for %.3f ms (%s) in %d timed iterations", sum(c), label,
+                                             length(hit)))
 end
 
 # --- Run record -------------------------------------------------------------------------------------------------------

@@ -26,7 +26,8 @@ The run takes five to eight minutes on the machine below, most of it in the 200 
 4. It times 200 iterations, after 5 untimed warm-up iterations, of "random admissible `S` near the optimum → `Spec(qc, S)` → `materialize`", and checks in every iteration that every coefficient of the spec is a constant.
 5. It writes the run record of the optimum frame with `run_record(res; frame=S*, values=θ, metadata)` and checks that `load_record` of the written file gives back that frame and those values.
 
-It exits nonzero if any of the four energies differs between two frames by more than `1e-4` GHz, if a coefficient of a loop spec is not a `KronFreeCircuits._Constant`, if the compiled-coefficient count grows during the loop (or does not grow for the probe, below), or if `load_record` does not return what was written.
+It exits nonzero if any of the four energies differs between two frames by more than `2e-5` GHz, if a coefficient of a loop spec is not a `KronFreeCircuits._Constant`, if the compiled-coefficient count grows during the loop (or does not grow for the probe, below), if Julia compiles anything between a frame change and the end of its `materialize` in any timed iteration, or if `load_record` does not return what was written.
+The frame tolerance comes from the convergence check below: the refined and wider trees move the frames' levels by at most 7.9e-6 GHz, so frames that agree to their discretization differ by under 1e-5 GHz, and `2e-5` leaves a factor of two.
 
 ### The root solver
 
@@ -66,11 +67,11 @@ The four lowest energies (GHz), as printed:
   optimum   modes cee grid     -9.523981  -9.510510  -8.453776  -8.337848
   optimum             refined  -9.523981  -9.510510  -8.453776  -8.337848   (max change 2.80e-08)
   optimum             wider    -9.523981  -9.510510  -8.453776  -8.337848   (max change 1.37e-07)
-largest spread across frames: 7.23e-06 GHz (tolerance 1e-04)
+largest spread across frames: 7.23e-06 GHz (tolerance 2e-05)
 ```
 
 The ground energy is −9.523981 GHz, the paper's −9.524 GHz.
-The three frames agree to 7.2e-6 GHz, within the tolerance of `1e-4` GHz that the script enforces.
+The three frames agree to 7.2e-6 GHz, within the tolerance of `2e-5` GHz that the script enforces.
 
 ### Against the paper's reference levels
 
@@ -91,9 +92,23 @@ As printed (GHz; difference = this run − reference):
 
 The ground doublet splitting agrees with the reference to the printed 1 kHz.
 Every level of this run lies above the published-coordinates reference by 1.4e-5 to 1.5e-5 GHz in the published and optimum frames (2.0e-5 to 2.2e-5 GHz in the normal frame, whose own truncation error is about 8e-6 GHz, below).
-That nearly uniform offset is not explained by the discretization of this run as measured: the refined and wider trees move the published and optimum levels by at most 1.4e-7 GHz, a hundred times less.
-Its cause is not established here.
+That nearly uniform offset is not explained by the discretization of this run: the refined and wider trees move the published and optimum levels by at most 1.4e-7 GHz, a hundred times less.
 For scale, the two reference lists differ from each other by up to 9e-6 GHz, and this run's levels lie between 5e-6 and 1.2e-5 GHz above the optimized-frame reference.
+
+The offset is the reference calculation's own discretization error.
+This is an exploration result, not printed by `run.jl` (the exploration script solved the KITE in Julia on the reference's grids; it is not in the repository).
+The reference is a direct solve on the grids of circuit-quantization's `default_bases(h, charge_cutoff=24, max_points=160, extent_scale=2.0)`: `ChargeBasis(24)` and two phase grids of 160 points centred at zero, with steps of 0.2846 and 0.2832 in the published frame (extents ±22.624245 and ±22.517312) and 0.3172 and 0.2971 in the optimized frame (±25.221210 and ±23.618681), against 0.131 here, with the same order-8 stencils.
+On exactly those grids (`PhaseGrid(-extent, extent, 160)` reproduces the reference's nodes to 7e-15), with the same three-leaf tree keeping 48 states per leaf (110 592 product states at the root), Julia gives:
+
+| frame | levels on the reference grid (GHz) | minus the paper's reference (GHz) |
+|:------|:-----------------------------------|:----------------------------------|
+| published | −9.523995, −9.510525, −8.453790, −8.337862 | −2.5e-7, +1.4e-7, −3.1e-7, −1.3e-7 |
+| optimized | −9.523992, −9.510522, −8.453784, −8.337853 | −3.3e-7, +5.6e-8, +1.3e-7, −4.5e-7 |
+
+Keeping 56 states per leaf changes these by at most 1e-8 GHz (40 per leaf, by about 1.5e-7), so the tree's truncation error on these grids is well below 1e-6 GHz.
+The remaining differences, at most 4.5e-7 GHz, are within the rounding of the reference values to 1e-6 GHz.
+So the reference's coarse grid lowers its levels by about 1.4e-5 GHz (the order-8 stencil underestimates the kinetic energy at that step), and this run's levels, converged on a grid more than twice as fine, are the more accurate ones.
+The limits: the comparison reproduces the reference's discretization, not its code (the Hamiltonian comes from this package's `Spec(qc, S)` and the operators from its `PhaseGrid` and `ChargeBasis`), and it agrees with the reference values only to their printed six decimals.
 
 ### Convergence
 
@@ -104,7 +119,7 @@ On the refined and wider trees all three frames agree to about 1e-6 GHz.
 The remaining discretization error of the grid tree is therefore about 1e-7 GHz in the published and optimum frames and about 8e-6 GHz in the normal frame.
 
 `materialize` warns during the frame solves that the `PhaseGrid` windows are too small: kept leaf states have more than `1e-6` of their norm on the four edge points.
-The leaves are harmonic oscillators (the cosines couple all three modes, so they act only at the root), and in the published frame even the leaf ground state is wide (about `1.6e-5` amplitude at ±2.5π, with `E_L = 2.54` and `E_C ≈ 2.48` GHz); the higher kept leaf states reach the edge in every frame.
+The leaves are harmonic oscillators (the cosines couple all three modes, so they act only at the root), and in the published frame even the leaf ground state is wide (about `1.6e-5` amplitude at ±2.5π, with `E_L = 2.54` and `E_C ≈ 2.48` GHz; an exploration result, not printed by `run.jl`); the higher kept leaf states reach the edge in every frame.
 The root's low states are confined by the junction cosines, and the wider tree (±4π) gives the same energies to 1.4e-7 GHz in the published and optimum frames, so the warning does not affect the four energies reported.
 The script also drops the leaves' `fix_phases!` warnings (high leaf states with no weight on the phase mask) and prints how many it dropped.
 
@@ -114,12 +129,13 @@ Means over the 200 iterations:
 
 | quantity | mean |
 |:---------|-----:|
-| (a) frame change alone, `Spec(qc, S)` | 0.530 ms |
-| (b) frame change through `materialize`'s setup | 0.942 ms |
-| frame change through the full `materialize` (context) | 1831 ms |
+| (a) frame change alone, `Spec(qc, S)` | 0.366 ms |
+| (b) frame change through `materialize`'s setup | 0.594 ms |
+| frame change through the full `materialize` (context) | 1312 ms |
 
-Timing (b), first 20 and last 20 iterations: 0.999 ms and 0.846 ms.
-The machine was shared with other Julia jobs during the run, so these means carry their load; the timings vary from run to run by tens of percent.
+Timing (b), first 20 and last 20 iterations: 0.571 ms and 0.574 ms.
+These are from the run of 2026-11-10 that produced every printed block in this README (the run after the frame tolerance was tightened to `2e-5`).
+The machine was shared with other Julia jobs during the run, so these means carry their load; the timings vary from run to run by tens of percent (an earlier run on the same day, under heavier load, gave 0.530 ms, 0.942 ms and 1831 ms).
 
 Both (a) and (b) are under the 5 ms target of design §4.3.
 The full `materialize` is dominated by the root's LOBPCG on 24³ = 13 824 product states, single-threaded; it is not a frame-change cost.
@@ -150,6 +166,6 @@ Three measures, all over the 200 timed iterations:
 - Every `t.coeff.f` of `circuit_terms(spec)`, and the function of `constant_term(spec)`, is a `KronFreeCircuits._Constant` in every iteration (asserted in the loop).
 - The RuntimeGeneratedFunctions body cache of `KronFreeCircuits` holds one entry per distinct compiled coefficient expression and never drops one, so it grows whenever any path (including `_make` on an `Expr` in `src/bo.jl` or `src/spectransform.jl`) compiles a new coefficient; it holds 0 entries before and after the loop, so nothing in this session ever compiled a coefficient.
   To show the measure is live, the script then compiles one coefficient, `Coefficient("2 * E_J", [:E_J])`, and the count becomes 1.
-- Julia's cumulative compilation time (`Base.cumulative_compile_time_ns`) does not increase in any iteration, neither from the frame change to the first eigensolve nor from there to the end of `materialize`.
+- Julia's cumulative compilation time (`Base.cumulative_compile_time_ns`) does not increase in any iteration, neither from the frame change to the first eigensolve nor from there to the end of `materialize`; a nonzero value in either window fails the run (it has been zero in every run of the script so far).
 
-Timing (b) does not grow over the loop (0.999 ms in the first 20 iterations, 0.846 ms in the last 20), so no per-iteration cost builds up.
+Timing (b) does not grow over the loop (0.571 ms in the first 20 iterations, 0.574 ms in the last 20), so no per-iteration cost builds up.
