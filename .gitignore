@@ -33,3 +33,6 @@ JuliaLocalPreferences.toml
 
 # macOS
 .DS_Store
+
+# Run records written by bench/kite_frames/run.jl
+bench/kite_frames/results/
