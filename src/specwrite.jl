@@ -17,7 +17,11 @@ end
 The text of the coefficient expression `ex` (a `Coefficient`'s `ex`) in the `kronfree-spec` scalar grammar.
 `parse_spec` of the result gives back the same function.
 """
-expr_string(x::Number) = x isa Complex ? throw(ArgumentError("cannot write the complex number $x")) : _number_string(x)
+expr_string(x::Number) = _number_string(x)
+function expr_string(x::Complex)              # a folded constant; the grammar has only real literals
+    iszero(imag(x)) || throw(ArgumentError("cannot write the complex number $x"))
+    return _number_string(real(x))
+end
 function expr_string(s::Symbol)
     s in (:pi, :π) && return "pi"
     s === :ℯ && return "ℯ"

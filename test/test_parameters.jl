@@ -115,3 +115,25 @@ end
     t_terms = minimum(@elapsed(materialize(leaf, terms, θ; constant=c, modetypes=modetypes)) for _ in 1:10)
     @test t_spec < 3 * t_terms + 1e-3
 end
+
+@testset "constant coefficients fold and never compile" begin
+    K = KronFreeCircuits
+    a, b = Coefficient(2.0), Coefficient(3)
+    @test a.f isa K._Constant && isempty(a.deps)
+    for c in (a * b, a + b, -a, 4 * a, K.phase_factor(Coefficient(0.5), -1))
+        @test c.ex isa Number && c.f isa K._Constant
+    end
+    @test (a * b).ex == 6 && (a + b).ex == 5 && (-a).ex == -2 && (4 * a).ex == 8
+    @test K.phase_factor(Coefficient(0.5), -1).ex ≈ exp(-0.5im)
+    @test (a * b)((;)) === ComplexF64(6)
+    @test (a * b)((x=1.0,)) === ComplexF64(6)          # extra parameters are ignored
+    p = Coefficient("x", [:x])
+    @test (a * p).ex isa Expr && !((a * p).f isa K._Constant)   # mixed stays symbolic
+    @test K.iszero_expr(Coefficient(0.0) * a)
+    # a folded complex literal: real when its imaginary part is zero, complex character otherwise
+    one_, rot = K.phase_factor(Coefficient(0), 1), K.phase_factor(Coefficient(0.5), 1)
+    @test one_.ex isa Complex && K.expr_string(one_.ex) == "1.0" && !K._maybe_complex(one_.ex)
+    @test_throws ArgumentError K.expr_string(rot.ex)
+    @test K._maybe_complex(rot.ex) && K._maybe_complex((rot * p).ex)
+    @test K._iszero_ex(Coefficient(0.0im).ex) && K.iszero_expr(Coefficient(0.0) * rot)
+end

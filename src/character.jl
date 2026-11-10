@@ -150,6 +150,7 @@ const _ANALYTIC_CALLS = (:+, :-, :*, :/, ://, :^, :sqrt, :exp, :log, :cos, :sin,
 # Whether `ex` can be complex-valued with real parameters; anything unrecognized can (conservative).
 function _maybe_complex(ex)
     ex isa Real && return false
+    ex isa Complex && return !iszero(imag(ex))  # a folded constant
     ex isa Symbol && return ex === :im          # parameters are real (a non-Real θ is rejected); pi, π, ℯ
     (ex isa Expr && ex.head === :call && ex.args[1] isa Symbol) || return true
     f, args = ex.args[1], @view ex.args[2:end]

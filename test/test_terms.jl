@@ -76,3 +76,14 @@ end
     @test cp.coeff(θ) ≈ -0.5 * 1.7 * cis(0.4 - shift)
     @test cm.coeff(θ) ≈ -0.5 * 1.7 * cis(-(0.4 - shift))
 end
+
+@testset "a numeric spec expands to constant terms and keeps its arithmetic class" begin
+    spec = load_spec(fixture("fluxonium.json"))
+    θ = (E_J=4.0, E_C=1.0, E_L=0.5, varphi_ext=0.3)
+    num = KronFreeCircuits.substitute(spec, θ)
+    @test all(t.coeff.f isa KronFreeCircuits._Constant for t in circuit_terms(num))
+    root = Node([spec.modes[1].name => PhaseGrid(-10π, 10π, 1201; order=8)]; solver=Dense(), keep=lowest(6))
+    a, b = materialize(root, spec, θ), materialize(root, num, (;))
+    @test energies(a) ≈ energies(b) rtol=1e-12
+    @test arithmetic(a) == arithmetic(b)
+end

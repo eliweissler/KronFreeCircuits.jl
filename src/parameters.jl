@@ -31,6 +31,7 @@ end
 
 A compiled scalar expression of named circuit parameters.
 `ex` is the expression, `deps` the parameters it uses, and `f(θ::NamedTuple)` its `ComplexF64` evaluation.
+A constant has a number as `ex`, no `deps`, and a `_Constant` as `f`.
 """
 struct Coefficient
     ex::Union{Expr,Symbol,Number}
@@ -53,7 +54,18 @@ function _compile(ex, deps::Vector{Symbol})
     return @RuntimeGeneratedFunction(fex)
 end
 
+"""
+    _Constant(value)
+
+The function of a constant `Coefficient`: it returns `value` for any `NamedTuple`, with nothing compiled.
+"""
+struct _Constant <: Function
+    value::ComplexF64
+end
+(k::_Constant)(::NamedTuple) = k.value
+
 _make(ex, deps::Vector{Symbol}) = Coefficient(ex, deps, _compile(ex, deps))
+_make(ex::Number, ::Vector{Symbol}) = Coefficient(ex, Symbol[], _Constant(ComplexF64(ex)))
 
 # Functions a coefficient expression may call, and the named constants it may use.
 const _ALLOWED_CALLS = (:+, :-, :*, :/, :^, ://, :sqrt, :exp, :cos, :sin, :tan, :cosh, :sinh, :tanh,
@@ -132,6 +144,8 @@ Compile the expression `src` of the declared `params`.
 `+ - * / ^ // sqrt exp cos sin tan cosh sinh tanh log abs cis cispi sign conj real imag`;
 the dotted operators `.+ .- .* ./ .^` mean the scalar operators;
 integer literals beyond `typemax(Int64)` are `Int128` or `BigInt` values; anything else (blocks, assignments, macros, string literals, other functions) throws an `ArgumentError`.
+`Coefficient(x)` is the constant `x`, and so is a `src` that parses to a number: nothing is compiled for it.
+Arithmetic among constants (`*`, `+`, unary `-`, a number times a constant, `phase_factor`) folds to a constant.
 """
 function Coefficient(src::AbstractString, params::AbstractVector{Symbol})
     isempty(strip(src)) && throw(ArgumentError("coefficient expression is empty"))
@@ -156,18 +170,23 @@ end
 
 _union_deps(a::Coefficient, b::Coefficient) = union(a.deps, b.deps)
 
-Base.:*(x::Number, c::Coefficient) = _make(:($x * $(c.ex)), copy(c.deps))
-Base.:*(a::Coefficient, b::Coefficient) = _make(:($(a.ex) * $(b.ex)), _union_deps(a, b))
-Base.:+(a::Coefficient, b::Coefficient) = _make(:($(a.ex) + $(b.ex)), _union_deps(a, b))
-Base.:-(c::Coefficient) = _make(:(-($(c.ex))), copy(c.deps))
+# Arithmetic among constants folds to a constant, computed as the compiled expression would compute it.
+Base.:*(x::Number, c::Coefficient) =
+    c.ex isa Number ? Coefficient(x * c.ex) : _make(:($x * $(c.ex)), copy(c.deps))
+Base.:*(a::Coefficient, b::Coefficient) =
+    a.ex isa Number && b.ex isa Number ? Coefficient(a.ex * b.ex) : _make(:($(a.ex) * $(b.ex)), _union_deps(a, b))
+Base.:+(a::Coefficient, b::Coefficient) =
+    a.ex isa Number && b.ex isa Number ? Coefficient(a.ex + b.ex) : _make(:($(a.ex) + $(b.ex)), _union_deps(a, b))
+Base.:-(c::Coefficient) = c.ex isa Number ? Coefficient(-c.ex) : _make(:(-($(c.ex))), copy(c.deps))
 
 """
     phase_factor(offset::Coefficient, sign::Int) -> Coefficient
 
-The coefficient `exp(sign * im * offset)`.
+The coefficient `exp(sign * im * offset)`, a constant when `offset` is.
 """
 phase_factor(offset::Coefficient, sign::Int) =
-    _make(:(exp($(sign) * im * $(offset.ex))), copy(offset.deps))
+    offset.ex isa Number ? Coefficient(exp(sign * im * offset.ex)) :
+                           _make(:(exp($(sign) * im * $(offset.ex))), copy(offset.deps))
 
 iszero_expr(c::Coefficient) = c.ex isa Number && iszero(c.ex)
 
