@@ -16,10 +16,12 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
 [weakdeps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 cuTENSOR = "011b41b2-24ef-40a8-b3eb-fa098493e9e1"
 
 [extensions]
 KronFreeCircuitsCUDAExt = ["CUDA", "cuTENSOR"]
+KronFreeCircuitsPythonCallExt = "PythonCall"
 
 [compat]
 Adapt = "4"
@@ -30,6 +32,7 @@ KernelAbstractions = "0.9, 0.10"
 KrylovKit = "0.10.4"
 LOBPCGEigensolver = "=0.1.4"
 LinearAlgebra = "1"
+PythonCall = "0.9.29"
 Random = "1"
 RuntimeGeneratedFunctions = "0.5.27"
 SparseArrays = "1"

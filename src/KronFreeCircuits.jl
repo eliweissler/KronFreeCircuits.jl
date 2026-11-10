@@ -22,7 +22,8 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm,
-       PortCharacter, character, arithmetic
+       PortCharacter, character, arithmetic,
+       circuit_quantization, QuantizedCircuit, run_record, load_record
 
 include("parameters.jl")
 include("spec.jl")
@@ -44,5 +45,6 @@ include("phase.jl")
 include("materialize.jl")
 include("bo.jl")
 include("dressed.jl")
+include("pyinterface.jl")
 
 end # module

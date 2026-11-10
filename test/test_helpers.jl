@@ -3,3 +3,7 @@
     H = kron_reference([2, 2], [(1.0 + 0im, [(1, A)]), (2.0 + 0im, [(2, B)])])
     @test H ≈ kron(I(2), A) + 2 * kron(B, I(2))   # axis 1 fastest
 end
+
+@testset "circuit-quantization interface without PythonCall" begin
+    @test_throws "load PythonCall" circuit_quantization()
+end
