@@ -162,20 +162,22 @@ end
     @test err isa ArgumentError && occursin("_kronfree", err.msg)
 end
 
+# `s` with some of its fields replaced, by keyword.
+edited(s::Spec; kw...) = Spec((get(kw, f, getfield(s, f)) for f in fieldnames(Spec))...)
+
 @testset "the check: the provenance must describe the spec" begin
     spec = solved(res, frames.optimum, θ)
     caught(f) = (e = error_of(f); e isa ArgumentError && occursin("check = false", e.msg) ? e.msg : nothing)
-    names_field(msg) = msg !== nothing && occursin(r"(parameters|modes|E_C|E_L|flux_linear|n_g|cosines|constant)", msg)
 
-    # the spec of one frame recorded with another frame
+    # the spec of one frame recorded with another frame: the first difference is an omega entry
     msg = caught(() -> record_json(spec; circuit=res, frame=frames.normal, values=θ))
-    @test names_field(msg)
+    @test occursin("cosines[1].omega[2]: -1.0327 in the spec", something(msg, ""))
     text = record_json(spec; circuit=res, frame=frames.normal, values=θ, check=false)
     @test identical(parse_spec(text), spec) && load_record(text).frame == frames.normal   # written as given
     # a spec recorded with other values
     θ′ = merge(θ, (E_J=θ.E_J * 1.01,))
     msg = caught(() -> record_json(spec; circuit=res, frame=frames.optimum, values=θ′))
-    @test names_field(msg) && occursin("cosines", msg)
+    @test occursin("cosines[1].energy: ", something(msg, ""))
     text = record_json(spec; circuit=res, frame=frames.optimum, values=θ′, check=false)
     @test identical(parse_spec(text), spec) && load_record(text).values.E_J == θ′.E_J
     # a numeric spec recorded without values, and a symbolic spec recorded with values
@@ -183,12 +185,72 @@ end
     @test occursin("parameters", something(caught(() -> record_json(sres; circuit=res, values=θ)), ""))
     # mode names other than the circuit's defaults
     named = Spec(res; mode_names=["a", "b", "c"])
-    @test occursin("modes", something(caught(() -> record_json(named; circuit=res)), ""))
+    @test occursin("modes[1].name: a in the spec", something(caught(() -> record_json(named; circuit=res)), ""))
     @test parse_spec(record_json(named; circuit=res, check=false)).modes == named.modes
     # a symbolic spec with and without a frame passes the check and round-trips
     @test identical(parse_spec(record_json(sres; circuit=res)), sres)
     framed = Spec(res; frame=frames.optimum)
     @test identical(parse_spec(record_json(framed; circuit=res, frame=frames.optimum)), framed)
+    # the symbolic spec of one frame recorded with another: in another frame the parameters come in another order
+    msg = caught(() -> record_json(framed; circuit=res))
+    @test occursin("parameters: [:E_CJ, :epsilon, :E_CS, :E_L, :delta, :n_g1, :E_J] in the spec, " *
+                   "[:E_CS, :E_CJ, :epsilon, :E_L, :delta, :n_g1, :E_J] in the spec rebuilt", something(msg, ""))
+    @test identical(parse_spec(record_json(framed; circuit=res, check=false)), framed)
+    # a symbolic spec whose coefficient differs, compared at the sample point of the parameters (E_J is the 7th of
+    # them, so it takes 0.5 + 0.1 √8 there)
+    shifted = edited(sres; constant=parse_spec(replace(spec_json(sres), r"\"constant\": \"0\"" =>
+                                                                         "\"constant\": \"E_J\"")).constant)
+    msg = caught(() -> record_json(shifted; circuit=res))
+    @test occursin("constant: $(0.5 + 0.1 * sqrt(8)) in the spec, 0.0 in the spec rebuilt", something(msg, ""))
+end
+
+@testset "the check: floors, and a coefficient it cannot evaluate" begin
+    iz = KronFreeCircuits.iszero_expr
+    mismatch = Base.get_extension(KronFreeCircuits, :KronFreeCircuitsPythonCallExt)._record_mismatch
+    spec = solved(res, frames.optimum, θ)
+    @test all(iz, spec.n_g) && iz(spec.flux_linear[1])                  # exact zeros in this run
+    # round-off against exact zeros passes: n_g has floor 1, flux_linear the spec's largest energy
+    noisy = edited(spec; n_g=Coefficient.([1e-17, -2e-17, 0.0]),
+                   flux_linear=[Coefficient(3e-15); spec.flux_linear[2:3]])
+    text = record_json(noisy; circuit=res, frame=frames.optimum, values=θ)
+    @test identical(parse_spec(text), noisy)
+    # ... but not beyond the floor
+    off = edited(spec; n_g=Coefficient.([1e-6, 0.0, 0.0]))
+    e = error_of(() -> record_json(off; circuit=res, frame=frames.optimum, values=θ))
+    @test e isa ArgumentError && occursin("n_g[1]: 1.0e-6 in the spec, 0.0 in the spec rebuilt", e.msg)
+    # a flux_linear of pure round-off against exact zeros, and an omega entry of round-off against an exact zero
+    zero_flux = edited(spec; flux_linear=Coefficient.([0.0, 0.0, 0.0]))
+    @test mismatch(edited(spec; flux_linear=Coefficient.([1e-15, 0.0, -2e-15])), zero_flux) === nothing
+    @test occursin("flux_linear[1]", mismatch(edited(spec; flux_linear=Coefficient.([1e-6, 0.0, 0.0])), zero_flux))
+    c = spec.cosines[1]
+    with_omega(ω) = edited(spec; cosines=[KronFreeCircuits.CosineSpec(c.energy, ω, c.offset); spec.cosines[2:end]])
+    @test mismatch(with_omega([c.omega[1], c.omega[2], 1e-15]), with_omega([c.omega[1], c.omega[2], 0.0])) === nothing
+    @test occursin("cosines[1].omega[3]", mismatch(with_omega([c.omega[1], c.omega[2], 1e-6]),
+                                                   with_omega([c.omega[1], c.omega[2], 0.0])))
+    # a symbolic coefficient undefined at the sample point (every parameter there lies between 0.6 and 0.9)
+    bad = edited(sres; constant=parse_spec(replace(spec_json(sres), r"\"constant\": \"0\"" =>
+                                                                       "\"constant\": \"sqrt((E_J - 2))\"")).constant)
+    @test bad.constant.ex != 0
+    e = error_of(() -> record_json(bad; circuit=res))
+    @test e isa ArgumentError && occursin("could not evaluate constant of the spec at its sample point", e.msg) &&
+          occursin("check = false skips the check", e.msg)
+end
+
+@testset "every record is validated by circuit-quantization's loader" begin
+    # a charge cosine (a phase-slip term), which Julia reads and circuit-quantization does not
+    spec = solved(res, frames.optimum, θ)
+    slip = edited(spec; charge_cosines=[KronFreeCircuits.ChargeCosineSpec(Coefficient(0.1), [0.0, 1.0, 0.0],
+                                                                         Coefficient(0.0))])
+    for check in (true, false)
+        e = error_of(() -> record_json(slip; circuit=res, frame=frames.optimum, values=θ, check))
+        @test e isa ArgumentError
+        check || @test occursin("circuit-quantization cannot read the spec of the record, so the record was not " *
+                                "written", e.msg) && occursin("phase-slip terms are not supported", e.msg)
+    end
+    path = joinpath(mktempdir(), "slip.json")
+    @test_throws "phase-slip terms are not supported" save_record(path, slip; circuit=res, frame=frames.optimum,
+                                                                  values=θ, check=false)
+    @test !ispath(path)                                                   # nothing written
 end
 
 @testset "a record loads in a fresh Julia session" begin                     # acceptance 4

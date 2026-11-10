@@ -416,11 +416,14 @@ _shown(x::Number) = isreal(x) ? real(x) : x
 # the text of an error, or `nothing` when they agree.
 # The parameters, the mode names, the mode types, the number of cosines and the cosine vectors are compared first.
 # Every coefficient is then evaluated (at `_sample_point` of the parameters when there are any) and compared with the
-# relative tolerance `_RECORD_RTOL`: an entry of `E_C`, `E_L`, `flux_linear` or `n_g` relative to the largest
-# magnitude of that matrix or vector in either spec, an omega or kappa entry relative to the largest magnitude of
-# that vector, a cosine's energy relative to the larger of the two energies, its offset (a phase) relative to 1 or
-# the larger offset, and the constant relative to the largest energy of either spec (`E_C`, `E_L` and the cosine
-# energies).
+# relative tolerance `_RECORD_RTOL` of a scale that is the largest magnitude of the numbers compared together, in
+# either spec, but at least a floor: an entry of `E_C` or `E_L` against its matrix (no floor); an entry of
+# `flux_linear` against that vector, with the spec's largest energy as floor; an entry of `n_g`, an omega or a kappa
+# entry against its vector, with floor 1 (they are dimensionless); a cosine's energy against the two energies (no
+# floor); its offset (a phase) against the two offsets, with floor 1; and the constant against itself, with the
+# spec's largest energy as floor.
+# The spec's largest energy is the largest magnitude among `E_C`, `E_L` and the cosine energies of both specs.
+# A coefficient that cannot be evaluated at the sample point is an `ArgumentError` naming it.
 function _record_mismatch(a::Spec, b::Spec)::Union{Nothing,String}
     differ(field, x, y) = "$field: $x in the spec, $y in the spec rebuilt from circuit, frame, values and the zero " *
                           "tolerances"
@@ -444,33 +447,45 @@ function _record_mismatch(a::Spec, b::Spec)::Union{Nothing,String}
         end
         return nothing
     end
-    for (field, x, y, vector) in (("cosines", a.cosines, b.cosines, c -> c.omega),
-                                  ("charge_cosines", a.charge_cosines, b.charge_cosines, c -> c.kappa))
-        for k in eachindex(x)
-            m = within("$field[$k].$(field == "cosines" ? "omega" : "kappa")", vector(x[k]), vector(y[k]))
-            m === nothing || return m
-        end
-    end
-    θ = _sample_point(a.parameters)
-    at(c::Coefficient) = c(θ)
-    ec_a, ec_b, el_a, el_b = at.(a.E_C), at.(b.E_C), at.(a.E_L), at.(b.E_L)
-    for (field, x, y) in (("E_C", ec_a, ec_b), ("E_L", el_a, el_b),
-                          ("flux_linear", at.(a.flux_linear), at.(b.flux_linear)), ("n_g", at.(a.n_g), at.(b.n_g)))
-        m = within(field, x, y)
+    cosines = (("cosines", a.cosines, b.cosines, c -> c.omega, "omega"),
+               ("charge_cosines", a.charge_cosines, b.charge_cosines, c -> c.kappa, "kappa"))
+    for (field, x, y, vector, name) in cosines, k in eachindex(x)
+        m = within("$field[$k].$name", vector(x[k]), vector(y[k]); floor=1.0)
         m === nothing || return m
     end
-    energy = maximum(abs, Iterators.flatten((ec_a, ec_b, el_a, el_b)); init=0.0)
-    for (field, x, y) in (("cosines", a.cosines, b.cosines), ("charge_cosines", a.charge_cosines, b.charge_cosines))
-        for k in eachindex(x)
-            ea, eb = at(x[k].energy), at(y[k].energy)
-            energy = max(energy, abs(ea), abs(eb))
-            m = within("$field[$k].energy", ea, eb)
-            m === nothing || return m
-            m = within("$field[$k].offset", at(x[k].offset), at(y[k].offset); floor=1.0)
-            m === nothing || return m
+    # The coefficients at the sample point; `which` and `field` name a coefficient that cannot be evaluated there.
+    θ = _sample_point(a.parameters)
+    function at(which, field, c::Coefficient)
+        try
+            return c(θ)
+        catch err
+            err isa InterruptException && rethrow()
+            throw(ArgumentError("record_json: the check could not evaluate $field of the $which at its sample point " *
+                                "$θ ($(sprint(showerror, err))); check = false skips the check"))
         end
     end
-    return within("constant", at(a.constant), at(b.constant); floor=energy)
+    function at(which, field, cs::AbstractArray{Coefficient})
+        return [at(which, "$field[$(join(Tuple(i), ", "))]", cs[i]) for i in CartesianIndices(cs)]
+    end
+    both(field, get) = (at("spec", field, get(a)), at("rebuilt spec", field, get(b)))
+    ec, el = both("E_C", s -> s.E_C), both("E_L", s -> s.E_L)
+    energies = [both("$field[$k].energy", s -> getfield(s, Symbol(field))[k].energy)
+                for (field, x, _...) in cosines for k in eachindex(x)]
+    energy = maximum(abs, Iterators.flatten((ec..., el..., Iterators.flatten(energies)...)); init=0.0)
+    for (field, (x, y), floor) in (("E_C", ec, 0.0), ("E_L", el, 0.0),
+                                   ("flux_linear", both("flux_linear", s -> s.flux_linear), energy),
+                                   ("n_g", both("n_g", s -> s.n_g), 1.0))
+        m = within(field, x, y; floor)
+        m === nothing || return m
+    end
+    for (field, x, _...) in cosines, k in eachindex(x)
+        m = within("$field[$k].energy", both("$field[$k].energy", s -> getfield(s, Symbol(field))[k].energy)...)
+        m === nothing || return m
+        m = within("$field[$k].offset", both("$field[$k].offset", s -> getfield(s, Symbol(field))[k].offset)...;
+                   floor=1.0)
+        m === nothing || return m
+    end
+    return within("constant", both("constant", s -> s.constant)...; floor=energy)
 end
 
 """
@@ -491,10 +506,16 @@ The Julia-only key `_kronfree` records the frame of `circuit` itself, `frame`, t
 With `check = true` (the default), the spec is rebuilt from the provenance before anything is returned and compared with `spec`.
 With `values` it is rebuilt by the loop route, `Spec(QuantizedCircuit(circuit; values), frame; zero_rtol, zero_atol)` (`Spec(QuantizedCircuit(circuit; values); zero_rtol, zero_atol)` when `frame === nothing`); without `values` it is `Spec(circuit; frame, zero_rtol, zero_atol)`, read from the spec fields of `to_record`'s output, which are that spec's JSON.
 The two specs must have the same parameters, mode names and mode types, the same number of cosines, and the same cosine vectors and coefficients, the coefficients evaluated at a fixed sample point of the parameters when there are any.
-Numbers are compared with relative tolerance `1e-9`: an entry of `E_C`, `E_L`, `flux_linear` or `n_g` relative to the largest magnitude of that matrix or vector in either spec, an omega entry relative to the largest magnitude of its vector, a cosine's energy relative to the larger of the two energies, its offset relative to 1 or the larger offset, and the constant relative to the largest energy in either spec.
-So a spec zeroed with a different tolerance than the one recorded still passes when every entry zeroed by one and not the other is below `1e-9` of its scale.
-A mismatch is an `ArgumentError` that names the first field that differs, with both values; mode names other than the circuit's defaults (from `mode_names`) are a mismatch.
+Numbers are compared with relative tolerance `1e-9` of a scale: the largest magnitude of the numbers compared together, in either spec, but at least a floor.
+An entry of `E_C` or `E_L` is compared against the largest magnitude in its matrix, with no floor; an entry of `flux_linear` against that vector, with floor the largest energy (the largest magnitude among `E_C`, `E_L` and the cosine energies of both specs); an entry of `n_g`, an omega or a kappa entry against its vector, with floor 1, since they are dimensionless; a cosine's energy against the larger of the two energies, with no floor; its offset, a phase, against the larger offset, with floor 1; and the constant with floor the largest energy.
+So a spec zeroed with a different tolerance than the one recorded still passes when every entry zeroed by one and not the other is below `1e-9` of its scale, and a vector of round-off passes against exact zeros.
+A mismatch is an `ArgumentError` that names the first field that differs, with both values.
+Mode names other than the circuit's defaults (from `mode_names`) are a mismatch, and so are the parameters of a spec built with `subs` that replaces some of them; such specs need `check = false`.
+A coefficient that cannot be evaluated at the sample point (a square root of a negative number, say) is an `ArgumentError` that names it and says that `check = false` skips the check.
 `check = false` skips the comparison, for a spec edited by hand or a loop that writes many records; the provenance blocks are still written from `circuit`, `frame` and `values`.
+
+Whatever `check` is, the assembled document is validated by circuit-quantization's `load_spec` before it is returned, because `circuit_quantization.load_record`, and so [`load_record`](@ref), reads the spec fields with it.
+A spec that circuit-quantization cannot read (one with `charge_cosines`, for example) is an `ArgumentError` carrying circuit-quantization's message, and no record is returned or, by `save_record`, written.
 """
 function KronFreeCircuits.record_json(spec::Spec; circuit::Py, frame::Union{Nothing,AbstractMatrix{<:Real}}=nothing,
                                       values=nothing, metadata::NamedTuple=(;), zero_rtol::Real=_ZERO_RTOL,
@@ -547,7 +568,17 @@ function KronFreeCircuits.record_json(spec::Spec; circuit::Py, frame::Union{Noth
                     pylist([pydict(Dict("name" => string(k), "value" => v)) for (k, v) in pairs(θ)]),
         "zero_rtol" => zero_rtol, "zero_atol" => zero_atol))
     doc["_metadata"] = meta
-    return pyconvert(String, json.dumps(doc; indent=2, ensure_ascii=false, allow_nan=false))
+    text = pyconvert(String, json.dumps(doc; indent=2, ensure_ascii=false, allow_nan=false))
+    # `circuit_quantization.load_record` reads the spec fields with `load_spec` before anything else, so a document it
+    # rejects is a record that `load_record` cannot read.
+    try
+        cq.load_spec(text)
+    catch err
+        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
+        throw(ArgumentError("record_json: circuit-quantization cannot read the spec of the record, so the record was " *
+                            "not written: " * pyconvert(String, pystr(err.v))))
+    end
+    return text
 end
 
 # An `ArgumentError` unless `_record_mismatch` finds the given spec and the rebuilt one to agree.
