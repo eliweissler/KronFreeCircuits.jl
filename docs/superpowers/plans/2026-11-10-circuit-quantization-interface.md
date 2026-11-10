@@ -30,10 +30,12 @@ Before Task 5, read that work's report and fill in this table in this file; ever
 
 | Role | Used as | Actual name (fill in) |
 |---|---|---|
-| Numeric Hamiltonian from a `Result` and named values | `NUMERIC(res, values)` | |
-| Frame change with checks, new types, offset-charge convention | `FRAME(h, S)` | |
-| Write a run record | `TO_RECORD(res, ...)` | |
-| Read a run record back to a `Result` | `FROM_RECORD(record)` | |
+| Numeric Hamiltonian from a `Result` and named values | `NUMERIC(res, values)` | `cq.numeric_hamiltonian(res, values)` |
+| Frame change with checks, new types, offset-charge convention | `FRAME(h, S)` | `h.transformed(S)` (`NumericHamiltonian.transformed`) |
+| Write a run record | `TO_RECORD(res, ...)` | `cq.to_record(res, path=None, *, subs=None, **kwargs)` |
+| Read a run record back to a `Result` | `FROM_RECORD(record)` | `cq.load_record(source)` |
+
+Filled in on 2026-11-10 from circuit-quantization `9c26fd2` and its report, `docs/julia-interface-prechanges-report.md` in that repository.
 
 Tasks 1 to 4 do not depend on the pre-changes and can start at once.
 
