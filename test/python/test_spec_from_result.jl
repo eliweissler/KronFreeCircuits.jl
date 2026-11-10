@@ -48,3 +48,23 @@ end
     θ = NamedTuple{Tuple(a.parameters)}(Tuple(0.5 .+ rand(length(a.parameters))))
     @test all(isapprox(x(θ), y(θ); rtol=1e-12) for (x, y) in zip(a.E_C, b.E_C))
 end
+
+@testset "Spec(res) round-off zeroing reaches to_spec" begin
+    include("kite.jl")
+    iz = KronFreeCircuits.iszero_expr
+    res, θ, frames = kite()
+    # The KITE at θ in the normal frame turned by 1e-10 rad: numeric Float matrices, with E_L[2,3] ≈ 6e-12 of max|E_L|.
+    ε = 1e-10
+    S = frames.normal * [1 0 0; 0 cos(ε) -sin(ε); 0 sin(ε) cos(ε)]
+    a = Spec(res; frame=S, subs=θ)
+    @test isempty(a.parameters) && !iz(a.E_L[2, 3]) && !iz(a.E_L[3, 2])
+    b = Spec(res; frame=S, subs=θ, zero_rtol=1e-9)
+    @test iz(b.E_L[2, 3]) && iz(b.E_L[3, 2]) && b.E_L[2, 2]((;)) == a.E_L[2, 2]((;))
+    @test iz(Spec(res; frame=S, subs=θ, zero_rtol=0, zero_atol=1e-10).E_L[2, 3])
+    # the normal frame's round-off: zeroed by default, kept with zeroing off
+    @test iz(Spec(res; frame=frames.normal, subs=θ).E_L[2, 3])
+    @test !iz(Spec(res; frame=frames.normal, subs=θ, zero_rtol=0, zero_atol=0).E_L[2, 3])
+    # a bad tolerance names the keyword, before any Python call
+    @test_throws "zero_rtol" Spec(PythonCall.pybuiltins.None; zero_rtol=-1e-12)
+    @test_throws "zero_atol" Spec(PythonCall.pybuiltins.None; zero_atol=NaN)
+end

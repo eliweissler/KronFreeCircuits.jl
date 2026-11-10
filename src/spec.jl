@@ -255,8 +255,17 @@ Read and validate the spec JSON file at `path` (see [`parse_spec`](@ref)).
 """
 load_spec(path::AbstractString) = parse_spec(read(path, String))
 
-# A pair of `numeric_spec` matrix entries both this small relative to the largest entry is round-off of a zero.
-const _ROUNDOFF_ZERO = 1e-15
+# The default round-off zeroing tolerances of `numeric_spec` and of the extension's `Spec` methods, those of
+# circuit-quantization's `to_spec`: relative `1e-12` of the scale, no absolute floor.
+const _ZERO_RTOL = 1e-12
+const _ZERO_ATOL = 0.0
+
+# A round-off zeroing tolerance must be a finite nonnegative real number; the error names the keyword.
+function _check_zero_tolerance(x::Real, name::Symbol)
+    (!(x isa Bool) && isfinite(x) && x >= 0) ||
+        throw(ArgumentError("$name = $x must be a finite nonnegative real number"))
+    return Float64(x)
+end
 
 function _numeric_matrix(M::AbstractMatrix{<:Real}, key::Symbol, N::Int)
     (size(M) == (N, N) && !(eltype(M) <: Bool)) ||
@@ -269,23 +278,29 @@ function _check_finite(x::Real, where_::AbstractString)
     return nothing
 end
 
-# Symmetrize a numeric `E_C` or `E_L` at round-off level, as the circuit-quantization exporter does for a numeric
-# matrix: with `scale = max|M|`, a pair differing by at most `tol * scale` becomes its mean, a pair whose entries are
-# both at most `_ROUNDOFF_ZERO * scale` in magnitude becomes exactly zero, and a larger asymmetry is rejected.
-function _symmetrize!(M::Matrix{Float64}, key::Symbol, tol::Real)
+# Symmetrize a numeric `E_C` or `E_L` at round-off level, then zero its round-off, as the circuit-quantization exporter
+# does for a numeric matrix: with `scale = max|M|`, a pair differing by more than `tol * scale` is rejected and any other
+# pair becomes its mean; then, with `scale` taken again over the symmetrized matrix, every entry (diagonal included) at
+# most `max(rtol * scale, atol)` in magnitude becomes exactly zero.
+function _symmetrize!(M::Matrix{Float64}, key::Symbol, tol::Real, rtol::Float64, atol::Float64)
     scale = maximum(abs, M; init=0.0)
     for i in axes(M, 1), j in i+1:size(M, 2)
         a, b = M[i, j], M[j, i]
         abs(a - b) <= tol * scale ||
             _spec_error("$key must be symmetric, but $key[$i,$j] = $a and $key[$j,$i] = $b differ by more than " *
                         "symmetry_tol = $tol relative to max|$key| = $scale")
-        M[i, j] = M[j, i] = max(abs(a), abs(b)) <= _ROUNDOFF_ZERO * scale ? 0.0 : (a + b) / 2
+        M[i, j] = M[j, i] = (a + b) / 2
+    end
+    threshold = max(rtol * maximum(abs, M; init=0.0), atol)
+    for I in eachindex(M)
+        abs(M[I]) <= threshold && (M[I] = 0.0)
     end
     return M
 end
 
 """
-    numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines=Tuple[], constant=0.0, symmetry_tol=1e-10) -> Spec
+    numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines=Tuple[], constant=0.0, symmetry_tol=1e-10,
+                   zero_rtol=1e-12, zero_atol=0.0) -> Spec
 
 A `Spec` with no parameters from plain numeric arrays, the same `Spec` that [`parse_spec`](@ref) builds from a JSON
 document of the same numbers.
@@ -295,16 +310,26 @@ Each cosine is a tuple `(energy, omega, offset)` with `omega` a real vector of l
 mode within `1e-12` of an integer is rounded to it, any other is rejected.
 Every coefficient is a constant (nothing is compiled), and an exact zero is a literal zero, as `"0"` is in a JSON spec.
 `E_C` and `E_L` are symmetrized at round-off level: with `scale` the largest magnitude in the matrix, a pair
-`[i,j]`, `[j,i]` differing by at most `symmetry_tol * scale` is replaced by its mean, and a pair whose entries are both
-at most `1e-15 * scale` in magnitude by exactly zero.
+`[i,j]`, `[j,i]` differing by at most `symmetry_tol * scale` is replaced by its mean, and a larger asymmetry is rejected.
+Round-off is then zeroed, as circuit-quantization's `to_spec` does with the same keywords.
+In the symmetrized `E_C` and `E_L`, every entry (diagonal included) at most `max(zero_rtol * scale, zero_atol)` in
+magnitude becomes exactly zero, with `scale` the largest magnitude in that matrix.
+In each cosine, an `omega` entry at most `zero_rtol` times the largest magnitude in that `omega` becomes exactly zero,
+on a compact mode at most `zero_rtol` times the smaller of that magnitude and 1; `zero_atol` does not apply to `omega`.
+`zero_rtol = 0, zero_atol = 0` turns zeroing off.
+Unlike the exporter, which zeroes only floating-point residue and skips a matrix with a symbolic entry, every entry
+here is a number, so any entry within the threshold is zeroed.
 The caller's arrays are not modified.
-Throws `ArgumentError` on a wrong shape, an unknown mode type, a repeated or missing mode name, a non-finite number, a
-larger asymmetry (naming the pair) or a non-integer `omega` on a compact mode.
+Throws `ArgumentError` on a negative or non-finite `zero_rtol` or `zero_atol` (naming it, before any other check), a
+wrong shape, an unknown mode type, a repeated or missing mode name, a non-finite number, a larger asymmetry (naming the
+pair) or a non-integer `omega` on a compact mode.
 """
 function numeric_spec(; modes::AbstractVector{<:Pair{Symbol,Symbol}},
                       E_C::AbstractMatrix{<:Real}, E_L::AbstractMatrix{<:Real},
                       flux_linear::AbstractVector{<:Real}, n_g::AbstractVector{<:Real},
-                      cosines::AbstractVector = Tuple[], constant::Real = 0.0, symmetry_tol::Real = 1e-10)
+                      cosines::AbstractVector = Tuple[], constant::Real = 0.0, symmetry_tol::Real = 1e-10,
+                      zero_rtol::Real = _ZERO_RTOL, zero_atol::Real = _ZERO_ATOL)
+    rtol, atol = _check_zero_tolerance(zero_rtol, :zero_rtol), _check_zero_tolerance(zero_atol, :zero_atol)
     N = length(modes)
     EC, EL = _numeric_matrix(E_C, :E_C, N), _numeric_matrix(E_L, :E_L, N)
     fl, ng = _numbers(flux_linear, "flux_linear", N), _numbers(n_g, "n_g", N)
@@ -337,10 +362,14 @@ function numeric_spec(; modes::AbstractVector{<:Pair{Symbol,Symbol}},
     end
     _check_finite(constant, "constant")
 
-    _symmetrize!(EC, :E_C, symmetry_tol)
-    _symmetrize!(EL, :E_L, symmetry_tol)
+    _symmetrize!(EC, :E_C, symmetry_tol, rtol, atol)
+    _symmetrize!(EL, :E_L, symmetry_tol, rtol, atol)
 
     cosine_specs = map(entries) do (where_, energy, omega, offset)
+        scale = maximum(abs, omega; init=0.0)
+        for (j, m) in enumerate(specs)                      # capped on a compact mode, so a non-integer is still rejected
+            abs(omega[j]) <= rtol * (m.type === :c ? min(scale, 1.0) : scale) && (omega[j] = 0.0)
+        end
         _check_compact_omega(omega, specs, where_)
         for (j, m) in enumerate(specs)
             m.type === :c && (omega[j] = round(omega[j]))

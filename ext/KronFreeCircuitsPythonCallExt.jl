@@ -1,7 +1,7 @@
 module KronFreeCircuitsPythonCallExt
 
 using KronFreeCircuits, PythonCall
-import KronFreeCircuits: circuit_quantization
+import KronFreeCircuits: circuit_quantization, _ZERO_RTOL, _ZERO_ATOL, _check_zero_tolerance
 
 # What to do when circuit_quantization does not import: name the interpreter PythonCall is using and how to choose another.
 function _import_help(exe::AbstractString)::String
@@ -119,11 +119,12 @@ function _in_frame(res::Py, S::AbstractMatrix{<:Real})::Py
 end
 
 """
-    Spec(res::Py; frame=nothing, subs=nothing, simplify::Bool=true, mode_names=nothing) -> Spec
+    Spec(res::Py; frame=nothing, subs=nothing, simplify::Bool=true, mode_names=nothing, zero_rtol=1e-12,
+         zero_atol=0.0) -> Spec
 
 The spec of the circuit-quantization `Result` `res`, built in memory: `parse_spec` of the JSON text of
-`circuit_quantization.to_spec(res; subs, simplify, mode_names)`, so it is the spec that `load_spec` reads from the file
-`save_spec` writes.
+`circuit_quantization.to_spec(res; subs, simplify, mode_names, zero_rtol, zero_atol)`, so it is the spec that
+`load_spec` reads from the file `save_spec` writes.
 `frame`, a square real matrix `S` over the retained modes, first takes `res` to the coordinates `φ = S φ′` with
 `res.transform`, keeping the parameters symbolic; `to_sympy_frame` makes `S` exact before it reaches SymPy.
 `S` must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer,
@@ -135,12 +136,21 @@ parameter (an existing one, or a new one with the same SymPy assumptions), or to
 Names are matched to the circuit's own SymPy symbols (in the new frame, when `frame` is given); a name that matches none
 is an `ArgumentError`.
 `mode_names` labels the retained modes in order (default `varphi_1`, ..., `varphi_N`).
+`zero_rtol` and `zero_atol` are `to_spec`'s round-off zeroing tolerances, the rule of [`numeric_spec`](@ref): in a
+fully numeric `E_C` or `E_L`, a floating-point entry at most `max(zero_rtol * scale, zero_atol)` in magnitude is
+written as an exact zero, and in each cosine an `omega` entry at most `zero_rtol` times that `omega`'s largest
+magnitude.
+A negative or non-finite tolerance is an `ArgumentError` naming it, raised before any Python call.
 """
 function KronFreeCircuits.Spec(res::Py; frame::Union{Nothing,AbstractMatrix{<:Real}}=nothing, subs=nothing,
-                               simplify::Bool=true, mode_names=nothing)
+                               simplify::Bool=true, mode_names=nothing,
+                               zero_rtol::Real=_ZERO_RTOL, zero_atol::Real=_ZERO_ATOL)
+    zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
+    zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
     frame === nothing || (res = _in_frame(res, frame))
     names = mode_names === nothing ? nothing : pylist(String[string(m) for m in mode_names])
-    data = circuit_quantization().to_spec(res; subs=_pysubs(res, subs), simplify, mode_names=names)
+    data = circuit_quantization().to_spec(res; subs=_pysubs(res, subs), simplify, mode_names=names, zero_rtol,
+                                          zero_atol)
     text = pyconvert(String, pyimport("json").dumps(data; allow_nan=false))
     return parse_spec(text)
 end
@@ -208,19 +218,20 @@ function KronFreeCircuits.QuantizedCircuit(res::Py; values)
     return QuantizedCircuit(handle, θ, mode_names)
 end
 
-# The spec of constants of the numeric Hamiltonian `h`, with the modes named `mode_names`.
-function _numeric_spec(h::Py, mode_names::Vector{Symbol})::Spec
+# The spec of constants of the numeric Hamiltonian `h`, with the modes named `mode_names`; `zero` holds the round-off
+# zeroing keywords of `numeric_spec`.
+function _numeric_spec(h::Py, mode_names::Vector{Symbol}; zero...)::Spec
     types = pyconvert(Vector{String}, h.types)
     cosines = [(pyconvert(Float64, E), pyconvert(Vector{Float64}, w), pyconvert(Float64, d)) for (E, w, d) in h.cosines]
     return numeric_spec(; modes=[n => Symbol(t) for (n, t) in zip(mode_names, types)],
                         E_C=pyconvert(Matrix{Float64}, h.E_C), E_L=pyconvert(Matrix{Float64}, h.E_L),
                         flux_linear=pyconvert(Vector{Float64}, h.flux_linear), n_g=pyconvert(Vector{Float64}, h.n_g),
-                        cosines, constant=pyconvert(Float64, h.constant))
+                        cosines, constant=pyconvert(Float64, h.constant), zero...)
 end
 
 """
-    Spec(qc::QuantizedCircuit{Py}) -> Spec
-    Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real}) -> Spec
+    Spec(qc::QuantizedCircuit{Py}; zero_rtol=1e-12, zero_atol=0.0) -> Spec
+    Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real}; zero_rtol=1e-12, zero_atol=0.0) -> Spec
 
 The spec of constants of `qc` in its base frame, or in the frame `φ = S φ′`: [`numeric_spec`](@ref) of the arrays of
 `circuit_quantization`'s NumPy frame change `transformed(S)`, with no symbolic work.
@@ -228,13 +239,23 @@ The spec of constants of `qc` in its base frame, or in the frame `φ = S φ′`:
 are checked in Julia, its admissibility by circuit-quantization, and an inadmissible `S` is an `ArgumentError`.
 In the new frame each compact mode's offset charge is the source part transformed by `Sᵀ` plus the static sector part
 transformed by `S_ccᵀ`, and a noncompact mode carries no sector offset.
+`zero_rtol` and `zero_atol` are passed to `numeric_spec`, whose round-off zeroing they set as in `Spec(res)`; a negative
+or non-finite tolerance is an `ArgumentError` naming it, raised before any Python call.
 """
-KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}) = _numeric_spec(qc.handle, qc.mode_names)
+function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}; zero_rtol::Real=_ZERO_RTOL,
+                               zero_atol::Real=_ZERO_ATOL)
+    zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
+    zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
+    return _numeric_spec(qc.handle, qc.mode_names; zero_rtol, zero_atol)
+end
 
-function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real})
+function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real};
+                               zero_rtol::Real=_ZERO_RTOL, zero_atol::Real=_ZERO_ATOL)
+    zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
+    zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
     _check_frame(S, length(qc.mode_names))
     S_np = pyimport("numpy").array(Matrix{Float64}(S))
-    return _numeric_spec(_frame_call(() -> qc.handle.transformed(S_np)), qc.mode_names)
+    return _numeric_spec(_frame_call(() -> qc.handle.transformed(S_np)), qc.mode_names; zero_rtol, zero_atol)
 end
 
 # --- Run records -----------------------------------------------------------------------------------------------------

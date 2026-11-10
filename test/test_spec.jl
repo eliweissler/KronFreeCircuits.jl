@@ -229,3 +229,49 @@ end
     @test_throws ArgumentError numeric_spec(; args..., constant=NaN)
     @test_throws ArgumentError numeric_spec(; args..., cosines=[(NaN, [1, 1], 0.0)])
 end
+
+@testset "numeric_spec: round-off zeroing (zero_rtol, zero_atol)" begin
+    iz = KronFreeCircuits.iszero_expr
+    EC(x) = [2.0 x; x 0.5]                                          # scale 2
+    args = (; modes=[:a => :c, :b => :e], E_L=[0.0 0.0; 0.0 0.3], flux_linear=[0, 0], n_g=[0, 0])
+    # default zero_rtol = 1e-12 of the scale: a pair at 1e-13 * scale is a literal zero, a pair at 1e-11 * scale survives
+    s = numeric_spec(; args..., E_C=EC(2e-13))
+    @test iz(s.E_C[1, 2]) && iz(s.E_C[2, 1])
+    s = numeric_spec(; args..., E_C=EC(2e-11))
+    @test s.E_C[1, 2]((;)) == s.E_C[2, 1]((;)) == 2e-11 && !iz(s.E_C[1, 2])
+    # a larger zero_rtol, an absolute zero_atol alone, and zeroing turned off
+    s = numeric_spec(; args..., E_C=EC(2e-11), zero_rtol=1e-9)
+    @test iz(s.E_C[1, 2]) && iz(s.E_C[2, 1])
+    s = numeric_spec(; args..., E_C=EC(2e-11), zero_rtol=0, zero_atol=1e-10)
+    @test iz(s.E_C[1, 2]) && iz(s.E_C[2, 1])
+    @test numeric_spec(; args..., E_C=EC(2e-11), zero_rtol=0, zero_atol=1e-11).E_C[1, 2]((;)) == 2e-11
+    s = numeric_spec(; args..., E_C=[2.0 2e-17; 4e-17 0.5], zero_rtol=0, zero_atol=0)
+    @test s.E_C[1, 2]((;)) == s.E_C[2, 1]((;)) == 3e-17 && !iz(s.E_C[1, 2])       # kept, still symmetrized
+    # a diagonal entry below the threshold is zeroed, in E_C and in E_L
+    s = numeric_spec(; args..., E_C=[2.0 0.0; 0.0 1e-13], E_L=[1e-14 0.0; 0.0 0.3])
+    @test iz(s.E_C[2, 2]) && iz(s.E_L[1, 1]) && s.E_C[1, 1]((;)) == 2.0 && s.E_L[2, 2]((;)) == 0.3
+    # an all-zero matrix stays all zeros
+    @test all(iz, numeric_spec(; args..., E_C=EC(0.2), E_L=zeros(2, 2), zero_atol=1.0).E_L)
+    # omega: relative to that cosine's largest entry only; zero_atol does not apply
+    ee = (; args..., modes=[:a => :e, :b => :e], E_C=EC(0.2))
+    @test numeric_spec(; ee..., cosines=[(1.0, [1.0, 1e-17], 0.0)]).cosines[1].omega == [1.0, 0.0]
+    @test numeric_spec(; ee..., cosines=[(1.0, [1.0, -1e-17], 0.0)]).cosines[1].omega[2] === 0.0
+    @test numeric_spec(; ee..., cosines=[(1.0, [1.0, 1e-17], 0.0)], zero_rtol=0).cosines[1].omega == [1.0, 1e-17]
+    @test numeric_spec(; ee..., cosines=[(1.0, [3.0, 1e-12], 0.0)]).cosines[1].omega == [3.0, 0.0]
+    @test numeric_spec(; ee..., cosines=[(1.0, [1.0, 1e-17], 0.0)], zero_atol=1.0).cosines[1].omega == [1.0, 0.0]
+    @test numeric_spec(; ee..., cosines=[(1.0, [1.0, 1e-11], 0.0)], zero_atol=1.0).cosines[1].omega == [1.0, 1e-11]
+    # a compact entry off the integers is still rejected, even beside a large entry (the compact cap min(scale, 1));
+    # compact round-off is exactly zero
+    @test_throws "integer" numeric_spec(; args..., E_C=EC(0.2), cosines=[(1.0, [0.5, 1.0], 0.0)])
+    @test_throws "integer" numeric_spec(; args..., E_C=EC(0.2), cosines=[(1.0, [1e-3, 1e10], 0.0)])
+    @test numeric_spec(; args..., E_C=EC(0.2), cosines=[(1.0, [1e-17, 1.0], 0.0)]).cosines[1].omega[1] === 0.0
+    # a negative or non-finite tolerance names the keyword, before any other check
+    @test_throws ArgumentError numeric_spec(; args..., E_C=EC(0.2), zero_rtol=-1e-12)
+    @test_throws "zero_rtol" numeric_spec(; args..., E_C=EC(0.2), zero_rtol=-1e-12)
+    @test_throws "zero_atol" numeric_spec(; args..., E_C=EC(0.2), zero_atol=NaN)
+    @test_throws "zero_rtol" numeric_spec(; args..., E_C=EC(0.2), zero_rtol=Inf)
+    @test_throws "zero_atol" numeric_spec(; args..., E_C=ones(3, 3), zero_atol=-1.0)
+    # the asymmetry rule is unchanged, and is applied before zeroing
+    @test_throws "E_C[1,2]" numeric_spec(; args..., E_C=[1.0 0.2; 0.3 0.5])
+    @test_throws "E_C[1,2]" numeric_spec(; args..., E_C=[2.0 2e-13; 0.0 0.5], symmetry_tol=1e-14)
+end

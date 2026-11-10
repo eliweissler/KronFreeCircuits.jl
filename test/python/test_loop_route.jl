@@ -163,3 +163,28 @@ end
     e = err(() -> QuantizedCircuit(res; values=Dict(1 => 1.0)))
     @test e isa ArgumentError
 end
+
+@testset "round-off zeroing reaches numeric_spec" begin
+    iz = KronFreeCircuits.iszero_expr
+    # The normal frame turned by 1e-10 rad in its noncompact plane: E_L[2,3] ≈ 4e-11 GHz, about 6e-12 of max|E_L|.
+    ε = 1e-10
+    S = frames.normal * [1 0 0; 0 cos(ε) -sin(ε); 0 sin(ε) cos(ε)]
+    a = Spec(qc, S)                                              # the default zero_rtol = 1e-12 keeps it
+    @test !iz(a.E_L[2, 3]) && !iz(a.E_L[3, 2]) && 1e-12 < abs(evalc(a.E_L[2, 3])) / 6.42 < 1e-11
+    b = Spec(qc, S; zero_rtol=1e-9)
+    @test iz(b.E_L[2, 3]) && iz(b.E_L[3, 2]) && evalc(b.E_L[2, 2]) == evalc(a.E_L[2, 2])
+    @test iz(Spec(qc, S; zero_rtol=0, zero_atol=1e-10).E_L[2, 3])
+    @test !iz(Spec(qc, S; zero_rtol=0, zero_atol=0).E_C[1, 2])  # zeroing off: the normal frame's round-off survives
+    @test iz(Spec(qc, frames.normal).E_C[1, 2])                 # and the default zeroes it
+    @test !iz(Spec(qc; zero_rtol=0).E_C[1, 1])
+    # the loop route and the symbolic route zero the same entries, at either tolerance
+    for zr in (1e-12, 1e-9)
+        l, s = Spec(qc, S; zero_rtol=zr), Spec(res; frame=S, subs=θ, zero_rtol=zr)
+        @test iz.(l.E_C) == iz.(s.E_C) && iz.(l.E_L) == iz.(s.E_L) && same_spec(l, s, (;))
+    end
+    # a bad tolerance names the keyword, before any Python call
+    broken = QuantizedCircuit(PythonCall.pybuiltins.None, qc.values, qc.mode_names)
+    @test_throws "zero_rtol" Spec(broken, S; zero_rtol=-1.0)
+    @test_throws "zero_atol" Spec(broken, S; zero_atol=NaN)
+    @test_throws "zero_atol" Spec(broken; zero_atol=Inf)
+end
