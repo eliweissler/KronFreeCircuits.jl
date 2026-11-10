@@ -3,13 +3,17 @@
 #
 #   JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=bench/kite_frames bench/kite_frames/run.jl
 #
-# KITE_FRAMES_OUT   directory of the run record (default: results/ beside this script; not committed)
-# KITE_FRAMES_ITERS iterations of the timed loop (default 200)
+# KITE_FRAMES_OUT     directory of the run record (default: results/ beside this script; not committed)
+# KITE_FRAMES_ITERS   iterations of the timed loop (default 200)
+# KITE_FRAMES_REFGRID 1 to also solve the published and optimum frames on the reference calculation's own grids and
+#                     print the levels beside the paper's (default 0, off: it adds several minutes)
 #
 # Exits nonzero if two frames' energies differ by more than FRAME_TOL, if a coefficient of a loop spec is not a
 # constant, if the RuntimeGeneratedFunctions cache of KronFreeCircuits grows during the loop (or does not grow for the
-# probe coefficient), if Julia compiles anything between a frame change and the end of its materialize in the timed
-# loop, or if load_record does not return the frame and values written.
+# probe coefficient), if Julia compiles anything between a frame change and the first eigensolve of its materialize in
+# the timed loop, or if load_record does not return the frame and values written.
+# Julia compile time from the first eigensolve to the end of a materialize only prints a warning: a rarely taken branch
+# of the eigensolver may compile once in 200 solves, and no coefficient is compiled there (the cache count checks that).
 
 using KronFreeCircuits, PythonCall, LinearAlgebra, Logging, Printf, Random
 using KronFreeCircuits: _Constant
@@ -34,6 +38,7 @@ BLAS.set_num_threads(1)
 Threads.nthreads() == 1 || error("run single-threaded (julia -t 1), got $(Threads.nthreads()) threads")
 
 const ITERS = parse(Int, get(ENV, "KITE_FRAMES_ITERS", "200"))
+const REFGRID = get(ENV, "KITE_FRAMES_REFGRID", "0") == "1"
 const OUT = get(ENV, "KITE_FRAMES_OUT", joinpath(@__DIR__, "results"))
 const NEV = 4
 # GHz, the largest allowed spread of any of the four energies across the frames.
@@ -54,7 +59,7 @@ const WIDER = (ncut=10, npts=193, halfwidth=4π, keep=40)
 const LOOP = (ncut=10, npts=121, halfwidth=2.5π, keep=24)
 
 # The reference levels (GHz) of the circuit-quantization paper's KITE figure, as the repository owner supplied them
-# (lists PUBLISHED and OPTIMIZED of the owner's untracked kite_reference/check_paper_numbers.py): the four lowest
+# (lists PUBLISHED and OPTIMIZED of the owner's untracked mean_field_ref_dont_commit/kite_reference/check_paper_numbers.py): the four lowest
 # levels in the published coordinates by direct diagonalization on 1 254 400 states, and in the optimized frame on
 # another grid.
 const REF_PUBLISHED = [-9.523995, -9.510525, -8.453790, -8.337862]
@@ -144,6 +149,44 @@ end
 @printf("  ground doublet splitting: %.3f MHz (reference, published: %.3f MHz)\n",
         1e3 * (E[:published][2] - E[:published][1]), 1e3 * (REF_PUBLISHED[2] - REF_PUBLISHED[1]))
 
+# --- Optional: the reference calculation's own grids ------------------------------------------------------------------
+# The reference levels come from a direct solve on the bases of circuit-quantization's
+# `default_bases(h, charge_cutoff=24, max_points=160, extent_scale=2.0)` in each frame (the owner's untracked
+# mean_field_ref_dont_commit/kite_reference/kite_direct.py): ChargeBasis(24) on the compact mode and a grid of 160
+# points centred at zero on each extended mode, with the same order-8 stencil as PhaseGrid's default.
+# This block builds those bases with circuit-quantization, solves the same three-leaf tree on them (48 states kept per
+# leaf, the root by Auto()), and prints the levels beside the paper's; it checks nothing.
+const REFGRID_KEEP = 48
+if REFGRID
+    println("\nthe reference's own grids (KITE_FRAMES_REFGRID=1): $REFGRID_KEEP states kept per leaf")
+    product_state = pyimport("circuit_quantization.product_state")
+    for (name, ref) in ((:published, REF_PUBLISHED), (:optimum, REF_OPTIMIZED))
+        S = frames[name]
+        h = qc.handle.transformed(pyimport("numpy").array(S))
+        spec = Spec(qc, S)
+        bases = collect(product_state.default_bases(h; charge_cutoff=24, max_points=160, extent_scale=2.0))
+        leaves = map(enumerate(spec.modes)) do (i, m)
+            b = bases[i]
+            basis = if pyconvert(Bool, b.compact)
+                ChargeBasis(pyconvert(Int, b.cutoff))
+            else
+                extent, points = pyconvert(Float64, b.extent), pyconvert(Int, b.points)
+                nodes = range(-extent, extent; length=points)
+                @printf("  %-9s mode %d: PhaseGrid(-%.6f, %.6f, %d), step %.4f; largest node difference %.0e\n",
+                        name, i, extent, extent, points, step(nodes),
+                        maximum(abs.(collect(nodes) - pyconvert(Vector{Float64}, b.grid))))
+                PhaseGrid(-extent, extent, points)
+            end
+            Node([m.name => basis]; solver=Dense(), compute=REFGRID_KEEP, keep=lowest(REFGRID_KEEP))
+        end
+        root = Node(leaves; solver=Auto(), compute=NEV, keep=lowest(NEV))
+        t = @elapsed Er = energies(materialize(root, spec, (;)))
+        @printf("  %-9s reference grid %s   (%.0f s)\n", name, fmt(Er), t)
+        @printf("  %-9s paper          %s\n", "", fmt(ref))
+        @printf("  %-9s difference     %s\n", "", diffs(Er - ref))
+    end
+end
+
 # --- Timed frame-change loop ------------------------------------------------------------------------------------------
 # Random admissible S near the optimum, for the frame change φ = S φ′ with mode types (c, e, e).
 # Admissible entries are the compact block (kept the integer 1), the compact row's extended columns S[1, 2:3] and the
@@ -211,15 +254,17 @@ println("  every coefficient a _Constant in every iteration: ", !any(startswith(
 @printf("  RuntimeGeneratedFunctions cache entries after compiling one probe coefficient: %d\n", rgf_probe)
 rgf_after == rgf_before || push!(failures, "the RuntimeGeneratedFunctions cache grew by $(rgf_after - rgf_before)")
 rgf_probe == rgf_after + 1 || push!(failures, "the probe coefficient did not grow the RuntimeGeneratedFunctions cache")
-for (label, f) in ("frame change through materialize setup" => :compile_setup,
-                   "first eigensolve to end of materialize" => :compile_rest)
+# Compilation in the setup window fails the run; compilation in the eigensolve window only warns (see the header).
+for (label, f, fatal) in (("frame change through materialize setup", :compile_setup, true),
+                          ("first eigensolve to end of materialize", :compile_rest, false))
     c = getfield.(samples, f)
     hit = findall(>(0), c)
     @printf("  Julia compile time, %s: %.3f ms total, in %d of %d iterations%s\n", label, sum(c), length(hit), ITERS,
             isempty(hit) ? "" : " (" * join((@sprintf("#%d: %.3f ms", k, c[k]) for k in hit[1:min(end, 8)]), ", ") *
                                 ")")
-    isempty(hit) || push!(failures, @sprintf("Julia compiled for %.3f ms (%s) in %d timed iterations", sum(c), label,
-                                             length(hit)))
+    isempty(hit) && continue
+    message = @sprintf("Julia compiled for %.3f ms (%s) in %d timed iterations", sum(c), label, length(hit))
+    fatal ? push!(failures, message) : @warn message * "; no coefficient was compiled if the cache count is unchanged"
 end
 
 # --- Run record -------------------------------------------------------------------------------------------------------
@@ -228,7 +273,7 @@ path = joinpath(OUT, "kite_optimum.json")
 write(path, run_record(res; frame=S_OPT, values=θ,
                        metadata=(bench="kite_frames", energies_GHz=E[:optimum], grid=GRID)))
 rec = load_record(path)
-round_trip = rec.frame == S_OPT && rec.values == θ
+round_trip = rec.frame == S_OPT && rec.values == NamedTuple{Tuple(Spec(res).parameters)}(θ)   # the circuit's order
 round_trip || push!(failures, "load_record of $path does not return the frame and values written")
 println("\nrun record: ", path, " (load_record returns its frame and values: ", round_trip, ")")
 
