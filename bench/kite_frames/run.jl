@@ -6,7 +6,7 @@
 # KITE_FRAMES_OUT     directory of the run record (default: results/ beside this script; not committed)
 # KITE_FRAMES_ITERS   iterations of the timed loop (default 200)
 # KITE_FRAMES_REFGRID 1 to also solve the published and optimum frames on the reference calculation's own grids and
-#                     print the levels beside the paper's (default 0, off: it adds several minutes)
+#                     print the levels beside the paper's (default 0, off: it adds about half a minute)
 #
 # Exits nonzero if two frames' energies differ by more than FRAME_TOL, if a coefficient of a loop spec is not a
 # constant, if the RuntimeGeneratedFunctions cache of KronFreeCircuits grows during the loop (or does not grow for the

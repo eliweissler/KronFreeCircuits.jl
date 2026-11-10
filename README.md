@@ -124,6 +124,8 @@ The interface is a package extension, loaded only when PythonCall is loaded besi
 The design is in spec §20j and `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md`.
 
 You need a Python environment with circuit-quantization installed (Python ≥ 3.11, SymPy ≥ 1.13), and PythonCall in the Julia environment you work in (`Pkg.add("PythonCall")`).
+circuit-quantization must be at commit `c8c8714` or later, which is on its branch `to-spec-zero-tolerance` until that branch is merged into its `main`: `Spec(res)` always passes the round-off zeroing keywords of that commit to circuit-quantization's `to_spec`, and `run_record` forwards them, so both need it, and so does the Python test tier.
+With an older circuit-quantization, `Spec(res)` and `run_record` stop with an `ArgumentError` that names the required commit and the file the module was imported from; `QuantizedCircuit` and `Spec(qc[, S])` still work.
 The extension installs no Python packages.
 Point PythonCall at that environment's interpreter before PythonCall is loaded, with two environment variables:
 
@@ -132,7 +134,7 @@ export JULIA_CONDAPKG_BACKEND=Null                        # use an existing Pyth
 export JULIA_PYTHONCALL_EXE=/path/to/env/bin/python       # the Python that has circuit-quantization installed
 ```
 
-If `circuit_quantization` cannot be imported, the first call fails with a message naming the interpreter PythonCall used and these two variables.
+If the module `circuit_quantization` is not found, the first call fails with a message naming the interpreter PythonCall used and these two variables; if it is found but fails to import (a missing dependency, say), the message is Python's own.
 
 A session that defines the KITE (the cos 2φ transmon of circuit-quantization's `examples/product_state_demo.py`), builds its spec in two frames, solves one of them and writes a run record:
 
@@ -186,11 +188,11 @@ sys = materialize(Node(leaves; compute=4, keep=lowest(4)), spec_S, (;))
 energies(sys)                                                 # the four lowest levels, in GHz
 
 write("kite_optimum.json", run_record(res; frame=S, values=θ, metadata=(note="KITE at the optimum frame",)))
-rec = load_record("kite_optimum.json")                        # (; result, spec, frame, values)
+rec = load_record("kite_optimum.json")                        # (; result, spec, frame, values, zero_rtol, zero_atol)
 ```
 
 The same circuit, with its parameter values and three frames, is `kite()` in `test/python/kite.jl`.
-The tree above is small, for illustration: its four levels lie 1e-4 to 7e-4 GHz above the converged ones, and `materialize` prints warnings about the higher kept leaf states (phase grids too small for them, and phase fixing), which `bench/kite_frames/README.md` explains.
+The tree above is small, for illustration: its four levels lie 1e-4 to 7e-4 GHz above the converged ones, and `materialize` prints warnings about the kept leaf states (phase grids too small for them, and phase fixing), which `bench/kite_frames/README.md` explains.
 `bench/kite_frames/run.jl` solves the three frames on converged trees, and its README shows that the four lowest levels agree across frames to 7e-6 GHz.
 
 There are two routes to a spec in a new frame `φ = S φ′`.
@@ -199,24 +201,27 @@ There are two routes to a spec in a new frame `φ = S φ′`.
   It takes about a second (below), so it suits a frame fixed once, for a sweep over circuit parameters.
   `subs` replaces parameters by name with numbers, other names or SymPy expressions, and `mode_names` names the modes (default `varphi_1`, `varphi_2`, ...).
 - The loop route, `QuantizedCircuit(res; values=θ)` once and then `Spec(qc, S)` per frame, evaluates the circuit at fixed values and changes frames with NumPy, with no symbolic work; it suits a loop that optimizes the frame.
-  `values` must give every parameter of the circuit by name; an unknown or missing name is an `ArgumentError` listing the circuit's parameters.
+  `values` must give every parameter of `Spec(res)` by name, in the frame of `res`; an unknown or missing name is an `ArgumentError` listing the circuit's parameters, and `run_record` checks its `values` by the same rule.
   Every coefficient of the result is a constant, so nothing is compiled anywhere from the frame change through `materialize`.
 
 Both routes apply the same rule to offset charges: the gate-voltage part transforms as `Sᵀ`, and each compact mode carries its own static offset label, which noncompact modes never do.
+In the new frame the static labels are fresh parameters that reuse the names `n_g1`, `n_g2`, ... of the base frame: the value of the new label `n_g{j}` that describes the same circuit is the `j`-th entry of `S_ccᵀ n_g`, with `S_cc` the compact block of `S` and `n_g` the base frame's static offsets, not the base label's own value.
+`Spec(qc, S)` applies that rule itself; with `Spec(res; frame=S)` the caller substitutes the transformed values.
 `numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines, constant)` builds a `Spec` of constants from plain arrays directly, without Python.
 
 Entries that should be zero often come out of a floating-point coordinate change as round-off, and the package would treat each as a real coupling.
 Zeroing them is explicit: `numeric_spec`, `Spec(qc[, S])` and `Spec(res; ...)` take `zero_rtol = 1e-12` and `zero_atol = 0.0`.
 An `E_C` or `E_L` entry no larger than `max(zero_rtol * scale, zero_atol)`, with `scale` the largest magnitude in that matrix, becomes exactly zero, and so does a cosine's `omega` entry no larger than `zero_rtol` times that cosine's largest `omega` entry (on a compact mode, times the smaller of that entry and 1); `zero_rtol = 0, zero_atol = 0` turns zeroing off.
 For example, `Spec(qc, S; zero_rtol=1e-9)` zeroes entries below `1e-9` of the matrix scale.
-On the final route the keywords are passed to circuit-quantization's `to_spec`, which needs its branch `to-spec-zero-tolerance` (not yet on its `main`).
+On the final route the keywords are passed to circuit-quantization's `to_spec` (which needs the commit named above), and that exporter zeroes only floating-point residue, and only in a fully numeric matrix: with symbolic parameters left in `E_C` or `E_L`, nothing in that matrix is zeroed.
 
-`run_record(res; frame, values, metadata)` returns one JSON document for the end of a run.
-It is circuit-quantization's `to_record` of the circuit in the run's frame, so `parse_spec` reads it as a spec and circuit-quantization's `load_record` rebuilds the circuit from it in Python; this package adds its own version and git commit under `_generator.kronfree`, the caller's `metadata` under `_metadata`, and a `_kronfree` block with the frame and values.
-`load_record` returns the spec of the run, the symbolic `Result` that was passed to `run_record`, the frame and the values, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run.
+`run_record(res; frame, values, metadata, zero_rtol, zero_atol)` returns one JSON document for the end of a run.
+It is circuit-quantization's `to_record` of the circuit in the run's frame, so `parse_spec` reads it as a spec and circuit-quantization's `load_record` rebuilds the circuit from it in Python; this package adds its own version and git commit under `_generator.kronfree`, the caller's `metadata` under `_metadata`, and a `_kronfree` block with the frame, the values and the two zeroing tolerances.
+`values` are in the frame of `res`, as `QuantizedCircuit(res; values)` takes them, and the record's spec is that of `Spec(QuantizedCircuit(res; values), frame)`: in the framed circuit the record gives each fresh static offset label its transformed value `S_ccᵀ n_g`, and every other parameter its given value.
+`load_record` returns the spec of the run, the symbolic `Result` that was passed to `run_record`, the frame, the base-frame values (in the order of `Spec(res).parameters`) and the tolerances, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run and `Spec(QuantizedCircuit(rec.result; values=rec.values), rec.frame)` reproduces its numeric spec.
 
 Measured on an Intel i7-11700K with Julia 1.13.2 on one thread (2026-11-10): `Spec(qc, S)` for the three-mode KITE takes 0.134 ms per call in a tight loop, against a design target of 5 ms; `Spec(res; frame=S)` takes 0.37 s for the KITE and 0.80 s for six-mode coupled zero-pis.
-`bench/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: 0.366 ms for the frame change, 0.594 ms through `materialize`'s setup, and no coefficient compiled in the loop.
+`bench/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: in its run of 2026-11-10 on commit `d3f338c`, 0.355 ms for the frame change, 0.569 ms through `materialize`'s setup, and no coefficient compiled in the loop.
 
 The Python tests are a separate tier, never run by `Pkg.test()`; see "Tests" below.
 
@@ -329,10 +334,11 @@ The [KITE references](docs/science/kite.md) prepare both the inductively shunted
 experiment and the capacitively shunted protected circuit for future spectra and
 matrix-element benchmarks alongside the four-mode fluxonium coupler.
 
-The Python tier tests the circuit-quantization interface and has its own environment, `test/python`; it needs the Python environment of "Defining circuits from Julia" and is never included by `Pkg.test()`:
+The Python tier tests the circuit-quantization interface and has its own environment, `test/python`; it needs the Python environment of "Defining circuits from Julia" (with circuit-quantization at commit `c8c8714` or later) and is never included by `Pkg.test()`.
+Set the two environment variables for the `Pkg.instantiate()` too: precompiling the extension without them can make CondaPkg install a Python of its own.
 
 ```bash
-julia --project=test/python -e 'using Pkg; Pkg.instantiate()'
+JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=/path/to/env/bin/python julia --project=test/python -e 'using Pkg; Pkg.instantiate()'
 JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=/path/to/env/bin/python julia --project=test/python test/python/runtests.jl
 ```
 
