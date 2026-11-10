@@ -152,3 +152,80 @@ end
         end
     end
 end
+
+@testset "numeric_spec" begin
+    modes = [:a => :c, :b => :e]
+    EC = [1.0 0.2; 0.2 0.5]; EL = [0.0 0.0; 0.0 0.3]
+    cos1 = (4.0, [1, 2.5], 0.1)
+    s = numeric_spec(; modes, E_C=EC, E_L=EL, flux_linear=[0.0, 0.07], n_g=[0.25, 0.0], cosines=[cos1])
+    json = """{"format":"kronfree-spec","version":1,"parameters":[],
+      "modes":[{"name":"a","type":"c"},{"name":"b","type":"e"}],
+      "E_C":[["1.0","0.2"],["0.2","0.5"]],"E_L":[["0","0"],["0","0.3"]],
+      "flux_linear":["0","0.07"],"n_g":["0.25","0"],
+      "cosines":[{"energy":"4.0","omega":[1,2.5],"offset":"0.1"}]}"""
+    p = parse_spec(json)
+    @test [m.name => m.type for m in s.modes] == modes
+    @test all(s.E_C[i,j]((;)) == p.E_C[i,j]((;)) && s.E_L[i,j]((;)) == p.E_L[i,j]((;)) for i in 1:2, j in 1:2)
+    @test s.cosines[1].omega == p.cosines[1].omega && s.cosines[1].energy((;)) == 4
+    @test KronFreeCircuits.iszero_expr(s.n_g[2])                          # literal zero survives (Review Focus 5)
+    # round-off asymmetry is symmetrized (Review Focus 4)
+    s2 = numeric_spec(; modes, E_C=EC, E_L=[0.0 1e-26; 0.0 0.3], flux_linear=[0,0], n_g=[0,0])
+    @test s2.E_L[1,2]((;)) == s2.E_L[2,1]((;))
+    @test_throws "E_C[1,2]" numeric_spec(; modes, E_C=[1.0 0.2; 0.3 0.5], E_L=EL, flux_linear=[0,0], n_g=[0,0])
+    @test_throws "integer" numeric_spec(; modes, E_C=EC, E_L=EL, flux_linear=[0,0], n_g=[0,0], cosines=[(1.0, [0.5, 1], 0.0)])
+    @test_throws "type" numeric_spec(; modes=[:a => :x, :b => :e], E_C=EC, E_L=EL, flux_linear=[0,0], n_g=[0,0])
+    @test_throws ArgumentError numeric_spec(; modes, E_C=[1.0 NaN; NaN 0.5], E_L=EL, flux_linear=[0,0], n_g=[0,0])
+    @test_throws ArgumentError numeric_spec(; modes, E_C=ones(3,3), E_L=EL, flux_linear=[0,0], n_g=[0,0])
+end
+
+@testset "numeric_spec: the same Spec as parse_spec, and its validation" begin
+    modes = [:a => :c, :b => :e]
+    EC = [1.0 0.2; 0.2 0.5]; EL = [0.0 0.0; 0.0 0.3]
+    args = (; modes, E_C=EC, E_L=EL, flux_linear=[0, 0], n_g=[0, 0])
+    s = numeric_spec(; args..., cosines=[(4.0, [1, 2.5], 0.1)], constant=0.5)
+    @test s.parameters == Symbol[] && isempty(s.charge_cosines) && s.constant((;)) == 0.5
+    cs = [s.constant; vec(s.E_C); vec(s.E_L); s.flux_linear; s.n_g; s.cosines[1].energy; s.cosines[1].offset]
+    @test all(c -> c.f isa KronFreeCircuits._Constant, cs)
+    # zeros prune exactly as the literal "0" of a JSON spec does
+    p = parse_spec("""{"format":"kronfree-spec","version":1,"parameters":[],
+      "modes":[{"name":"a","type":"c"},{"name":"b","type":"e"}],
+      "E_C":[["1.0","0.2"],["0.2","0.5"]],"E_L":[["0","0"],["0","0.3"]],
+      "flux_linear":["0","0"],"n_g":["0","0"],
+      "cosines":[{"energy":"4.0","omega":[1,2.5],"offset":"0.1"}],"constant":"0.5"}""")
+    key(t) = [(f.mode, f.port.kind, f.port.k) for f in t.factors]
+    ts, tp = circuit_terms(s), circuit_terms(p)
+    @test sort(key.(ts)) == sort(key.(tp))
+    @test all(only(t.coeff((;)) for t in tp if key(t) == key(u)) == u.coeff((;)) for u in ts)
+    # a fluxonium at fixed values solves as its JSON spec does, with the same arithmetic class
+    θ = (E_J=4.0, E_C=1.0, E_L=0.5, varphi_ext=0.3)
+    flux = load_spec(fixture("fluxonium.json"))
+    num = numeric_spec(; modes=[:varphi_1 => :e], E_C=fill(1.0, 1, 1), E_L=fill(0.5, 1, 1), flux_linear=[0.5 * 0.3],
+                       n_g=[0], cosines=[(4.0, [1], 0)], constant=0.5 * 0.3^2 / 2)
+    root = Node([:varphi_1 => PhaseGrid(-10π, 10π, 1201; order=8)]; solver=Dense(), keep=lowest(6))
+    a, b = materialize(root, flux, θ), materialize(root, num, (;))
+    @test energies(a) ≈ energies(b) rtol=1e-12
+    @test KronFreeCircuits.arithmetic(a) == KronFreeCircuits.arithmetic(b)
+    # a pair of round-off entries becomes exactly zero; a small asymmetry becomes the mean; the caller's arrays are kept
+    EL2 = [0.0 1e-17; -2e-17 0.3]
+    s2 = numeric_spec(; args..., E_L=EL2)
+    @test KronFreeCircuits.iszero_expr(s2.E_L[1, 2]) && KronFreeCircuits.iszero_expr(s2.E_L[2, 1])
+    @test EL2 == [0.0 1e-17; -2e-17 0.3]
+    EC2 = [1.0 0.2; 0.2 + 1e-12 0.5]
+    s3 = numeric_spec(; args..., E_C=EC2)
+    @test s3.E_C[1, 2]((;)) == s3.E_C[2, 1]((;)) == (0.2 + (0.2 + 1e-12)) / 2
+    @test_throws "E_C[1,2]" numeric_spec(; args..., E_C=EC2, symmetry_tol=1e-14)
+    @test numeric_spec(; args..., E_L=zeros(2, 2)) isa Spec
+    # a compact omega within _INTEGER_TOL of an integer is rounded; integer, adjoint and view inputs are accepted
+    @test numeric_spec(; args..., cosines=[(1, [1 + 1e-13, 0.5], 0)]).cosines[1].omega == [1.0, 0.5]
+    @test numeric_spec(; args..., E_C=view(EC', :, :), flux_linear=1:2) isa Spec
+    # shapes name the expected size; other rules are those of parse_spec
+    @test_throws "2×2" numeric_spec(; args..., E_L=ones(2, 3))
+    @test_throws "flux_linear" numeric_spec(; args..., flux_linear=[0])
+    @test_throws "cosines[1].omega" numeric_spec(; args..., cosines=[(1.0, [1], 0.0)])
+    @test_throws "unique" numeric_spec(; args..., modes=[:a => :c, :a => :e])
+    @test_throws "nonempty" numeric_spec(; modes=Pair{Symbol,Symbol}[], E_C=zeros(0, 0), E_L=zeros(0, 0),
+                                         flux_linear=Float64[], n_g=Float64[])
+    @test_throws ArgumentError numeric_spec(; args..., n_g=[Inf, 0])
+    @test_throws ArgumentError numeric_spec(; args..., constant=NaN)
+    @test_throws ArgumentError numeric_spec(; args..., cosines=[(NaN, [1, 1], 0.0)])
+end

@@ -137,6 +137,28 @@ function _numbers(v, key::AbstractString, N::Int)
     return Float64.(v)
 end
 
+# Mode `i` of a spec, with its type checked.
+function _mode(i::Int, name, type)
+    t = Symbol(type)
+    t in _MODE_TYPES || _spec_error("modes[$i] (\"$name\") has type \"$t\"; expected c, e or h")
+    return ModeSpec(Symbol(name), t)
+end
+
+function _check_mode_names(modes::Vector{ModeSpec})
+    allunique(m.name for m in modes) || _spec_error("mode names must be unique")
+    isempty(modes) && _spec_error("modes must be nonempty")
+    return nothing
+end
+
+# A cosine's `omega` must be an integer (to `_INTEGER_TOL`) on every compact mode.
+function _check_compact_omega(omega::Vector{Float64}, modes::Vector{ModeSpec}, where_::AbstractString)
+    for (j, m) in enumerate(modes)
+        m.type === :c && abs(omega[j] - round(omega[j])) > _INTEGER_TOL &&
+            _spec_error("$where_.omega[$j] = $(omega[j]) on compact mode $(m.name) is not an integer")
+    end
+    return nothing
+end
+
 # A declared parameter name as the Julia identifier an expression's use of it parses to (e.g. µ U+00B5 is μ U+03BC).
 function _identifier(name::AbstractString)
     ex = Meta.parse(name; raise=false)
@@ -187,13 +209,10 @@ function parse_spec(json::AbstractString)
     for (i, m) in enumerate(d[:modes])
         (m isa JSON3.Object && haskey(m, :name) && haskey(m, :type)) ||
             _spec_error("modes[$i] must be an object with \"name\" and \"type\"")
-        t = Symbol(m[:type])
-        t in _MODE_TYPES || _spec_error("modes[$i] (\"$(m[:name])\") has type \"$t\"; expected c, e or h")
-        push!(modes, ModeSpec(Symbol(m[:name]), t))
+        push!(modes, _mode(i, m[:name], m[:type]))
     end
-    allunique(m.name for m in modes) || _spec_error("mode names must be unique")
+    _check_mode_names(modes)
     N = length(modes)
-    N > 0 || _spec_error("modes must be nonempty")
 
     E_C = _matrix(d, :E_C, N, params)
     E_L = _matrix(d, :E_L, N, params)
@@ -206,10 +225,7 @@ function parse_spec(json::AbstractString)
         (c isa JSON3.Object && haskey(c, :energy) && haskey(c, :omega) && haskey(c, :offset)) ||
             _spec_error("$where_ must have \"energy\", \"omega\" and \"offset\"")
         omega = _numbers(c[:omega], "$where_.omega", N)
-        for (j, m) in enumerate(modes)
-            m.type === :c && abs(omega[j] - round(omega[j])) > _INTEGER_TOL &&
-                _spec_error("$where_.omega[$j] = $(omega[j]) on compact mode $(m.name) is not an integer")
-        end
+        _check_compact_omega(omega, modes, where_)
         push!(cosines, CosineSpec(_coefficient(c[:energy], params, "$where_.energy"), omega,
                                   _coefficient(c[:offset], params, "$where_.offset")))
     end
@@ -238,3 +254,99 @@ end
 Read and validate the spec JSON file at `path` (see [`parse_spec`](@ref)).
 """
 load_spec(path::AbstractString) = parse_spec(read(path, String))
+
+# A pair of `numeric_spec` matrix entries both this small relative to the largest entry is round-off of a zero.
+const _ROUNDOFF_ZERO = 1e-15
+
+function _numeric_matrix(M::AbstractMatrix{<:Real}, key::Symbol, N::Int)
+    (size(M) == (N, N) && !(eltype(M) <: Bool)) ||
+        _spec_error("$key must be a $N×$N matrix of numbers (the number of modes)")
+    return Matrix{Float64}(M)
+end
+
+function _check_finite(x::Real, where_::AbstractString)
+    isfinite(x) || _spec_error("$where_ = $x is not finite")
+    return nothing
+end
+
+# Symmetrize a numeric `E_C` or `E_L` at round-off level, as the circuit-quantization exporter does for a numeric
+# matrix: with `scale = max|M|`, a pair differing by at most `tol * scale` becomes its mean, a pair whose entries are
+# both at most `_ROUNDOFF_ZERO * scale` in magnitude becomes exactly zero, and a larger asymmetry is rejected.
+function _symmetrize!(M::Matrix{Float64}, key::Symbol, tol::Real)
+    scale = maximum(abs, M; init=0.0)
+    for i in axes(M, 1), j in i+1:size(M, 2)
+        a, b = M[i, j], M[j, i]
+        abs(a - b) <= tol * scale ||
+            _spec_error("$key must be symmetric, but $key[$i,$j] = $a and $key[$j,$i] = $b differ by more than " *
+                        "symmetry_tol = $tol relative to max|$key| = $scale")
+        M[i, j] = M[j, i] = max(abs(a), abs(b)) <= _ROUNDOFF_ZERO * scale ? 0.0 : (a + b) / 2
+    end
+    return M
+end
+
+"""
+    numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines=Tuple[], constant=0.0, symmetry_tol=1e-10) -> Spec
+
+A `Spec` with no parameters from plain numeric arrays, the same `Spec` that [`parse_spec`](@ref) builds from a JSON
+document of the same numbers.
+`modes` is a vector of `name => type` pairs with `type` one of `:c`, `:e` or `:h`.
+`E_C` and `E_L` are `N×N` real matrices, `flux_linear` and `n_g` real vectors of length `N = length(modes)`.
+Each cosine is a tuple `(energy, omega, offset)` with `omega` a real vector of length `N`; an `omega` entry on a compact
+mode within `1e-12` of an integer is rounded to it, any other is rejected.
+Every coefficient is a constant (nothing is compiled), and an exact zero is a literal zero, as `"0"` is in a JSON spec.
+`E_C` and `E_L` are symmetrized at round-off level: with `scale` the largest magnitude in the matrix, a pair
+`[i,j]`, `[j,i]` differing by at most `symmetry_tol * scale` is replaced by its mean, and a pair whose entries are both
+at most `1e-15 * scale` in magnitude by exactly zero.
+The caller's arrays are not modified.
+Throws `ArgumentError` on a wrong shape, an unknown mode type, a repeated or missing mode name, a non-finite number, a
+larger asymmetry (naming the pair) or a non-integer `omega` on a compact mode.
+"""
+function numeric_spec(; modes::AbstractVector{<:Pair{Symbol,Symbol}},
+                      E_C::AbstractMatrix{<:Real}, E_L::AbstractMatrix{<:Real},
+                      flux_linear::AbstractVector{<:Real}, n_g::AbstractVector{<:Real},
+                      cosines::AbstractVector = Tuple[], constant::Real = 0.0, symmetry_tol::Real = 1e-10)
+    N = length(modes)
+    EC, EL = _numeric_matrix(E_C, :E_C, N), _numeric_matrix(E_L, :E_L, N)
+    fl, ng = _numbers(flux_linear, "flux_linear", N), _numbers(n_g, "n_g", N)
+    entries = map(enumerate(cosines)) do (k, c)
+        where_ = "cosines[$k]"
+        (c isa Union{Tuple,AbstractVector} && length(c) == 3) ||
+            _spec_error("$where_ must be a tuple (energy, omega, offset)")
+        energy, offset = c[1], c[3]
+        (energy isa Real && !(energy isa Bool) && offset isa Real && !(offset isa Bool)) ||
+            _spec_error("$where_: energy and offset must be real numbers")
+        (where_, Float64(energy), _numbers(c[2], "$where_.omega", N), Float64(offset))
+    end
+    (constant isa Bool) && _spec_error("constant must be a real number")
+
+    specs = [_mode(i, name, type) for (i, (name, type)) in enumerate(modes)]
+    _check_mode_names(specs)
+
+    for (key, A) in ((:E_C, EC), (:E_L, EL)), I in CartesianIndices(A)
+        _check_finite(A[I], "$key[$(I[1]),$(I[2])]")
+    end
+    for (key, v) in (("flux_linear", fl), ("n_g", ng)), i in eachindex(v)
+        _check_finite(v[i], "$key[$i]")
+    end
+    for (where_, energy, omega, offset) in entries
+        _check_finite(energy, "$where_.energy")
+        _check_finite(offset, "$where_.offset")
+        for j in eachindex(omega)
+            _check_finite(omega[j], "$where_.omega[$j]")
+        end
+    end
+    _check_finite(constant, "constant")
+
+    _symmetrize!(EC, :E_C, symmetry_tol)
+    _symmetrize!(EL, :E_L, symmetry_tol)
+
+    cosine_specs = map(entries) do (where_, energy, omega, offset)
+        _check_compact_omega(omega, specs, where_)
+        for (j, m) in enumerate(specs)
+            m.type === :c && (omega[j] = round(omega[j]))
+        end
+        CosineSpec(Coefficient(energy), omega, Coefficient(offset))
+    end
+    return Spec(Symbol[], specs, Coefficient.(EC), Coefficient.(EL), Coefficient.(fl), Coefficient.(ng),
+                CosineSpec[cosine_specs...], ChargeCosineSpec[], Coefficient(Float64(constant)))
+end
