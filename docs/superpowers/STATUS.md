@@ -21,10 +21,10 @@ The bench's loop figures are in `bench/kite_frames/README.md` and in architectur
 In the bench the three frames' four lowest levels agree to 7.2e-6 GHz and lie about 1.4e-5 GHz above the circuit-quantization paper's reference levels; solved on the reference calculation's own grids (charge cutoff 24, 160-point phase grids, steps about 0.28 to 0.32), the KITE reproduces the paper's levels to within 5e-7 GHz, so the offset is the reference grid's discretization error (`bench/kite_frames/README.md`; `run.jl` reproduces it with `KITE_FRAMES_REFGRID=1`, run on 2026-11-10 on commit `d3f338c`).
 
 Regression check: a two-fluxonium bench smoke run before and after this branch gave bitwise identical levels in all four stages.
-Test status, 2026-11-10, after the record functions were renamed (`save_record` and `record_json` in place of `run_record`, commit `ebe350c`) and their review fixes (this commit, which changed only the extension, the Python tier's tests and documents): the Python tier passed on this commit's code with 336 tests against circuit-quantization at `c8c8714` (branch `to-spec-zero-tolerance`).
-The default tier passed on the code of `ebe350c`, whose `src/` and default-tier tests this commit does not change.
-The KITE bench passed all its checks with default settings on the code of `ebe350c`, before this commit's changes to the record's check and validation.
-The slow tier (`KRONFREE_SLOW_TESTS=1`) was last run on the code of `d3f338c`, before the record functions were renamed; to be re-run on this commit.
+Test status, 2026-11-10, after the record functions were renamed (`save_record` and `record_json` in place of `run_record`, commit `ebe350c`) and their review fixes (commit `af14c5c`, which changed only the extension, the Python tier's tests and documents): the Python tier passed on the code of `af14c5c` with 336 tests against circuit-quantization at `c8c8714` (branch `to-spec-zero-tolerance`).
+The default tier passed on the code of `af14c5c`.
+The KITE bench passed all its checks with default settings on the code of `af14c5c`.
+The slow tier (`KRONFREE_SLOW_TESTS=1`) passed on the code of `ebe350c`, whose `src/` and default- and slow-tier tests `af14c5c` does not change; its only warnings were the 20 `fix_phases!` warnings that the commit before this branch also prints.
 The bench's run with `KITE_FRAMES_REFGRID=1` was last made on the code of `d3f338c`.
 
 Acceptance item 5, the three-fluxonium bench from a spec produced by `to_spec` with no hand assembly (plan Task 9):
