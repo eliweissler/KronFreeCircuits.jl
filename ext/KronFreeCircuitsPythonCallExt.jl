@@ -76,18 +76,77 @@ function _pysubs(res::Py, subs)
     return out
 end
 
+const _FRAME_TOL = 1e-12               # how far a compact-block entry of a frame may lie from an integer
+
+# A frame entry as an exact SymPy number: integers and rationals as they are, a float by its shortest round-trip
+# decimal string. SymPy never sees a float: float entries leave round-off in the symbolic coefficients (in the KITE at
+# its optimum frame, an `E_L` that `to_spec` rejects as asymmetric by 2e-16) and slow the symbolic algebra.
+_sympy_number(sympy::Py, x::Integer) = sympy.Integer(string(BigInt(x)))     # BigInt: `string(true)` is "true"
+_sympy_number(sympy::Py, x::Rational) = sympy.Rational(string(numerator(x)), string(denominator(x)))
+_sympy_number(sympy::Py, x::Real) = iszero(x) ? sympy.Integer(0) : sympy.Rational(repr(Float64(x)))
+
 """
-    Spec(res::Py; subs=nothing, simplify::Bool=true, mode_names=nothing) -> Spec
+    to_sympy_frame(S::AbstractMatrix{<:Real}, types) -> Py
+
+`S` as an exact SymPy matrix, for the modes of `types` (`"c"`, `"e"`, `"h"`, in mode order).
+Each entry of the compact block (rows and columns of the `"c"` modes) becomes the nearest integer, and must lie within
+`1e-12` of it; every other entry becomes the exact rational of its shortest round-trip decimal string, and an exact zero
+stays an exact zero.
+An `ArgumentError` names a compact-block entry that is not an integer.
+"""
+function to_sympy_frame(S::AbstractMatrix{<:Real}, types)::Py
+    sympy = pyimport("sympy")
+    compact = [string(t) == "c" for t in types]
+    function entry(i, j, in_block)
+        x = S[i, j]
+        in_block || return _sympy_number(sympy, x)
+        k = round(x)
+        abs(x - k) <= _FRAME_TOL ||
+            throw(ArgumentError("frame: the compact-block entry S[$i, $j] = $x must be an integer"))
+        return sympy.Integer(string(BigInt(k)))
+    end
+    rows = [pylist([entry(i, j, compact[a] && compact[b]) for (b, j) in enumerate(axes(S, 2))])
+            for (a, i) in enumerate(axes(S, 1))]
+    return sympy.Matrix(pylist(rows))
+end
+
+# `res` in the frame φ = S φ′: the size and finiteness of `S` are checked here, admissibility by `Result.transform`,
+# whose `ValueError` becomes an `ArgumentError`.
+function _in_frame(res::Py, S::AbstractMatrix{<:Real})::Py
+    types = pyconvert(Vector{String}, pylist(res.coords.types))
+    N = length(types)
+    size(S) == (N, N) ||
+        throw(ArgumentError("frame: S must be $(N)×$(N) for the $N retained modes, got $(join(size(S), "×"))"))
+    all(isfinite, S) || throw(ArgumentError("frame: every entry of S must be finite"))
+    return try
+        res.transform(to_sympy_frame(S, types))
+    catch err
+        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
+        throw(ArgumentError("frame: " * pyconvert(String, pystr(err.v))))
+    end
+end
+
+"""
+    Spec(res::Py; frame=nothing, subs=nothing, simplify::Bool=true, mode_names=nothing) -> Spec
 
 The spec of the circuit-quantization `Result` `res`, built in memory: `parse_spec` of the JSON text of
 `circuit_quantization.to_spec(res; subs, simplify, mode_names)`, so it is the spec that `load_spec` reads from the file
 `save_spec` writes.
+`frame`, a square real matrix `S` over the retained modes, first takes `res` to the coordinates `φ = S φ′` with
+`res.transform`, keeping the parameters symbolic; `to_sympy_frame` makes `S` exact before it reaches SymPy.
+`S` must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer,
+unimodular compact block; an inadmissible `S` is an `ArgumentError`.
+In the new frame each compact mode `j` carries a fresh static offset-charge label `n_g{j}`, and the noncompact modes
+carry none.
 `subs` is a `Dict` or `NamedTuple` from a parameter name (`String` or `Symbol`) to a number, to the name of another
 parameter (an existing one, or a new one with the same SymPy assumptions), or to a SymPy expression.
-Names are matched to the circuit's own SymPy symbols; a name that matches none is an `ArgumentError`.
+Names are matched to the circuit's own SymPy symbols (in the new frame, when `frame` is given); a name that matches none
+is an `ArgumentError`.
 `mode_names` labels the retained modes in order (default `varphi_1`, ..., `varphi_N`).
 """
-function KronFreeCircuits.Spec(res::Py; subs=nothing, simplify::Bool=true, mode_names=nothing)
+function KronFreeCircuits.Spec(res::Py; frame::Union{Nothing,AbstractMatrix{<:Real}}=nothing, subs=nothing,
+                               simplify::Bool=true, mode_names=nothing)
+    frame === nothing || (res = _in_frame(res, frame))
     names = mode_names === nothing ? nothing : pylist(String[string(m) for m in mode_names])
     data = circuit_quantization().to_spec(res; subs=_pysubs(res, subs), simplify, mode_names=names)
     text = pyconvert(String, pyimport("json").dumps(data; allow_nan=false))
