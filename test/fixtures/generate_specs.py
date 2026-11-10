@@ -11,7 +11,10 @@ Run from the repository root, only to regenerate the committed files:
 
     /opt/anaconda3/envs/circuit_quantization/bin/python test/fixtures/generate_specs.py
 
-Python is never a test-time dependency of KronFreeCircuits.
+Python is never a dependency of the default test tier.
+Importing this module writes nothing: each builder returns a Fixture (name, Result,
+mode names, comment, subs), and BUILDERS maps each generated file's name to its builder;
+the Python test tier (test/python/circuits.jl) imports the module to rebuild the Results.
 
 What the script adds to circuit_quantization.to_spec's output (mode names are
 passed as to_spec's mode_names, the hand fixture's labels):
@@ -38,6 +41,7 @@ The cos2phi fixture is not generated: see `cos2phi_not_expressible` below.
 import json
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 import sympy as sym
 
@@ -60,6 +64,15 @@ def cq_commit():
     dirty = subprocess.run(git + ["status", "--porcelain", "--untracked-files=no"],
                            capture_output=True, text=True, check=True).stdout.strip()
     return commit, bool(dirty)
+
+
+class Fixture(NamedTuple):
+    """One generated fixture: the file name (without .json), the Result, and to_spec's mode names and subs."""
+    name: str
+    res: object
+    mode_names: list
+    comment: list
+    subs: dict | None = None
 
 
 def save(name, res, mode_names, comment, subs=None):
@@ -113,7 +126,7 @@ def transmon():
     EJ, EC = pos("E_J E_C")
     circuit = Circuit([Branch("J", 1, 0, C=cq.ghz_to_farad(EC), EJ=EJ)], ground=0)
     res = quantize(circuit, Loops.from_circuit(circuit), sym.Matrix([[1]]), ("c",))
-    save("transmon", res, ["varphi_1"], [
+    return Fixture("transmon", res, ["varphi_1"], [
         "Grounded junction J (node 1 to ground 0), C = ghz_to_farad(E_C), EJ = E_J; Z_full = [1], mode c.",
         "subs: sector label n_g1 -> n_g.",
     ], subs={real("n_g1"): real("n_g")})
@@ -155,7 +168,7 @@ def transmons(count):
     ]
     if count == 3:
         comment.insert(2, "J3's junction capacitance is ghz_to_farad(E_C3).")
-    save(name, res, [f"varphi_{k}" for k in range(1, count + 1)], comment, subs=subs)
+    return Fixture(name, res, [f"varphi_{k}" for k in range(1, count + 1)], comment, subs=subs)
 
 
 # --- fluxonium ---------------------------------------------------------------
@@ -169,7 +182,7 @@ def fluxonium():
     # One loop, closed by L: +L -J; its flux phase_to_weber(varphi_ext) sits on L (irrotational B).
     loops = Loops.from_tree(circuit, cq.default_tree(circuit), {"L": cq.phase_to_weber(vx)})
     res = quantize(circuit, loops, sym.Matrix([[1]]), ("e",))
-    save("fluxonium", res, ["varphi_1"], [
+    return Fixture("fluxonium", res, ["varphi_1"], [
         "README fluxonium: junction J and inductor L from node 1 to ground, C = ghz_to_farad(E_C), L = ghz_to_henry(E_L), EJ = E_J.",
         "Loop closed by L (+L -J) with flux phase_to_weber(varphi_ext), irrotational B (all flux on L); Z_full = [1], mode e.",
         "constant 0: circuit-quantization omits the flux-only inductive energy E_L varphi_ext^2/2 that the hand fixture keeps.",
@@ -243,7 +256,7 @@ def zero_pi():
     circuit = Circuit(zero_pi_branches(1, (1, 2, 3, 4), (ECJ, ECJ), (xB, xB), (EL, EL), (EJ, EJ)))
     loops, rings = ring_loops(circuit, {1: vx})
     res = quantize_junction_gauge(circuit, loops, rings, ZP_M, ("c", "e", "h", "cy"))
-    save("zero_pi", res, ["theta", "phi", "zeta"], [
+    return Fixture("zero_pi", res, ["theta", "phi", "zeta"], [
         "Symmetric zero-pi as in circuit-quantization tests/circuits.py zero_pi(): J1 (1->2), J2 (3->4), L1 (2->3), L2 (4->1),"
         " C1 (1->3), C2 (2->4), floating; named J1a, J1b, L1a, L1b, C1a, C1b here.",
         "Elements: junction C = ghz_to_farad(E_CJ), EJ = E_J; L = ghz_to_henry(E_L);"
@@ -296,7 +309,7 @@ def full_zero_pi():
             yL[0]: EL * (1 - dEL / 2), yL[1]: EL * (1 + dEL / 2),
             zJ[0]: EJ * (1 + dEJ / 2), zJ[1]: EJ * (1 - dEJ / 2),
             real("n_g1"): real("n_g")}
-    save("full_zero_pi", res, ["theta", "phi", "zeta"], [
+    return Fixture("full_zero_pi", res, ["theta", "phi", "zeta"], [
         "Asymmetric zero-pi: the zero_pi.json circuit with distinct elements (see full_zero_pi() in generate_specs.py).",
         "J1a (theta + phi): EJ = E_J (1 + dE_J/2), C = C_J (1 - dC_J/2); J1b (-theta + phi): EJ = E_J (1 - dE_J/2), C = C_J (1 + dC_J/2);"
         " C1a = C (1 + dC/2), C1b = C (1 - dC/2); L1a energy E_L (1 - dE_L/2), L1b energy E_L (1 + dE_L/2);"
@@ -364,7 +377,7 @@ def two_zero_pi():
             aux[1][0]: 1 / (1 / ECJ1 - g / (8 * D)), aux[1][1]: 1 / ((ECS2 / 4 + g / 16) / D - 1 / ECJ1),
             aux[2][0]: 1 / (1 / ECJ2 - g / (8 * D)), aux[2][1]: 1 / ((ECS1 / 4 + g / 16) / D - 1 / ECJ2),
             real("n_g3"): real("n_g2")}
-    save("two_zero_pi", res, ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
+    return Fixture("two_zero_pi", res, ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
         "Two symmetric zero-pis (nodes 1-4 and 5-8, branches J<q>a, J<q>b, L<q>a, L<q>b, C<q>a, C<q>b as in zero_pi.json)"
         " coupled by scheme (a) of circuit-quantization tests/circuits.py coupled_zero_pis: Cc<q>_<n> from nodes 1, 4, 5, 8 to"
         " island 10 and from nodes 2, 3, 6, 7 to island 9; no capacitance to ground (floating).",
@@ -394,11 +407,17 @@ def cos2phi_not_expressible():
     """
 
 
+BUILDERS = {
+    "transmon": transmon,
+    "two_transmons": lambda: transmons(2),
+    "three_transmons": lambda: transmons(3),
+    "fluxonium": fluxonium,
+    "zero_pi": zero_pi,
+    "full_zero_pi": full_zero_pi,
+    "two_zero_pi": two_zero_pi,
+}
+
+
 if __name__ == "__main__":
-    transmon()
-    transmons(2)
-    transmons(3)
-    fluxonium()
-    zero_pi()
-    full_zero_pi()
-    two_zero_pi()
+    for build in BUILDERS.values():
+        save(*build())
