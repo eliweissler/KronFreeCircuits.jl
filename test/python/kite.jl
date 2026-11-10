@@ -3,16 +3,17 @@
 using PythonCall, LinearAlgebra
 
 """
-    kite() -> (res::Py, θ::NamedTuple, frames::NamedTuple)
+    kite(; cb_flux=0) -> (res::Py, θ::NamedTuple, frames::NamedTuple)
 
 The KITE of `kite` in circuit-quantization's `examples/product_state_demo.py`, quantized in the source's
 `(varphi, phi_Sigma, phi_Delta)` frame with mode types `(c, e, e)`.
 `θ` holds every parameter of the circuit by name at the values of `examples/hierarchical_kite.py`, at half flux
 (`delta = 0`) and zero offset charge.
+`cb_flux` is the phase threading the purely capacitive loop `cb` (a number, or a SymPy symbol to give that loop a flux parameter that the exported spec does not contain).
 `frames` has `published` (the identity), `normal` (`normal_mode_transformation` at `θ`) and `optimum` (`S_OPT` of
 `examples/hierarchical_kite.py`).
 """
-function kite()
+function kite(; cb_flux=0)
     cq, sympy = circuit_quantization(), pyimport("sympy")
     E_J, E_CJ, E_CS, E_L = sympy.symbols("E_J E_CJ E_CS E_L"; positive=true)
     eps, delta = sympy.Symbol("epsilon"; real=true), sympy.Symbol("delta"; real=true)
@@ -29,7 +30,7 @@ function kite()
     ]); ground=6)
     cycles = pydict(Dict("kite" => pydict(Dict("L1" => 1, "J1" => 1, "L4" => 1, "L2" => -1, "J2" => -1, "L3" => -1)),
                          "cb" => pydict(Dict("CS" => 1, "L1" => -1, "J1" => -1, "L4" => -1))))
-    fluxes = pydict(Dict("kite" => cq.phase_to_weber(sympy.pi + delta), "cb" => cq.phase_to_weber(0)))
+    fluxes = pydict(Dict("kite" => cq.phase_to_weber(sympy.pi + delta), "cb" => cq.phase_to_weber(cb_flux)))
     loops = cq.Loops.from_branch_dict(circuit, cycles, fluxes)
     q, h = sympy.Rational(1, 4), sympy.Rational(1, 2)
     shares = pydict(Dict("kite" => pydict(Dict("L1" => q, "L4" => q, "L2" => -q, "L3" => -q, "CS" => h)),

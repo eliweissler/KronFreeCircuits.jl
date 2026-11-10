@@ -25,18 +25,21 @@ struct QuantizedCircuit{H}
 end
 
 """
-    run_record(res; frame=nothing, values=nothing, metadata=(;)) -> String
+    run_record(res; frame=nothing, values=nothing, metadata=(;), zero_rtol=1e-12, zero_atol=0.0) -> String
 
 The run record of a circuit-quantization `Result` in the frame `frame`, as JSON text: a kronfree-spec document that `parse_spec` reads and `circuit_quantization.load_record` rebuilds, with this package's version and git commit under `_generator.kronfree` and `metadata` under `_metadata`.
+`values` are the parameter values in the frame of `res`, as `QuantizedCircuit(res; values)` takes them; the spec of the record is that of `Spec(QuantizedCircuit(res; values), frame)`.
+`zero_rtol` and `zero_atol` are the round-off zeroing tolerances of `Spec(res)`, and the record keeps them.
 Defined by the PythonCall extension: load PythonCall to use the circuit-quantization interface.
 """
 function run_record end
 
 """
-    load_record(source) -> (; result, spec, frame, values)
+    load_record(source) -> (; result, spec, frame, values, zero_rtol, zero_atol)
 
 Read a record written by [`run_record`](@ref), from JSON text or a file.
 `spec` is the spec of the run, and `result` is the symbolic `Result` that was passed to `run_record`, in its own frame, so `Spec(result; frame)` is the symbolic spec of the run.
+`values` are the parameter values that were passed, in the frame of `result`, and `zero_rtol` and `zero_atol` the run's round-off zeroing tolerances.
 Defined by the PythonCall extension: load PythonCall to use the circuit-quantization interface.
 """
 function load_record end

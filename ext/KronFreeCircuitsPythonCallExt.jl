@@ -3,7 +3,8 @@ module KronFreeCircuitsPythonCallExt
 using KronFreeCircuits, PythonCall
 import KronFreeCircuits: circuit_quantization, _ZERO_RTOL, _ZERO_ATOL, _check_zero_tolerance
 
-# What to do when circuit_quantization does not import: name the interpreter PythonCall is using and how to choose another.
+# What to do when circuit_quantization is not installed for the interpreter PythonCall is using: name the interpreter
+# and how to choose another.
 function _import_help(exe::AbstractString)::String
     return """
         could not import the Python module circuit_quantization with the interpreter $exe.
@@ -11,32 +12,79 @@ function _import_help(exe::AbstractString)::String
             JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=/path/to/python julia ..."""
 end
 
+# The Python module `name`, imported.
+# When the module itself is not found, the error is the help of `_import_help` (with `name` in place of
+# circuit_quantization); any other import failure, such as a missing dependency or an error raised while the module
+# runs, is an error carrying Python's own message.
+function _import_module(name::AbstractString)::Py
+    try
+        return pyimport(name)
+    catch err
+        err isa PythonCall.PyException || rethrow()
+        exe = pyconvert(String, pyimport("sys").executable)
+        if pyisinstance(err.v, pyimport("builtins").ModuleNotFoundError) && !pyis(err.v.name, pybuiltins.None) &&
+           pyconvert(String, err.v.name) == name
+            throw(ErrorException(replace(_import_help(exe), "circuit_quantization" => name)))
+        end
+        python = pyconvert(String, pytype(err.v).__name__) * ": " * pyconvert(String, pystr(err.v))
+        throw(ErrorException("importing the Python module $name with the interpreter $exe failed: $python"))
+    end
+end
+
 const _CQ = PythonCall.pynew()         # the module, filled on first use
 const _CQ_LOCK = ReentrantLock()
 
 function circuit_quantization()
     lock(_CQ_LOCK) do
-        if PythonCall.pyisnull(_CQ)
-            cq = try
-                pyimport("circuit_quantization")
-            catch err
-                err isa PythonCall.PyException || rethrow()
-                exe = pyconvert(String, pyimport("sys").executable)
-                throw(ErrorException(_import_help(exe)))
-            end
-            PythonCall.pycopy!(_CQ, cq)
-        end
+        PythonCall.pyisnull(_CQ) && PythonCall.pycopy!(_CQ, _import_module("circuit_quantization"))
     end
     return _CQ
 end
 
-# The parameter symbols of res, by name: the free symbols of every expression `to_spec` exports, except the physical
-# constants circuit-quantization evaluates itself.
+const _NUMPY = PythonCall.pynew()      # numpy, filled on first use
+
+function _numpy()
+    lock(_CQ_LOCK) do
+        PythonCall.pyisnull(_NUMPY) && PythonCall.pycopy!(_NUMPY, pyimport("numpy"))
+    end
+    return _NUMPY
+end
+
+# Why the circuit-quantization function `to_spec`, from the module file `origin`, cannot take the round-off zeroing
+# keywords `zero_rtol` and `zero_atol`, or `nothing` when it can; read from the function's signature.
+function _zero_keywords_missing(to_spec::Py, origin::AbstractString)::Union{Nothing,String}
+    parameters = pyimport("inspect").signature(to_spec).parameters
+    all(k -> pyin(k, parameters), ("zero_rtol", "zero_atol")) && return nothing
+    return "the circuit-quantization imported from $origin has no zero_rtol and zero_atol keywords in to_spec; " *
+           "circuit-quantization at commit c8c8714 or later (branch to-spec-zero-tolerance until it is merged) is required"
+end
+
+const _ZERO_KEYWORDS = Ref{Union{Missing,Nothing,String}}(missing)   # `_zero_keywords_missing`, checked once
+
+# Throw an `ArgumentError` unless the installed circuit-quantization's `to_spec` takes `zero_rtol` and `zero_atol`.
+function _require_zero_keywords()
+    lock(_CQ_LOCK) do
+        if ismissing(_ZERO_KEYWORDS[])
+            cq = circuit_quantization()
+            _ZERO_KEYWORDS[] = _zero_keywords_missing(cq.to_spec, pyconvert(String, cq.__file__))
+        end
+    end
+    message = _ZERO_KEYWORDS[]
+    message === nothing || throw(ArgumentError(message))
+    return nothing
+end
+
+# The parameter symbols of res, by name: the free symbols of every expression `to_spec` exports (of `varphi_b`, only the
+# rows of the inductive branches `lag.L` and the junctions `lag.J`), except the physical constants circuit-quantization
+# evaluates itself.
 function _circuit_symbols(res::Py)::Dict{String,Py}
     sympy, units = pyimport("sympy"), pyimport("circuit_quantization.units")
     constants = pyset([units.e, units.h, units.hbar, units.Phi0, units.h_GHz])
     ham, found = res.ham, pyset()
-    for x in (ham.E_C, ham.E_L, ham.E_Lb, ham.varphi_b, ham.n_g, res.coords.omega_L_tilde, res.lag.EJ...)
+    columns = pylist(0:pyconvert(Int, ham.varphi_b.cols)-1)
+    exported_rows(branches) = ham.varphi_b.extract(pylist(branches), columns)
+    for x in (ham.E_C, ham.E_L, ham.E_Lb, exported_rows(res.lag.L), exported_rows(res.lag.J), ham.n_g,
+              res.coords.omega_L_tilde, res.lag.EJ...)
         found.update(sympy.sympify(x).free_symbols)
     end
     return Dict(pyconvert(String, s.name) => s for s in found if !pyin(s, constants))
@@ -78,9 +126,33 @@ end
 
 const _FRAME_TOL = 1e-12               # how far a compact-block entry of a frame may lie from an integer
 
+# ---- Frame checks, shared by the symbolic route (`Spec(res; frame)`, `run_record`) and the loop route (`Spec(qc, S)`).
+
+# The size and finiteness of a frame `S` over `N` retained modes, checked in Julia before any Python call.
+function _check_frame(S::AbstractMatrix, N::Int)
+    size(S) == (N, N) ||
+        throw(ArgumentError("frame: S must be $(N)×$(N) for the $N retained modes, got $(join(size(S), "×"))"))
+    all(isfinite, S) || throw(ArgumentError("frame: every entry of S must be finite"))
+    return nothing
+end
+
+# `f()`, a circuit-quantization frame change, with the `ValueError` of an inadmissible frame as an `ArgumentError`
+# carrying the Python message, whose matrix indices are circuit-quantization's, counted from 0; any other exception
+# passes through.
+function _frame_call(f)
+    return try
+        f()
+    catch err
+        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
+        throw(ArgumentError("frame: " * pyconvert(String, pystr(err.v)) *
+                            " (circuit-quantization's message: its matrix indices count from 0)"))
+    end
+end
+
 # A frame entry as an exact SymPy number: integers and rationals as they are, a float by its shortest round-trip
-# decimal string. SymPy never sees a float: float entries leave round-off in the symbolic coefficients (in the KITE at
-# its optimum frame, an `E_L` that `to_spec` rejects as asymmetric by 2e-16) and slow the symbolic algebra.
+# decimal string.
+# SymPy never sees a float: float entries leave round-off in the symbolic coefficients (in the KITE at its optimum frame,
+# an `E_L` that `to_spec` rejects as asymmetric by 2e-16) and slow the symbolic algebra.
 _sympy_number(sympy::Py, x::Integer) = sympy.Integer(string(BigInt(x)))     # BigInt: `string(true)` is "true"
 _sympy_number(sympy::Py, x::Rational) = sympy.Rational(string(numerator(x)), string(denominator(x)))
 _sympy_number(sympy::Py, x::Real) = iszero(x) ? sympy.Integer(0) : sympy.Rational(repr(Float64(x)))
@@ -89,10 +161,9 @@ _sympy_number(sympy::Py, x::Real) = iszero(x) ? sympy.Integer(0) : sympy.Rationa
     to_sympy_frame(S::AbstractMatrix{<:Real}, types) -> Py
 
 `S` as an exact SymPy matrix, for the modes of `types` (`"c"`, `"e"`, `"h"`, in mode order).
-Each entry of the compact block (rows and columns of the `"c"` modes) becomes the nearest integer, and must lie within
-`1e-12` of it; every other entry becomes the exact rational of its shortest round-trip decimal string, and an exact zero
-stays an exact zero.
-An `ArgumentError` names a compact-block entry that is not an integer.
+Each entry of the compact block (rows and columns of the `"c"` modes) becomes the nearest integer, and must lie within `1e-12` of it.
+Every other entry becomes the exact rational of its shortest round-trip decimal string, and an exact zero stays an exact zero.
+An `ArgumentError` names a compact-block entry that is not an integer, with Julia's indices (counted from 1).
 """
 function to_sympy_frame(S::AbstractMatrix{<:Real}, types)::Py
     sympy = pyimport("sympy")
@@ -118,35 +189,35 @@ function _in_frame(res::Py, S::AbstractMatrix{<:Real})::Py
     return _frame_call(() -> res.transform(to_sympy_frame(S, types)))
 end
 
+# ---- The symbolic route.
+
 """
     Spec(res::Py; frame=nothing, subs=nothing, simplify::Bool=true, mode_names=nothing, zero_rtol=1e-12,
          zero_atol=0.0) -> Spec
 
-The spec of the circuit-quantization `Result` `res`, built in memory: `parse_spec` of the JSON text of
-`circuit_quantization.to_spec(res; subs, simplify, mode_names, zero_rtol, zero_atol)`, so it is the spec that
-`load_spec` reads from the file `save_spec` writes.
-`frame`, a square real matrix `S` over the retained modes, first takes `res` to the coordinates `φ = S φ′` with
-`res.transform`, keeping the parameters symbolic; `to_sympy_frame` makes `S` exact before it reaches SymPy.
-`S` must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer,
-unimodular compact block; an inadmissible `S` is an `ArgumentError`.
-In the new frame each compact mode `j` carries a fresh static offset-charge label `n_g{j}`, and the noncompact modes
-carry none.
-`subs` is a `Dict` or `NamedTuple` from a parameter name (`String` or `Symbol`) to a number, to the name of another
-parameter (an existing one, or a new one with the same SymPy assumptions), or to a SymPy expression.
-Names are matched to the circuit's own SymPy symbols (in the new frame, when `frame` is given); a name that matches none
-is an `ArgumentError`.
+The spec of the circuit-quantization `Result` `res`, built in memory.
+It is `parse_spec` of the JSON text of `circuit_quantization.to_spec(res; subs, simplify, mode_names, zero_rtol, zero_atol)`, so it is the spec that `load_spec` reads from the file `save_spec` writes.
+
+`frame`, a square real matrix `S` over the retained modes, first takes `res` to the coordinates `φ = S φ′` with `res.transform`, keeping the parameters symbolic; `to_sympy_frame` makes `S` exact before it reaches SymPy.
+`S` must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer, unimodular compact block; an inadmissible `S` is an `ArgumentError`.
+In the new frame each compact mode `j` carries a fresh static offset-charge label `n_g{j}`, and the noncompact modes carry none.
+The framed spec's parameter `n_g{j}` is therefore the new frame's sector label, not the base frame's, although the name is the same: the value that describes the same circuit is `S_ccᵀ n_g`, with `S_cc` the compact block of `S` and `n_g` the base frame's sector values, which is what `Spec(qc, S)` and `run_record` give it.
+
+`subs` is a `Dict` or `NamedTuple` from a parameter name (`String` or `Symbol`) to a number, to the name of another parameter (an existing one, or a new one with the same SymPy assumptions), or to a SymPy expression.
+Names are matched to the circuit's own SymPy symbols (in the new frame, when `frame` is given), among the symbols that the exported spec can contain; a name that matches none is an `ArgumentError` listing them.
 `mode_names` labels the retained modes in order (default `varphi_1`, ..., `varphi_N`).
-`zero_rtol` and `zero_atol` are `to_spec`'s round-off zeroing tolerances, the rule of [`numeric_spec`](@ref): in a
-fully numeric `E_C` or `E_L`, a floating-point entry at most `max(zero_rtol * scale, zero_atol)` in magnitude is
-written as an exact zero, and in each cosine an `omega` entry at most `zero_rtol` times that `omega`'s largest
-magnitude.
+
+`zero_rtol` and `zero_atol` are `to_spec`'s round-off zeroing tolerances, the rule of [`numeric_spec`](@ref).
+In a fully numeric `E_C` or `E_L`, a floating-point entry at most `max(zero_rtol * scale, zero_atol)` in magnitude is written as an exact zero, and in each cosine an `omega` entry at most `zero_rtol` times that `omega`'s largest magnitude.
 A negative or non-finite tolerance is an `ArgumentError` naming it, raised before any Python call.
+The keywords need circuit-quantization at commit c8c8714 or later (branch `to-spec-zero-tolerance` until it is merged); with an older circuit-quantization every call is an `ArgumentError` that says so and names the file the module was imported from.
 """
 function KronFreeCircuits.Spec(res::Py; frame::Union{Nothing,AbstractMatrix{<:Real}}=nothing, subs=nothing,
                                simplify::Bool=true, mode_names=nothing,
                                zero_rtol::Real=_ZERO_RTOL, zero_atol::Real=_ZERO_ATOL)
     zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
     zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
+    _require_zero_keywords()
     frame === nothing || (res = _in_frame(res, frame))
     names = mode_names === nothing ? nothing : pylist(String[string(m) for m in mode_names])
     data = circuit_quantization().to_spec(res; subs=_pysubs(res, subs), simplify, mode_names=names, zero_rtol,
@@ -155,29 +226,19 @@ function KronFreeCircuits.Spec(res::Py; frame::Union{Nothing,AbstractMatrix{<:Re
     return parse_spec(text)
 end
 
-# ---- The loop route: a numeric Hamiltonian made once at fixed values, and its spec in any frame without SymPy.
+# ---- Parameter values, shared by `QuantizedCircuit` and `run_record`.
 
-# The size and finiteness of a frame `S` over `N` retained modes, checked in Julia before any Python call.
-function _check_frame(S::AbstractMatrix, N::Int)
-    size(S) == (N, N) ||
-        throw(ArgumentError("frame: S must be $(N)×$(N) for the $N retained modes, got $(join(size(S), "×"))"))
-    all(isfinite, S) || throw(ArgumentError("frame: every entry of S must be finite"))
-    return nothing
-end
+# The circuit-quantization spec of `res` in its own frame, as circuit-quantization loads it, with its parameters
+# (`spec.parameters`, in the order `Spec(res)` lists them) and its modes.
+_exported_spec(res::Py) = (cq = circuit_quantization(); cq.load_spec(cq.to_spec(res)))
 
-# `f()`, a circuit-quantization frame change, with the `ValueError` of an inadmissible frame as an `ArgumentError`
-# carrying the Python message; any other exception passes through.
-function _frame_call(f)
-    return try
-        f()
-    catch err
-        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
-        throw(ArgumentError("frame: " * pyconvert(String, pystr(err.v))))
-    end
-end
+_parameter_names(spec::Py) = [Symbol(pyconvert(String, p.name)) for p in spec.parameters]
 
 # `values` (a NamedTuple, or a Dict keyed by Symbols or strings) as Float64s in the order of the circuit's parameters
-# `names`; an unknown, repeated or missing name, or a value that is not a finite real number, is an `ArgumentError`.
+# `names`, the parameters of the exported spec.
+# A `values` of another type, a key that is not a name, an unknown name, a name given twice, a value that is not a
+# finite real number, or a parameter left without a value is an `ArgumentError`; for an unknown or a missing name it
+# lists the circuit's parameters.
 function _parameter_values(values, names::Vector{Symbol})::NamedTuple
     values isa Union{NamedTuple,AbstractDict} ||
         throw(ArgumentError("values must be a NamedTuple or a Dict from parameter name to number, got $(typeof(values))"))
@@ -198,23 +259,24 @@ function _parameter_values(values, names::Vector{Symbol})::NamedTuple
     return NamedTuple{Tuple(names)}(Tuple(given[n] for n in names))
 end
 
+# Parameter values as the Python dict, keyed by name, that circuit-quantization's numeric functions take.
+_pyvalues(θ::NamedTuple) = pydict(Dict(string(k) => v for (k, v) in pairs(θ)))
+
+# ---- The loop route: a numeric Hamiltonian made once at fixed values, and its spec in any frame without SymPy.
+
 """
     QuantizedCircuit(res::Py; values) -> QuantizedCircuit{Py}
 
-The circuit-quantization `Result` `res` evaluated once at the parameter values `values`, for building specs in many
-frames with no symbolic work: `circuit_quantization.numeric_hamiltonian` of the spec `to_spec(res)`.
-`values` is a `NamedTuple`, or an `AbstractDict` keyed by `Symbol`s or strings, giving a finite real number for every
-parameter of the circuit; an unknown or missing name is an `ArgumentError` that names it and lists the circuit's
-parameters, raised before anything is evaluated.
-The modes are named as in `Spec(res)`.
+The circuit-quantization `Result` `res` evaluated once at the parameter values `values`, for building specs in many frames with no symbolic work: `circuit_quantization.numeric_hamiltonian` of the spec `to_spec(res)`.
+`values` is a `NamedTuple`, or an `AbstractDict` keyed by `Symbol`s or strings, giving a finite real number for every parameter of `Spec(res)`, in the frame of `res`; a compact mode's `n_g{j}` is that frame's static sector offset.
+An unknown or missing name is an `ArgumentError` that names it and lists the circuit's parameters, raised before anything is evaluated; `run_record` checks `values` the same way.
+The values are stored in the circuit's parameter order, and the modes are named as in `Spec(res)`.
 """
 function KronFreeCircuits.QuantizedCircuit(res::Py; values)
-    cq = circuit_quantization()
-    spec = cq.load_spec(cq.to_spec(res))
-    names = [Symbol(pyconvert(String, p.name)) for p in spec.parameters]
-    θ = _parameter_values(values, names)
+    spec = _exported_spec(res)
+    θ = _parameter_values(values, _parameter_names(spec))
     mode_names = [Symbol(pyconvert(String, m[0])) for m in spec.modes]
-    handle = cq.numeric_hamiltonian(spec, pydict(Dict(string(k) => v for (k, v) in pairs(θ))))
+    handle = circuit_quantization().numeric_hamiltonian(spec, _pyvalues(θ))
     return QuantizedCircuit(handle, θ, mode_names)
 end
 
@@ -229,18 +291,22 @@ function _numeric_spec(h::Py, mode_names::Vector{Symbol}; zero...)::Spec
                         cosines, constant=pyconvert(Float64, h.constant), zero...)
 end
 
+# The numeric Hamiltonian `h` in the frame φ = S φ′, by circuit-quantization's NumPy frame change, whose `ValueError`
+# becomes an `ArgumentError`; the caller has checked the size and finiteness of `S`.
+function _transformed(h::Py, S::AbstractMatrix{<:Real})::Py
+    S_np = _numpy().array(Matrix{Float64}(S))
+    return _frame_call(() -> h.transformed(S_np))
+end
+
 """
     Spec(qc::QuantizedCircuit{Py}; zero_rtol=1e-12, zero_atol=0.0) -> Spec
     Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real}; zero_rtol=1e-12, zero_atol=0.0) -> Spec
 
-The spec of constants of `qc` in its base frame, or in the frame `φ = S φ′`: [`numeric_spec`](@ref) of the arrays of
-`circuit_quantization`'s NumPy frame change `transformed(S)`, with no symbolic work.
-`S` follows the rules of `Spec(res; frame=S)`, and the modes are named and retyped as there; its size and finiteness
-are checked in Julia, its admissibility by circuit-quantization, and an inadmissible `S` is an `ArgumentError`.
-In the new frame each compact mode's offset charge is the source part transformed by `Sᵀ` plus the static sector part
-transformed by `S_ccᵀ`, and a noncompact mode carries no sector offset.
-`zero_rtol` and `zero_atol` are passed to `numeric_spec`, whose round-off zeroing they set as in `Spec(res)`; a negative
-or non-finite tolerance is an `ArgumentError` naming it, raised before any Python call.
+The spec of constants of `qc` in its base frame, or in the frame `φ = S φ′`: [`numeric_spec`](@ref) of the arrays of `circuit_quantization`'s NumPy frame change `transformed(S)`, with no symbolic work.
+`S` follows the rules of `Spec(res; frame=S)`, and the modes are named and retyped as there.
+The size and finiteness of `S` are checked in Julia, its admissibility by circuit-quantization, and an inadmissible `S` is an `ArgumentError`.
+In the new frame each compact mode's offset charge is the source part transformed by `Sᵀ` plus the static sector part transformed by `S_ccᵀ`, and a noncompact mode carries no sector offset.
+`zero_rtol` and `zero_atol` are passed to `numeric_spec`, whose round-off zeroing they set as in `Spec(res)`; a negative or non-finite tolerance is an `ArgumentError` naming it, raised before any Python call.
 """
 function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}; zero_rtol::Real=_ZERO_RTOL,
                                zero_atol::Real=_ZERO_ATOL)
@@ -254,15 +320,15 @@ function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Rea
     zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
     zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
     _check_frame(S, length(qc.mode_names))
-    S_np = pyimport("numpy").array(Matrix{Float64}(S))
-    return _numeric_spec(_frame_call(() -> qc.handle.transformed(S_np)), qc.mode_names; zero_rtol, zero_atol)
+    return _numeric_spec(_transformed(qc.handle, S), qc.mode_names; zero_rtol, zero_atol)
 end
 
 # --- Run records -----------------------------------------------------------------------------------------------------
 # The document is `circuit_quantization.to_record` of `res` in the frame `frame`, so `_circuit`, `_frame` and `_values`
 # mean to a Python reader what they mean here.
 # The Julia-owned key `_kronfree` adds what that record cannot say: the frame of `res` itself (`base_frame`, in the
-# matrix encoding of `_frame`, `null` when no `frame` was applied), the `frame` argument and the `values` as JSON numbers.
+# matrix encoding of `_frame`, `null` when no `frame` was applied), the `frame` argument, the `values` in the frame of
+# `res` as JSON numbers, and the round-off zeroing tolerances `zero_rtol` and `zero_atol`.
 
 # This package's git commit, or `nothing` when it is not a git checkout or git fails or takes over 2 s.
 function _git_commit()::Union{Nothing,String}
@@ -280,7 +346,8 @@ function _git_commit()::Union{Nothing,String}
         lines = split(strip(text), '\n')
         length(lines) == 2 && realpath(lines[1]) == realpath(dir) || return nothing
         return occursin(r"^[0-9a-f]{40,64}$", lines[2]) ? String(lines[2]) : nothing
-    catch
+    catch err
+        err isa InterruptException && rethrow()
         return nothing
     end
 end
@@ -307,49 +374,63 @@ function _json_value(x, where::AbstractString)::Py
                         "(use nothing, Bool, integers, finite floats, strings, vectors, tuples, NamedTuples or Dicts)"))
 end
 
-# `values` (name ⇒ number) as `Float64` by name in the given order, checked against the parameters of `res`: an
-# unknown name, a value that is not a real number, or a parameter left without a value is an `ArgumentError`.
-function _record_values(res::Py, values)::NamedTuple
-    symbols = _circuit_symbols(res)
-    known = join(sort!(collect(keys(symbols))), ", ")
-    out = Pair{Symbol,Float64}[]
-    for (k, v) in pairs(values)
-        name = string(k)
-        haskey(symbols, name) ||
-            throw(ArgumentError("values: $name is not a parameter of the circuit; its parameters are $known"))
-        v isa Real && !(v isa Bool) && isfinite(v) ||
-            throw(ArgumentError("values: $name must be a finite real number, got $(repr(v))"))
-        push!(out, Symbol(name) => Float64(v))
+
+# The values that the parameters of `framed`, a Result `res` in the frame `frame`, take when `res` is at the
+# parameter values `θ` of its own frame, as the SymPy substitution `to_record` takes.
+# The fresh sector label `n_g{j}` of a compact mode `j` takes that mode's sector offset in the new frame, the
+# `n_g_sector` of circuit-quantization's NumPy frame change (`S_ccᵀ` times the base sector offsets); every other
+# parameter takes its value in `θ`.
+# A parameter of `res` that no exported expression of `framed` contains is left out.
+function _framed_subs(framed::Py, spec::Py, frame, θ::NamedTuple)::Py
+    values = Dict{String,Float64}(string(k) => v for (k, v) in pairs(θ))
+    if frame !== nothing
+        h = _transformed(circuit_quantization().numeric_hamiltonian(spec, _pyvalues(θ)), frame)
+        sector = pyconvert(Vector{Float64}, h.n_g_sector)
+        for (j, t) in enumerate(pyconvert(Vector{String}, pylist(h.types)))
+            t == "c" && (values["n_g$j"] = sector[j])
+        end
     end
-    left = setdiff(keys(symbols), string.(first.(out)))
-    isempty(left) || throw(ArgumentError("values: no value for " * join(sort!(collect(left)), ", ") *
-                                         "; a record with values needs every parameter of the circuit: $known"))
-    return NamedTuple(out)
+    symbols = _circuit_symbols(framed)
+    subs = pydict()
+    for k in keys(θ)                                   # in the circuit's parameter order, as `_values` lists them
+        name = string(k)
+        haskey(symbols, name) && (subs[symbols[name]] = _subs_value(values[name], symbols, symbols[name]))
+    end
+    return subs
 end
 
 """
-    run_record(res::Py; frame=nothing, values=nothing, metadata::NamedTuple=(;)) -> String
+    run_record(res::Py; frame=nothing, values=nothing, metadata::NamedTuple=(;), zero_rtol=1e-12,
+               zero_atol=0.0) -> String
 
-The run record of the circuit-quantization `Result` `res`, as JSON text: a kronfree-spec version 1 document that
-`parse_spec` reads, and also a circuit-quantization record that `circuit_quantization.load_record` rebuilds.
-It is `circuit_quantization.to_record` of `res` in the frame `φ = S φ′` given by `frame` (checked exactly as
-`Spec(res; frame)` checks it), so its spec fields, `_circuit`, `_frame` and `_values` are those of
-that record.
-`values`, a `NamedTuple` (or other name ⇒ number collection) giving a finite real number to every parameter of the
-circuit in the new frame, makes the spec fields numeric and is recorded in `_values`; an unknown name or a parameter left
-without a value is an `ArgumentError` listing the circuit's parameters.
+The run record of the circuit-quantization `Result` `res`, as JSON text: a kronfree-spec version 1 document that `parse_spec` reads, and also a circuit-quantization record that `circuit_quantization.load_record` rebuilds.
+It is `circuit_quantization.to_record` of `res` in the frame `φ = S φ′` given by `frame` (checked exactly as `Spec(res; frame)` checks it), so its spec fields, `_circuit`, `_frame` and `_values` are those of that record.
+
+`values` gives the parameter values in the frame of `res`, exactly as `QuantizedCircuit(res; values)` takes them and checked by the same rules: a `NamedTuple`, or an `AbstractDict` keyed by `Symbol`s or strings, with a finite real number for every parameter of `Spec(res)`.
+With `values` the spec fields are numeric and equal those of `Spec(QuantizedCircuit(res; values), frame)`, up to round-off.
+In the new frame a compact mode's sector label `n_g{j}` is a fresh parameter (see `Spec(res; frame)`), so `_values` gives it `S_ccᵀ n_g`, the base sector offsets transformed as circuit-quantization's numeric frame change transforms them, and every other parameter its value in `values`.
 Without `values` the spec stays symbolic.
-`_generator.kronfree` holds this package's version and git commit (`null` when not available), `metadata` is written
-under `_metadata` and must be JSON-serializable, and the Julia-only key `_kronfree` records the frame of `res` itself,
-`frame` and `values`, so that [`load_record`](@ref) gives back `res` and `frame` separately.
+`zero_rtol` and `zero_atol` are the round-off zeroing tolerances of `Spec(res)`, passed through `to_record` to `to_spec`, with the same checks and the same need for circuit-quantization at commit c8c8714 or later.
+
+`_generator.kronfree` holds this package's version and git commit (`null` when not available), and `metadata` is written under `_metadata` and must be JSON-serializable.
+The Julia-only key `_kronfree` records the frame of `res` itself, `frame`, the base-frame `values` in the circuit's parameter order, and `zero_rtol` and `zero_atol`, so that [`load_record`](@ref) gives back `res`, `frame`, `values` and the tolerances separately.
 """
 function KronFreeCircuits.run_record(res::Py; frame::Union{Nothing,AbstractMatrix{<:Real}}=nothing, values=nothing,
-                                     metadata::NamedTuple=(;))
-    cq, json = circuit_quantization(), pyimport("json")
+                                     metadata::NamedTuple=(;), zero_rtol::Real=_ZERO_RTOL,
+                                     zero_atol::Real=_ZERO_ATOL)
+    zero_rtol = _check_zero_tolerance(zero_rtol, :zero_rtol)
+    zero_atol = _check_zero_tolerance(zero_atol, :zero_atol)
     meta = _json_value(metadata, "metadata")
+    _require_zero_keywords()
+    cq, json = circuit_quantization(), pyimport("json")
     framed = frame === nothing ? res : _in_frame(res, frame)
-    θ = values === nothing ? nothing : _record_values(framed, values)
-    data = cq.to_record(framed; subs=_pysubs(framed, θ))
+    θ, subs = nothing, nothing
+    if values !== nothing
+        spec = _exported_spec(res)
+        θ = _parameter_values(values, _parameter_names(spec))
+        subs = _framed_subs(framed, spec, frame, θ)
+    end
+    data = cq.to_record(framed; subs, zero_rtol, zero_atol)
     base = pybuiltins.None
     if frame !== nothing
         # The frame of `res` in the encoding of `_frame`: its matrices name the symbols of `_circuit.symbols` by id, so
@@ -366,7 +447,8 @@ function KronFreeCircuits.run_record(res::Py; frame::Union{Nothing,AbstractMatri
         "base_frame" => base,
         "frame" => frame === nothing ? pybuiltins.None : pylist([pylist(Float64.(r)) for r in eachrow(frame)]),
         "values" => θ === nothing ? pybuiltins.None :
-                    pylist([pydict(Dict("name" => string(k), "value" => v)) for (k, v) in pairs(θ)])))
+                    pylist([pydict(Dict("name" => string(k), "value" => v)) for (k, v) in pairs(θ)]),
+        "zero_rtol" => zero_rtol, "zero_atol" => zero_atol))
     data["_metadata"] = meta
     return pyconvert(String, json.dumps(data; indent=2, ensure_ascii=false, allow_nan=false)) * "\n"
 end
@@ -381,16 +463,15 @@ end
 _record_error(what) = throw(ArgumentError("load_record: malformed _kronfree block: $what"))
 
 """
-    load_record(source::AbstractString) -> (; result::Py, spec::Spec, frame, values)
+    load_record(source::AbstractString) -> (; result::Py, spec::Spec, frame, values, zero_rtol, zero_atol)
 
 Read a record written by [`run_record`](@ref), from JSON text or from a file.
-`source` is JSON text when its first non-blank character is `{`, and otherwise the path of a file (write a path that
-begins with `{` as `./{...`); a missing file is an `ArgumentError`.
+`source` is JSON text when its first non-blank character is `{`, and otherwise the path of a file (write a path that begins with `{` as `./{...`); a missing file is an `ArgumentError`.
 `spec` is `parse_spec` of the document: the spec of the run, in the recorded frame, numeric when values were recorded.
-`result` is the symbolic circuit-quantization `Result` that was passed to `run_record`, rebuilt in its own frame (with
-its own residual frame change, if it had one) by `circuit_quantization.load_record`, and `frame` is the `frame` that was
-passed (a `Matrix{Float64}`, or `nothing`), so `Spec(result; frame)` is the symbolic spec of the run.
-`values` is the `NamedTuple` of `Float64` parameter values in the order they were given, or `nothing`.
+`result` is the symbolic circuit-quantization `Result` that was passed to `run_record`, rebuilt in its own frame (with its own residual frame change, if it had one) by `circuit_quantization.load_record`.
+`frame` is the `frame` that was passed (a `Matrix{Float64}`, or `nothing`), so `Spec(result; frame, zero_rtol, zero_atol)` is the symbolic spec of the run.
+`values` is the `NamedTuple` of `Float64` parameter values that was passed, in the frame of `result` and in the circuit's parameter order, or `nothing`; so `Spec(QuantizedCircuit(result; values), frame; zero_rtol, zero_atol)` reproduces `spec`, up to round-off.
+`zero_rtol` and `zero_atol` are the round-off zeroing tolerances of the run, as `Float64`.
 Nothing in the document is evaluated: numbers are read as JSON numbers and expressions by circuit-quantization's parser.
 """
 function KronFreeCircuits.load_record(source::AbstractString)
@@ -421,6 +502,8 @@ function KronFreeCircuits.load_record(source::AbstractString)
     values = field("values")
     values = isnull(values) ? nothing :
              NamedTuple(Symbol(pyconvert(String, item["name"])) => number(item["value"]) for item in values)
+    zero_rtol, zero_atol = number(field("zero_rtol")), number(field("zero_atol"))
+    min(zero_rtol, zero_atol) >= 0 || _record_error("a zero tolerance is negative")
 
     # The Result as it was passed to run_record: the record with the frame of `res` in place of `_frame`, and without
     # `_values`, so that circuit-quantization rebuilds it symbolic.
@@ -430,7 +513,7 @@ function KronFreeCircuits.load_record(source::AbstractString)
     isnull(base) || (rebuilt["_frame"] = base)
     rebuilt["_values"] = pylist()
     result = circuit_quantization().load_record(rebuilt)
-    return (; result, spec, frame, values)
+    return (; result, spec, frame, values, zero_rtol, zero_atol)
 end
 
 end
