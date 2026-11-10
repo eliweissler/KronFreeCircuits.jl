@@ -125,8 +125,9 @@ end
 # --- Three frames -----------------------------------------------------------------------------------------------------
 println("\nfour lowest energies (GHz)")
 E = Dict{Symbol,Vector{Float64}}()
+SOLVED = Dict{Symbol,Spec}()                     # the spec solved in each frame, for the run record
 for (name, S) in pairs(frames)
-    spec = Spec(qc, S)
+    spec = SOLVED[name] = Spec(qc, S)
     E[name] = solve_frame(spec, GRID)
     @printf("  %-9s modes %-3s grid     %s\n", name, join(string.(m.type for m in spec.modes)), fmt(E[name]))
     for (label, g) in (:refined => REFINED, :wider => WIDER)
@@ -270,12 +271,13 @@ end
 # --- Run record -------------------------------------------------------------------------------------------------------
 mkpath(OUT)
 path = joinpath(OUT, "kite_optimum.json")
-write(path, run_record(res; frame=S_OPT, values=θ,
-                       metadata=(bench="kite_frames", energies_GHz=E[:optimum], grid=GRID)))
+save_record(path, SOLVED[:optimum]; circuit=res, frame=S_OPT, values=θ,
+            metadata=(bench="kite_frames", energies_GHz=E[:optimum], grid=GRID))
 rec = load_record(path)
-round_trip = rec.frame == S_OPT && rec.values == NamedTuple{Tuple(Spec(res).parameters)}(θ)   # the circuit's order
-round_trip || push!(failures, "load_record of $path does not return the frame and values written")
-println("\nrun record: ", path, " (load_record returns its frame and values: ", round_trip, ")")
+round_trip = rec.frame == S_OPT && rec.values == NamedTuple{Tuple(Spec(res).parameters)}(θ) &&   # the circuit's order
+             spec_json(rec.spec) == spec_json(SOLVED[:optimum])                                    # the solved spec
+round_trip || push!(failures, "load_record of $path does not return the solved spec, frame and values written")
+println("\nrun record: ", path, " (load_record returns its solved spec, frame and values: ", round_trip, ")")
 
 println("fix_phases! warnings dropped: ", LOGGER.dropped[])
 

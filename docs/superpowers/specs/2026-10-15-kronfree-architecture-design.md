@@ -805,7 +805,7 @@ The numeric frame change, which a frame optimization now needs on every iteratio
 Nothing of the symbolic machinery is ported.
 
 **Where it lives.**
-The core declares the interface without any Python: `src/pyinterface.jl` holds the function stubs `circuit_quantization`, `run_record` and `load_record`, the struct `QuantizedCircuit{H}` (fields `handle`, `values`, `mode_names`), and an error hint, so that calling a stub without the extension says "load PythonCall to use the circuit-quantization interface".
+The core declares the interface without any Python: `src/pyinterface.jl` holds the function stubs `circuit_quantization`, `record_json`, `save_record` and `load_record`, the struct `QuantizedCircuit{H}` (fields `handle`, `values`, `mode_names`), and an error hint, so that calling a stub without the extension says "load PythonCall to use the circuit-quantization interface".
 The methods live in the package extension `KronFreeCircuitsPythonCallExt` (`ext/KronFreeCircuitsPythonCallExt.jl`), which Julia loads when `PythonCall` (a weak dependency, compat 0.9.29) is loaded beside the package, as the CUDA extension is.
 The Python interpreter is the user's own environment with circuit-quantization installed; PythonCall is pointed at it with `JULIA_CONDAPKG_BACKEND=Null` and `JULIA_PYTHONCALL_EXE=<that interpreter>`.
 The extension installs nothing.
@@ -828,7 +828,7 @@ Both retype the modes in the new frame by circuit-quantization's structural rule
   `subs` maps parameter names to numbers, to other names or to SymPy expressions, matched to the circuit's own SymPy symbols (symbol identity includes assumptions, so a fresh symbol of the same name would silently not match); only the symbols that the exported spec can contain are accepted (for the flux offsets `varphi_b`, those of the inductive branches and junctions that `to_spec` exports), so a name that would substitute nothing is an `ArgumentError` listing the accepted names.
 - *The loop route* evaluates the circuit once and then changes frames numerically.
   `QuantizedCircuit(res; values)` takes a value for every parameter of `Spec(res)` by name, in the frame of `res` (a `NamedTuple`, or a `Dict` keyed by `Symbol`s or strings), and holds circuit-quantization's `numeric_hamiltonian` of `to_spec(res)` in that base frame, with the values stored in the order of `Spec(res).parameters`.
-  The same validator checks the `values` of `run_record`.
+  The same validator checks the `values` of `record_json` and `save_record`.
   A `values` of another type, a key that is not a name, a name given twice, or a value that is not a finite real number is an `ArgumentError` naming the problem; an unknown name or a parameter left without a value is an `ArgumentError` that also lists the circuit's parameters, in the order of `Spec(res).parameters`.
   `Spec(qc)` is its spec of constants in that frame, and `Spec(qc, S)` the spec in the frame `S`, from the arrays of circuit-quantization's NumPy frame change `transformed(S)` through `numeric_spec`, with no symbolic work and no expression strings.
   The modes keep the names of `Spec(res)`; the numeric Hamiltonian carries no names, so `QuantizedCircuit` stores them (`mode_names`).
@@ -838,9 +838,9 @@ The offset charge has two parts in circuit-quantization: a source part from gate
 In a new frame the source part transforms as `Sᵀ`, the sector labels live on the compact modes only and transform with `S_ccᵀ`, and their components on noncompact modes are dropped, because a static offset on a noncompact mode is removable by a gauge transformation.
 The symbolic route issues a fresh label `n_g{j}` for each compact mode `j` of the new frame; the loop route carries the two parts separately and applies the same rule.
 The fresh label reuses the name of the base frame's label but is a different parameter: the value that describes the same circuit is `S_ccᵀ n_g`, with `n_g` the base frame's sector values, not the base label's own value.
-`values`, given to `QuantizedCircuit` or to `run_record`, are always in the base frame, and `run_record` gives the fresh labels of the framed `Result` the transformed sector offsets that circuit-quantization's numeric frame change computes (its `n_g_sector`).
+`values`, given to `QuantizedCircuit` or to `record_json`, are always in the base frame, and the record's `_values` block gives the fresh labels of the framed `Result` the transformed sector offsets that circuit-quantization's numeric frame change computes (its `n_g_sector`).
 With a nonzero offset charge on the KITE at its optimum frame, the loop-route spec equals the symbolic-route spec with the values substituted (`test/python/test_final_route.jl`).
-On the two-transmon fixture, whose two compact modes allow `S_cc = [1 1; 0 1]` (where `S_ccᵀ`, `S_cc⁻¹` and `S_cc` differ), the loop route's offset charges are `Sᵀ n_g`, the symbolic route agrees when its fresh labels take `S_ccᵀ n_g`, and the six lowest levels in the new frame equal the base frame's to 1e-11 GHz on a full charge basis (`test/python/test_loop_route.jl`); a run record of that run has the same spec (`test/python/test_run_record.jl`).
+On the two-transmon fixture, whose two compact modes allow `S_cc = [1 1; 0 1]` (where `S_ccᵀ`, `S_cc⁻¹` and `S_cc` differ), the loop route's offset charges are `Sᵀ n_g`, the symbolic route agrees when its fresh labels take `S_ccᵀ n_g`, and the six lowest levels in the new frame equal the base frame's to 1e-11 GHz on a full charge basis (`test/python/test_loop_route.jl`); a run record of that run carries the solved spec, and circuit-quantization's `load_record` of it rebuilds a circuit with the same numbers (`test/python/test_save_record.jl`).
 
 **Constant coefficients never compile (core).**
 A numeric spec is built on every iteration of a frame loop, so a coefficient that compiled a function would cost milliseconds per coefficient and grow the generated-function cache without bound.
@@ -857,7 +857,7 @@ The loop route calls it on the arrays that come back from Python.
 A circuit quantized in a floating-point coordinate basis exports entries that should be zero as round-off numbers (in the three-fluxonium bench, `E_C` and `E_L` entries around `1e-14` to `1e-11` at matrix scales of 1 to 10 GHz, and cosine `omega` entries around `1e-17`).
 The package treats every nonzero entry as a real term, so such entries change which modes are coupled.
 Eli's decision (2026-11-10): zeroing at a relative tolerance is acceptable but must be explicit; the default is `1e-12` relative, and a bench may pass `1e-9`.
-The keywords `zero_rtol = 1e-12` and `zero_atol = 0.0` are taken by `numeric_spec`, by `Spec(qc[, S])` (forwarded to `numeric_spec`), and by `Spec(res; ...)` and `run_record` (forwarded to circuit-quantization's `to_spec`), with the same meaning on both sides.
+The keywords `zero_rtol = 1e-12` and `zero_atol = 0.0` are taken by `numeric_spec`, by `Spec(qc[, S])` (forwarded to `numeric_spec`), and by `Spec(res; ...)` (forwarded to circuit-quantization's `to_spec`), with the same meaning on both sides; `record_json` and `save_record` record them with the spec and forward them to `to_record`.
 After symmetrization, an entry of a fully numeric `E_C` or `E_L` (diagonal included) of magnitude at most `max(zero_rtol * scale, zero_atol)` becomes exactly zero, where `scale` is the largest magnitude in that matrix.
 In each cosine, an `omega` entry of magnitude at most `zero_rtol` times that cosine's largest `omega` magnitude becomes exactly zero, on a compact mode at most `zero_rtol` times the smaller of that magnitude and 1 (relative only: `zero_atol` does not apply to `omega`).
 `zero_rtol = 0, zero_atol = 0` turns zeroing off.
@@ -867,15 +867,26 @@ The two sides still differ in three ways: the exporter zeroes only floating-poin
 Zeroing a diagonal entry can in principle make a positive-definite matrix indefinite when its scales are separated by more than `1/zero_rtol`; no circuit here comes near that.
 
 **Run records.**
-`run_record(res; frame, values, metadata, zero_rtol, zero_atol)` returns JSON text that is at once a kronfree-spec version 1 document (`parse_spec` reads it) and a circuit-quantization record (its `load_record` rebuilds the circuit).
-The document is circuit-quantization's own `to_record` of `res` in the run's frame, which writes the spec fields and `_circuit` (branches, ground, loops, flux assignment and the SymPy symbols with their assumptions), `_frame` (`Z_full`, the full mode types and `S`) and `_values` (the parameter values, when given, which also make the spec fields numeric).
-`values` are in the frame of `res`, exactly as `QuantizedCircuit(res; values)` takes them; in the framed record `_values` gives each fresh sector label the transformed sector offset `S_ccᵀ n_g` and every other parameter its given value, so the record's spec equals `Spec(QuantizedCircuit(res; values), frame)` to round-off.
-`zero_rtol` and `zero_atol` are forwarded through `to_record` to `to_spec`.
+`save_record(path, spec; circuit=res, frame, values, metadata, zero_rtol, zero_atol, check=true)` writes the record of a run that solved `spec`, and `record_json(spec; ...)` returns its text, as `save_spec` and `spec_json` do for a spec.
+The text is at once a kronfree-spec version 1 document and a circuit-quantization record (its `load_record` rebuilds the circuit).
+Its spec fields are those of `spec`, written by `spec_json`; nothing in them is recomputed from the circuit, the frame or the values, so `parse_spec` of the record gives `spec` back coefficient for coefficient, exact zeros included (`spec_json` prints each number by its shortest round-trip decimal string).
+The provenance blocks come from circuit-quantization's `to_record` of `res` in the run's frame: `_circuit` (branches, ground, loops, flux assignment and the SymPy symbols with their assumptions), `_frame` (`Z_full`, the full mode types and `S`), `_values` (the parameter values, when given) and `_generator`; the spec fields that `to_record` also writes are dropped.
+`values` are in the frame of `res`, exactly as `QuantizedCircuit(res; values)` takes them; in the framed record `_values` gives each fresh sector label the transformed sector offset `S_ccᵀ n_g` and every other parameter its given value.
+`zero_rtol` and `zero_atol` are provenance: the tolerances the spec was built with, forwarded to `to_record` and recorded so that the run can be rebuilt.
 Julia adds three keys: `_generator.kronfree` (this package's version and git commit, `null` when not available), `_metadata` (the caller's `metadata`, which must be JSON-serializable), and the Julia-owned `_kronfree`, which holds the frame of `res` as it was passed (`base_frame`, in the encoding of `_frame`), the `frame` argument, the base-frame `values` in the order of `Spec(res).parameters`, and `zero_rtol` and `zero_atol`.
-`load_record(source)`, from JSON text or a file, returns `(; result, spec, frame, values, zero_rtol, zero_atol)`: `spec` is the spec of the run, `result` the symbolic `Result` that was passed to `run_record`, rebuilt in its own frame, `frame` the frame that was applied, and `values`, `zero_rtol` and `zero_atol` those of the run.
-So `Spec(result; frame, zero_rtol, zero_atol)` is the symbolic spec of the run, and `Spec(QuantizedCircuit(result; values), frame; zero_rtol, zero_atol)` reproduces its numeric spec.
+With `check = true` (the default) the spec is first rebuilt from the provenance and compared with `spec`: by the loop route, `Spec(QuantizedCircuit(res; values), frame; zero_rtol, zero_atol)`, when there are values, and as `Spec(res; frame, zero_rtol, zero_atol)` when there are none.
+The comparison covers the parameters, the mode names and types, the cosine vectors and every coefficient (at a fixed sample point of the parameters when there are any), each number to a relative `1e-9` of its matrix's or vector's scale, of the cosine's energy, or of the largest energy for the constant, so a spec zeroed at a different tolerance than the one recorded still passes when the entries involved lie below that.
+A mismatch is an `ArgumentError` naming the first field that differs, with both values; `check = false` skips the comparison, for a spec edited by hand or a loop that writes many records.
+`load_record(source)`, from JSON text or a file, returns `(; result, spec, frame, values, zero_rtol, zero_atol)`: `spec` is the spec the run solved, `result` the symbolic `Result` that was passed as `circuit`, rebuilt in its own frame, `frame` the frame that was applied, and `values`, `zero_rtol` and `zero_atol` those of the run.
+So `Spec(result; frame, zero_rtol, zero_atol)` is the symbolic spec of the run, and `Spec(QuantizedCircuit(result; values), frame; zero_rtol, zero_atol)` rebuilds its numeric spec.
 Nothing in a record is evaluated: numbers are JSON numbers and expressions go through circuit-quantization's restricted parser.
 The tree is Julia code and is not recorded; that belongs to the export and caching plan.
+
+*Amendment, 2026-11-10, after the final review.*
+The record function was first built as `run_record(res; frame, values, metadata, zero_rtol, zero_atol)`: it never saw the spec that was solved, and wrote circuit-quantization's `to_record` of `res` in the frame, whose spec fields the symbolic route recomputed from `res`, the frame and the values.
+A record therefore equalled the run only while the symbolic route and the loop route agreed, and the final review found a case where they did not (offset charges under a frame mixing two compact modes; fixed, with the test of the two-transmon fixture above).
+The interface design's own sketch had been to record the solved spec with the circuit, frame and values as provenance, and the owner chose that, with a name to match `save_spec`, `load_spec` and `load_record` ("it's a record of the run, not running a record").
+So `run_record` was removed, not deprecated (the branch was unreleased), in favour of `record_json` and `save_record`, which take the solved spec and check that the provenance describes it; `load_record` is unchanged.
 
 **Measurements.**
 On ewdesktop (Intel i7-11700K, Julia 1.13.2, one thread), 2026-11-10.
@@ -897,8 +908,8 @@ The leaves are `Dense`.
 The interface needs that repository at commit `c8c8714` or later.
 Its commits of 2026-11-10 on `main` (at `9c26fd2`) bring an integer-valued float compact block accepted, the export symmetry check with round-off repair, the numeric frame change with its checks as public API, and run records.
 The zero-tolerance keywords of `to_spec` are in `c8c8714`, on its local branch `to-spec-zero-tolerance`, which is not yet merged into `main`.
-`Spec(res)` always passes those keywords, and `run_record` forwards them, so both need that commit, and so does the Python tier; `QuantizedCircuit` and `Spec(qc[, S])` do not.
-Against an older circuit-quantization, `Spec(res)` and `run_record` throw an `ArgumentError` that names the required commit and the file the module was imported from, decided once from the signature of `to_spec`; there is no fallback, since a fallback would zero by a different rule.
+`Spec(res)` always passes those keywords, and `record_json` and `save_record` forward them, so all three need that commit, and so does the Python tier; `QuantizedCircuit` and `Spec(qc[, S])` do not.
+Against an older circuit-quantization, `Spec(res)`, `record_json` and `save_record` throw an `ArgumentError` that names the required commit and the file the module was imported from, decided once from the signature of `to_spec`; there is no fallback, since a fallback would zero by a different rule.
 
 **Tests.**
 The default tier stays Python-free.

@@ -10,18 +10,21 @@ The work is on the local branch `cq-interface`, off `main`; it is not pushed or 
 
 Done:
 - In the core, without Python: constant coefficients that fold and never compile (`_Constant`), and `numeric_spec`, a `Spec` of constants from plain arrays.
-- The package extension `KronFreeCircuitsPythonCallExt` (weak dependency `PythonCall`): `circuit_quantization()`, the symbolic route `Spec(res; frame=S)`, the loop route `QuantizedCircuit(res; values)` and `Spec(qc, S)`, and `run_record` and `load_record`.
+- The package extension `KronFreeCircuitsPythonCallExt` (weak dependency `PythonCall`): `circuit_quantization()`, the symbolic route `Spec(res; frame=S)`, the loop route `QuantizedCircuit(res; values)` and `Spec(qc, S)`, and the run records `record_json`, `save_record` and `load_record`.
+- After the final review, by the owner's decision, `run_record` was replaced by `save_record(path, spec; circuit, frame, values, ...)` and `record_json(spec; ...)`, which write the spec that was solved (by `spec_json`) with the circuit, frame and values as provenance, and by default check that the provenance rebuilds that spec (architecture §20j, amendment of 2026-11-10).
 - The guard that the core stays free of Python: a default-tier test that no file under `src/` loads or calls PythonCall, and that the extension is not loaded there.
 - `bench/kite_frames`: the KITE defined, moved through its published, normal-mode and optimum frames, solved and recorded in one session (results in `bench/kite_frames/README.md`).
-- Round-off zeroing as an explicit option, `zero_rtol = 1e-12` and `zero_atol = 0.0` on `numeric_spec`, `Spec(qc[, S])`, `Spec(res; ...)` and `run_record` (Eli's decision: zeroing at a relative tolerance is acceptable but must be explicit; a bench may pass `1e-9`), committed here at `106c0b8` and in circuit-quantization at `c8c8714`.
+- Round-off zeroing as an explicit option, `zero_rtol = 1e-12` and `zero_atol = 0.0` on `numeric_spec`, `Spec(qc[, S])`, `Spec(res; ...)`, `record_json` and `save_record` (Eli's decision: zeroing at a relative tolerance is acceptable but must be explicit; a bench may pass `1e-9`), committed here at `106c0b8` and in circuit-quantization at `c8c8714`.
 
 Measured on ewdesktop (i7-11700K, Julia 1.13.2, one thread), 2026-11-10: the loop route takes 0.134 ms per frame change for the three-mode KITE (target 5 ms), and the symbolic route 0.37 s for the KITE and 0.80 s for the six-mode coupled zero-pis.
 The bench's loop figures are in `bench/kite_frames/README.md` and in architecture §20j.
 In the bench the three frames' four lowest levels agree to 7.2e-6 GHz and lie about 1.4e-5 GHz above the circuit-quantization paper's reference levels; solved on the reference calculation's own grids (charge cutoff 24, 160-point phase grids, steps about 0.28 to 0.32), the KITE reproduces the paper's levels to within 5e-7 GHz, so the offset is the reference grid's discretization error (`bench/kite_frames/README.md`; `run.jl` reproduces it with `KITE_FRAMES_REFGRID=1`, run on 2026-11-10 on commit `d3f338c`).
 
 Regression check: a two-fluxonium bench smoke run before and after this branch gave bitwise identical levels in all four stages.
-Test status, 2026-11-10, after the final fix pass of the whole-branch review: on the tree of this commit, before this file's final wording (the code of commit `d3f338c`, plus documentation and one comment of `bench/kite_frames/run.jl`), the default tier passed, the Python tier passed with 296 tests against circuit-quantization at `c8c8714` (branch `to-spec-zero-tolerance`), and the slow tier (`KRONFREE_SLOW_TESTS=1`) passed, run once as the last test run, with only the twenty known `fix_phases!` warnings of the reference tests.
-The KITE bench passed all its checks on the same code, once with default settings and once with `KITE_FRAMES_REFGRID=1`.
+Test status, 2026-11-10, after the record functions were renamed (`save_record` and `record_json` in place of `run_record`): on the code of the commit that made that change, the default tier passed, and the Python tier passed with 319 tests against circuit-quantization at `c8c8714` (branch `to-spec-zero-tolerance`).
+The KITE bench passed all its checks with default settings on the same code, before a final rewrapping of comments and long lines in the extension and the record tests, after which the Python tier was run again and passed.
+The slow tier (`KRONFREE_SLOW_TESTS=1`) was last run on the code of d3f338c, before the record functions were renamed; to be re-run on this commit.
+The bench's run with `KITE_FRAMES_REFGRID=1` was last made on the code of `d3f338c`.
 
 Acceptance item 5, the three-fluxonium bench from a spec produced by `to_spec` with no hand assembly (plan Task 9):
 - The bench's spec now comes from circuit-quantization's `to_spec(..., zero_rtol=1e-9)`, with no hand assembly.
@@ -33,8 +36,8 @@ Acceptance item 5, the three-fluxonium bench from a spec produced by `to_spec` w
 Dependency on circuit-quantization (`~/src/circuit-quantization`): the interface needs that repository at commit `c8c8714` or later.
 Its commits of 2026-11-10 on its `main` (at `9c26fd2`) bring an integer-valued float compact block accepted, the export round-off repair, the numeric frame change with its checks, and run records.
 The zero-tolerance keywords of its `to_spec` are only in `c8c8714`, on its local, unpushed branch `to-spec-zero-tolerance`, which is not yet merged into that repository's `main`.
-`Spec(res)` always passes those keywords and `run_record` forwards them, so every call of either needs that commit, and so does the Python tier; against an older circuit-quantization they throw an `ArgumentError` naming the required commit.
-On ewdesktop that repository is checked out on its local branch `to-spec-zero-tolerance`; returning it to `main` breaks `Spec(res)`, `run_record` and the Python tier until that branch is merged.
+`Spec(res)` always passes those keywords and `record_json` and `save_record` forward them, so every call of any of them needs that commit, and so does the Python tier; against an older circuit-quantization they throw an `ArgumentError` naming the required commit.
+On ewdesktop that repository is checked out on its local branch `to-spec-zero-tolerance`; returning it to `main` breaks `Spec(res)`, `record_json`, `save_record` and the Python tier until that branch is merged.
 
 Python tier, on ewdesktop (the environment is the conda environment `cq-z4`; the plan's `circuit_quantization` environment exists only on the Mac):
 

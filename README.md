@@ -124,8 +124,8 @@ The interface is a package extension, loaded only when PythonCall is loaded besi
 The design is in spec §20j and `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md`.
 
 You need a Python environment with circuit-quantization installed (Python ≥ 3.11, SymPy ≥ 1.13), and PythonCall in the Julia environment you work in (`Pkg.add("PythonCall")`).
-circuit-quantization must be at commit `c8c8714` or later, which is on its branch `to-spec-zero-tolerance` until that branch is merged into its `main`: `Spec(res)` always passes the round-off zeroing keywords of that commit to circuit-quantization's `to_spec`, and `run_record` forwards them, so both need it, and so does the Python test tier.
-With an older circuit-quantization, `Spec(res)` and `run_record` stop with an `ArgumentError` that names the required commit and the file the module was imported from; `QuantizedCircuit` and `Spec(qc[, S])` still work.
+circuit-quantization must be at commit `c8c8714` or later, which is on its branch `to-spec-zero-tolerance` until that branch is merged into its `main`: `Spec(res)` always passes the round-off zeroing keywords of that commit to circuit-quantization's `to_spec`, and `record_json` and `save_record` forward them, so all three need it, and so does the Python test tier.
+With an older circuit-quantization, `Spec(res)`, `record_json` and `save_record` stop with an `ArgumentError` that names the required commit and the file the module was imported from; `QuantizedCircuit` and `Spec(qc[, S])` still work.
 The extension installs no Python packages.
 Point PythonCall at that environment's interpreter before PythonCall is loaded, with two environment variables:
 
@@ -187,7 +187,7 @@ leaves = [Node([m.name => basis(i, m)]; solver=Dense(), compute=16, keep=lowest(
 sys = materialize(Node(leaves; compute=4, keep=lowest(4)), spec_S, (;))
 energies(sys)                                                 # the four lowest levels, in GHz
 
-write("kite_optimum.json", run_record(res; frame=S, values=θ, metadata=(note="KITE at the optimum frame",)))
+save_record("kite_optimum.json", spec_S; circuit=res, frame=S, values=θ, metadata=(note="KITE at the optimum frame",))
 rec = load_record("kite_optimum.json")                        # (; result, spec, frame, values, zero_rtol, zero_atol)
 ```
 
@@ -201,7 +201,7 @@ There are two routes to a spec in a new frame `φ = S φ′`.
   It takes about a second (below), so it suits a frame fixed once, for a sweep over circuit parameters.
   `subs` replaces parameters by name with numbers, other names or SymPy expressions, and `mode_names` names the modes (default `varphi_1`, `varphi_2`, ...).
 - The loop route, `QuantizedCircuit(res; values=θ)` once and then `Spec(qc, S)` per frame, evaluates the circuit at fixed values and changes frames with NumPy, with no symbolic work; it suits a loop that optimizes the frame.
-  `values` must give every parameter of `Spec(res)` by name, in the frame of `res`; an unknown or missing name is an `ArgumentError` listing the circuit's parameters, and `run_record` checks its `values` by the same rule.
+  `values` must give every parameter of `Spec(res)` by name, in the frame of `res`; an unknown or missing name is an `ArgumentError` listing the circuit's parameters, and `record_json` checks its `values` by the same rule.
   Every coefficient of the result is a constant, so nothing is compiled anywhere from the frame change through `materialize`.
 
 Both routes apply the same rule to offset charges: the gate-voltage part transforms as `Sᵀ`, and each compact mode carries its own static offset label, which noncompact modes never do.
@@ -215,10 +215,13 @@ An `E_C` or `E_L` entry no larger than `max(zero_rtol * scale, zero_atol)`, with
 For example, `Spec(qc, S; zero_rtol=1e-9)` zeroes entries below `1e-9` of the matrix scale.
 On the final route the keywords are passed to circuit-quantization's `to_spec` (which needs the commit named above), and that exporter zeroes only floating-point residue, and only in a fully numeric matrix: with symbolic parameters left in `E_C` or `E_L`, nothing in that matrix is zeroed.
 
-`run_record(res; frame, values, metadata, zero_rtol, zero_atol)` returns one JSON document for the end of a run.
-It is circuit-quantization's `to_record` of the circuit in the run's frame, so `parse_spec` reads it as a spec and circuit-quantization's `load_record` rebuilds the circuit from it in Python; this package adds its own version and git commit under `_generator.kronfree`, the caller's `metadata` under `_metadata`, and a `_kronfree` block with the frame, the values and the two zeroing tolerances.
-`values` are in the frame of `res`, as `QuantizedCircuit(res; values)` takes them, and the record's spec is that of `Spec(QuantizedCircuit(res; values), frame)`: in the framed circuit the record gives each fresh static offset label its transformed value `S_ccᵀ n_g`, and every other parameter its given value.
-`load_record` returns the spec of the run, the symbolic `Result` that was passed to `run_record`, the frame, the base-frame values (in the order of `Spec(res).parameters`) and the tolerances, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run and `Spec(QuantizedCircuit(rec.result; values=rec.values), rec.frame)` reproduces its numeric spec.
+`save_record(path, spec; circuit=res, frame, values, metadata, zero_rtol, zero_atol, check=true)` writes the record of a run to `path`, and `record_json(spec; ...)`, with the same keywords, returns its JSON text.
+The record is one JSON document for the end of a run.
+Its spec fields are those of `spec`, the spec the run solved, written as `spec_json` writes them, so `parse_spec` and `load_spec` read back exactly that spec, coefficient for coefficient.
+Beside them it holds what rebuilds the run: circuit-quantization's `to_record` blocks of the circuit `res` in the run's frame (so circuit-quantization's `load_record` rebuilds the circuit in Python), this package's version and git commit under `_generator.kronfree`, the caller's `metadata` under `_metadata`, and a `_kronfree` block with the frame, the values and the two zeroing tolerances the spec was built with.
+`values` are in the frame of `res`, as `QuantizedCircuit(res; values)` takes them; in the framed circuit the record gives each fresh static offset label its transformed value `S_ccᵀ n_g`, and every other parameter its given value.
+With `check=true` (the default) the spec is first rebuilt from `res`, the frame, the values and the tolerances (by the loop route when there are values, by `Spec(res; frame)` when there are none) and compared with `spec`, to a relative `1e-9` of each matrix's scale; a mismatch, such as a spec of one frame recorded with another, is an `ArgumentError` that names the first field that differs, and `check=false` writes the record without comparing.
+`load_record` returns the spec of the run, the symbolic `Result` that was passed as `circuit`, the frame, the base-frame values (in the order of `Spec(res).parameters`) and the tolerances, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run and `Spec(QuantizedCircuit(rec.result; values=rec.values), rec.frame; zero_rtol=rec.zero_rtol, zero_atol=rec.zero_atol)` rebuilds its numeric spec.
 
 Measured on an Intel i7-11700K with Julia 1.13.2 on one thread (2026-11-10): `Spec(qc, S)` for the three-mode KITE takes 0.134 ms per call in a tight loop, against a design target of 5 ms; `Spec(res; frame=S)` takes 0.37 s for the KITE and 0.80 s for six-mode coupled zero-pis.
 `bench/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: in its run of 2026-11-10 on commit `d3f338c`, 0.355 ms for the frame change, 0.569 ms through `materialize`'s setup, and no coefficient compiled in the loop.

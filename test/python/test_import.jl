@@ -39,12 +39,13 @@ end
     @test msg isa String && occursin("c8c8714", msg) && occursin("to-spec-zero-tolerance", msg) && occursin(origin, msg)
     @test _EXT._zero_keywords_missing(builtins.eval("lambda res, *, zero_rtol=0: None", pydict()), origin) isa String
     @test _EXT._zero_keywords_missing(circuit_quantization().to_spec, origin) === nothing   # the installed one
-    # the cached answer is what Spec(res) and run_record consult, before calling to_spec
+    # the cached answer is what Spec(res) and record_json consult, before calling to_spec
     saved = _EXT._ZERO_KEYWORDS[]
     try
         _EXT._ZERO_KEYWORDS[] = msg
         @test_throws ArgumentError(msg) Spec(PythonCall.pybuiltins.None)
-        @test_throws ArgumentError(msg) run_record(PythonCall.pybuiltins.None)
+        spec = load_spec(joinpath(@__DIR__, "..", "fixtures", "transmon.json"))
+        @test_throws ArgumentError(msg) record_json(spec; circuit=PythonCall.pybuiltins.None)
     finally
         _EXT._ZERO_KEYWORDS[] = saved
     end

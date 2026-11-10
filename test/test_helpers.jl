@@ -6,6 +6,10 @@ end
 
 @testset "circuit-quantization interface without PythonCall" begin
     @test_throws "load PythonCall" circuit_quantization()
+    spec = load_spec(joinpath(@__DIR__, "fixtures", "transmon.json"))
+    @test_throws "load PythonCall" record_json(spec; circuit=nothing)
+    @test_throws "load PythonCall" save_record(joinpath(mktempdir(), "record.json"), spec; circuit=nothing)
+    @test_throws "load PythonCall" load_record("{}")
 end
 
 # The core may name PythonCall in prose (the hint and the docstrings of src/pyinterface.jl), but no code under src/ may

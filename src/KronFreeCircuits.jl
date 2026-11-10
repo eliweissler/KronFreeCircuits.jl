@@ -23,7 +23,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm,
        PortCharacter, character, arithmetic,
-       circuit_quantization, QuantizedCircuit, run_record, load_record
+       circuit_quantization, QuantizedCircuit, record_json, save_record, load_record
 
 include("parameters.jl")
 include("spec.jl")
