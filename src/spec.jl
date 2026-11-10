@@ -260,7 +260,8 @@ load_spec(path::AbstractString) = parse_spec(read(path, String))
 const _ZERO_RTOL = 1e-12
 const _ZERO_ATOL = 0.0
 
-# A round-off zeroing tolerance must be a finite nonnegative real number; the error names the keyword.
+# A tolerance (round-off zeroing, or `numeric_spec`'s `symmetry_tol`) must be a finite nonnegative real number; the
+# error names the keyword.
 function _check_zero_tolerance(x::Real, name::Symbol)
     (!(x isa Bool) && isfinite(x) && x >= 0) ||
         throw(ArgumentError("$name = $x must be a finite nonnegative real number"))
@@ -268,7 +269,7 @@ function _check_zero_tolerance(x::Real, name::Symbol)
 end
 
 function _numeric_matrix(M::AbstractMatrix{<:Real}, key::Symbol, N::Int)
-    (size(M) == (N, N) && !(eltype(M) <: Bool)) ||
+    (size(M) == (N, N) && all(x -> !(x isa Bool), M)) ||
         _spec_error("$key must be a $N×$N matrix of numbers (the number of modes)")
     return Matrix{Float64}(M)
 end
@@ -308,6 +309,8 @@ document of the same numbers.
 `E_C` and `E_L` are `N×N` real matrices, `flux_linear` and `n_g` real vectors of length `N = length(modes)`.
 Each cosine is a tuple `(energy, omega, offset)` with `omega` a real vector of length `N`; an `omega` entry on a compact
 mode within `1e-12` of an integer is rounded to it, any other is rejected.
+`parse_spec` stores such an entry of a JSON document as written, unrounded, so a compact `omega` of `1 + 1e-13` is
+exactly `1.0` here and `1 + 1e-13` there.
 Every coefficient is a constant (nothing is compiled), and an exact zero is a literal zero, as `"0"` is in a JSON spec.
 `E_C` and `E_L` are symmetrized at round-off level: with `scale` the largest magnitude in the matrix, a pair
 `[i,j]`, `[j,i]` differing by at most `symmetry_tol * scale` is replaced by its mean, and a larger asymmetry is rejected.
@@ -316,13 +319,14 @@ In the symmetrized `E_C` and `E_L`, every entry (diagonal included) at most `max
 magnitude becomes exactly zero, with `scale` the largest magnitude in that matrix.
 In each cosine, an `omega` entry at most `zero_rtol` times the largest magnitude in that `omega` becomes exactly zero,
 on a compact mode at most `zero_rtol` times the smaller of that magnitude and 1; `zero_atol` does not apply to `omega`.
-`zero_rtol = 0, zero_atol = 0` turns zeroing off.
+`zero_rtol = 0, zero_atol = 0` turns zeroing off, and `zero_rtol ≥ 1` zeroes every entry of `E_C` and `E_L`, whole
+matrices.
 Unlike the exporter, which zeroes only floating-point residue and skips a matrix with a symbolic entry, every entry
 here is a number, so any entry within the threshold is zeroed.
 The caller's arrays are not modified.
-Throws `ArgumentError` on a negative or non-finite `zero_rtol` or `zero_atol` (naming it, before any other check), a
-wrong shape, an unknown mode type, a repeated or missing mode name, a non-finite number, a larger asymmetry (naming the
-pair) or a non-integer `omega` on a compact mode.
+Throws `ArgumentError` on a negative or non-finite `zero_rtol`, `zero_atol` or `symmetry_tol` (naming it, before any
+other check), a `Bool` entry, a wrong shape, an unknown mode type, a repeated or missing mode name, a non-finite
+number, a larger asymmetry (naming the pair) or a non-integer `omega` on a compact mode.
 """
 function numeric_spec(; modes::AbstractVector{<:Pair{Symbol,Symbol}},
                       E_C::AbstractMatrix{<:Real}, E_L::AbstractMatrix{<:Real},
@@ -330,6 +334,7 @@ function numeric_spec(; modes::AbstractVector{<:Pair{Symbol,Symbol}},
                       cosines::AbstractVector = Tuple[], constant::Real = 0.0, symmetry_tol::Real = 1e-10,
                       zero_rtol::Real = _ZERO_RTOL, zero_atol::Real = _ZERO_ATOL)
     rtol, atol = _check_zero_tolerance(zero_rtol, :zero_rtol), _check_zero_tolerance(zero_atol, :zero_atol)
+    symmetry_tol = _check_zero_tolerance(symmetry_tol, :symmetry_tol)
     N = length(modes)
     EC, EL = _numeric_matrix(E_C, :E_C, N), _numeric_matrix(E_L, :E_L, N)
     fl, ng = _numbers(flux_linear, "flux_linear", N), _numbers(n_g, "n_g", N)

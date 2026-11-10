@@ -228,6 +228,34 @@ end
     @test_throws ArgumentError numeric_spec(; args..., n_g=[Inf, 0])
     @test_throws ArgumentError numeric_spec(; args..., constant=NaN)
     @test_throws ArgumentError numeric_spec(; args..., cosines=[(NaN, [1, 1], 0.0)])
+    # symmetry_tol is checked like the zero tolerances, before the matrices; a Bool entry is rejected in any matrix
+    @test_throws "symmetry_tol = -1 must be a finite nonnegative" numeric_spec(; args..., symmetry_tol=-1)
+    @test_throws "symmetry_tol = NaN must be a finite nonnegative" numeric_spec(; args..., symmetry_tol=NaN)
+    @test_throws "E_C must be" numeric_spec(; args..., E_C=Real[1.0 true; true 0.5])
+    @test_throws "E_L must be" numeric_spec(; args..., E_L=Bool[0 0; 0 1])
+    # a compact omega near an integer: rounded here, stored as written by parse_spec
+    json(w) = """{"format":"kronfree-spec","version":1,"parameters":[],
+      "modes":[{"name":"a","type":"c"},{"name":"b","type":"e"}],
+      "E_C":[["1.0","0.2"],["0.2","0.5"]],"E_L":[["0","0"],["0","0.3"]],"flux_linear":["0","0"],"n_g":["0","0"],
+      "cosines":[{"energy":"1","omega":[$(repr(w)),0.5],"offset":"0"}]}"""
+    @test parse_spec(json(1 + 1e-13)).cosines[1].omega == [1 + 1e-13, 0.5]
+end
+
+@testset "numeric_spec: a zero n_g is the literal \"0\"" begin
+    # a transmon at fixed values, against the same transmon with the literal "0" for n_g in a JSON spec
+    num = numeric_spec(; modes=[:varphi_1 => :c], E_C=fill(0.3, 1, 1), E_L=zeros(1, 1), flux_linear=[0.0], n_g=[0.0],
+                       cosines=[(10.0, [1.0], 0.0)])
+    lit = parse_spec("""{"format":"kronfree-spec","version":1,"parameters":[],"modes":[{"name":"varphi_1","type":"c"}],
+      "E_C":[["0.3"]],"E_L":[["0"]],"flux_linear":["0"],"n_g":["0"],
+      "cosines":[{"energy":"10","omega":[1],"offset":"0"}]}""")
+    charge(spec) = filter(t -> any(f -> f.port == nport(), t.factors), circuit_terms(spec))
+    @test isempty(charge(num)) && isempty(charge(lit))                   # no linear charge term
+    @test !isempty(charge(numeric_spec(; modes=[:varphi_1 => :c], E_C=fill(0.3, 1, 1), E_L=zeros(1, 1),
+                                       flux_linear=[0.0], n_g=[0.25], cosines=[(10.0, [1.0], 0.0)])))
+    root = Node([:varphi_1 => ChargeBasis(10)]; solver=Dense(), keep=lowest(4))
+    a, b = materialize(root, num, (;)), materialize(root, lit, (;))
+    @test KronFreeCircuits.arithmetic(a) === KronFreeCircuits.arithmetic(b) === :real
+    @test energies(a) == energies(b)
 end
 
 @testset "numeric_spec: round-off zeroing (zero_rtol, zero_atol)" begin
