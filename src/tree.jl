@@ -322,7 +322,9 @@ ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, 
 The default solver of every [`Node`](@ref): it picks a solver for the node at materialization, from
 the node's kind, product dimension and storage (spec §20e decision 5).
 
-- `Dense()` when the product dimension is at most `dense_cutoff`;
+- `Dense()` when the product dimension `N` is at most `dense_cutoff`, or when `0 < compute` and `N < 3 compute + 5`,
+  where the block solvers are unreliable (a node whose children kept their states by an energy window can be small
+  without notice);
 - otherwise, at a leaf (all children bases), `ShiftInvert()` when `on === Array` and
   `ChebyshevFilter(on=on)` on any other storage;
 - otherwise, at a branch, `LOBPCG(preconditioner=:ritz, seed=:product, on=on)`.
@@ -355,7 +357,7 @@ if it inspects ports it also implements `KronFreeCircuits.ports_needed(rule)`, r
 """
 abstract type SelectionRule end
 
-"Keep the `k` lowest eigenstates (`k == 0`: keep all computed)."
+"Keep the `k` lowest eigenstates, or all computed when fewer than `k` were (`k == 0`: keep all computed)."
 struct Lowest <: SelectionRule
     k::Int
 end

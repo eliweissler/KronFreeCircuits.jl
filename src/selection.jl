@@ -92,12 +92,47 @@ end
 follow(reference::Union{Nothing,AbstractMatrix}=nothing; minoverlap::Real=0.5) =
     Follow(reference === nothing ? nothing : copy(_node_matrix(reference)), Float64(minoverlap))
 
+"""
+    within(window; max=0)
+
+Keep the computed eigenstates whose energy lies within `window` of the lowest computed energy, `E_i - E_1 <= window`,
+in ascending order, at most `max` of them when `max > 0`.
+An energy window spends a node's kept states where its spectrum is dense and saves them where it is sparse, and it makes
+the kept count of different nodes comparable (the same window everywhere); the count is then set by the physics, not by
+the user, and `compute` only has to be large enough to close the window.
+When the highest computed state still lies inside the window (and no `max` has been reached) the window is not closed:
+the rule warns that `compute` should be raised, and keeps every computed state.
+"""
+struct Within <: SelectionRule
+    window::Float64
+    max::Int
+    function Within(window::Real, max::Integer)
+        window >= 0 && isfinite(window) || throw(ArgumentError("within: window must be nonnegative and finite, got $window"))
+        max >= 0 || throw(ArgumentError("within: max must be nonnegative, got $max"))
+        return new(Float64(window), Int(max))
+    end
+end
+within(window::Real; max::Integer=0) = Within(window, max)
+
 ports_needed(rule::Connected) = Tuple{Symbol,Port}[rule.port]
 
+# `lowest(k)` keeps every computed state when fewer than `k` were computed (a node below a windowed child can be smaller
+# than planned).
 select(rule::Lowest, ctx::SelectionContext) =
-    collect(1:(rule.k == 0 ? length(ctx.energies) : rule.k))
+    collect(1:(rule.k == 0 ? length(ctx.energies) : min(rule.k, length(ctx.energies))))
 
 select(rule::Indices, ::SelectionContext) = copy(rule.list)
+
+function select(rule::Within, ctx::SelectionContext)
+    E = ctx.energies
+    isempty(E) && throw(ArgumentError("within selection: no computed states"))
+    n = count(e -> e - E[1] <= rule.window, E)                  # energies ascending: the window is a prefix
+    capped = rule.max > 0 && n >= rule.max
+    capped && (n = rule.max)
+    n == length(E) && !capped &&
+        @warn "within: every computed state lies inside the window ($(rule.window) above the lowest); the window is not closed, raise compute" window = rule.window computed = n
+    return collect(1:n)
+end
 
 function select(rule::Connected, ctx::SelectionContext)
     haskey(ctx.ports, rule.port) ||

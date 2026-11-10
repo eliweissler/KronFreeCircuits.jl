@@ -422,7 +422,9 @@ storage(s::ChebyshevFilter) = s.on
 storage(a::Auto) = a.on
 
 # How many of the lowest eigenpairs the node's solver returns.
-_compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : node.compute
+# A node cannot compute more pairs than it has states: a child kept by an energy window (`within`) may keep fewer than it
+# computed, so the product dimension is only known here.
+_compute_count(node::Node, dims) = node.compute == 0 ? prod(dims) : min(node.compute, prod(dims))
 
 """
     resolve(solver, info) -> Solver
@@ -435,7 +437,11 @@ storage and scratch from the resolved solver.
 """
 resolve(s::Solver, info) = s
 function resolve(a::Auto, info)
-    prod(info.dims) <= a.dense_cutoff && return Dense()
+    N = prod(info.dims)
+    N <= a.dense_cutoff && return Dense()
+    # A request for 0 < m pairs that the block solvers cannot serve (they need N ≥ 3m + 5) resolves to Dense; `compute == 0`
+    # (all pairs, m == N) keeps its own error below, so that a large node asking for everything stays explicit.
+    get(info, :compute, info.m) != 0 && N < 3 * info.m + 5 && return Dense()
     info.isleaf && return a.on === Array ? ShiftInvert() : ChebyshevFilter(on=a.on)
     return LOBPCG(preconditioner=:ritz, seed=:product, on=a.on)
 end
@@ -444,7 +450,7 @@ end
 # `materialize` and `operator` both go through here, so they build the same operator.
 function _resolve_node_solver(node::Node, children)
     dims = Int[_childdim(c) for c in children]
-    s = resolve(node.solver, (; isleaf=all(c -> c isa Basis, children), dims, m=_compute_count(node, dims)))
+    s = resolve(node.solver, (; isleaf=all(c -> c isa Basis, children), dims, m=_compute_count(node, dims), compute=node.compute))
     if node.compute == 0 && !(s isa Dense)
         how = s === node.solver ? "got $(nameof(typeof(s)))" :
               "$(repr(node.solver)) resolved to $(nameof(typeof(s))) for this node of dimension $(prod(dims))"

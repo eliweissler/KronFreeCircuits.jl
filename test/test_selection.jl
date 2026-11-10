@@ -1,5 +1,5 @@
 using Random
-using KronFreeCircuits: SelectionContext, select, lowest, indices, connected, follow, ports_needed,
+using KronFreeCircuits: SelectionContext, select, lowest, indices, connected, follow, within, ports_needed,
                         validate_selection, fix_phases!, nport, Port
 
 @testset "selection rules" begin
@@ -19,12 +19,28 @@ using KronFreeCircuits: SelectionContext, select, lowest, indices, connected, fo
     @test connected(; core=[1], port=(:phi2, :m), thresh=0.1).port == (:m, KronFreeCircuits.phi2port())
     @test_throws ArgumentError connected(; core=[1], port=(:bogus, :m), thresh=0.1)
     @test select(lowest(3), ctx) == [1, 2, 3] && select(lowest(0), ctx) == 1:6
+    @test select(lowest(9), ctx) == 1:6                                      # fewer computed than asked: keep all
     @test_throws ArgumentError validate_selection([1, 1], 6, lowest(2))     # Review Focus 5
     @test_throws ArgumentError validate_selection(Int[], 6, lowest(0))
     @test_throws ArgumentError validate_selection([7], 6, indices([7]))
     V = Matrix{ComplexF64}(I, 6, 6)[:, [3, 1, 2, 4, 5, 6]]                   # permuted eigenvectors
     @test select(follow(Matrix{ComplexF64}(I, 6, 6)[:, 1:3]), SelectionContext(ctx.energies, V, ctx.ports, nothing)) == [2, 3, 1]
     @test_logs (:warn,) select(follow(Matrix{ComplexF64}(I, 6, 6)[:, 1:1]), SelectionContext(ctx.energies, V .* 0.1 .+ 0.05, ctx.ports, nothing))
+end
+@testset "within: energy window above the lowest computed state" begin
+    E = [0.0, 0.5, 1.0, 1.0, 2.5, 7.0]
+    cx = SelectionContext(E, Matrix{ComplexF64}(I, 6, 6), Dict{Tuple{Symbol,Port},Matrix{ComplexF64}}(), nothing)
+    @test select(within(1.0), cx) == [1, 2, 3, 4]                        # inclusive at the edge, a degenerate pair kept whole
+    @test select(within(0.0), cx) == [1]
+    @test select(within(1.0; max=2), cx) == [1, 2]                       # the cap binds
+    @test select(within(3.0; max=10), cx) == 1:5                         # the cap does not bind
+    @test (@test_logs (:warn, r"not closed") select(within(10.0), cx)) == 1:6     # window open: warn, keep all
+    @test (@test_logs select(within(10.0; max=6), cx)) == 1:6            # cap reached: no warning
+    @test_throws ArgumentError within(-1.0)
+    @test_throws ArgumentError within(Inf)
+    @test_throws ArgumentError within(1.0; max=-1)
+    @test ports_needed(within(1.0)) == Tuple{Symbol,Port}[]
+    @test Base.isexported(KronFreeCircuits, :within)
 end
 @testset "follow: global greedy by overlap, previous before reference" begin
     # ref1 overlaps (0.63, 0.77) and ref2 (0, 1): per-reference greedy would give ref1 the 0.77 state

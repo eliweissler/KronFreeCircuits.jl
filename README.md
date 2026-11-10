@@ -32,7 +32,8 @@ dressed_index(sys, top, (2, 1))        # dressed state that best matches bare st
 ```
 
 A term with several factors inside one child (a phase factor over several modes of a KITE, say) is applied through that child's joint port, formed in the child's product basis before its truncation (spec §20i); `port(sys, [(:varphi_1, expiphi(1)), (:varphi_4, expiphi(-1))], node)` reads one.
-Selection rules are `lowest`, `indices`, `connected`, and `follow`.
+Selection rules are `lowest`, `indices`, `connected`, `follow`, and `within`.
+`within(window; max=0)` keeps the computed states within `window` (in the Hamiltonian's energy units) of the node's lowest, at most `max` of them: an energy cutoff instead of a count, which spends kept states where a node's spectrum is dense and makes nodes of different size comparable; `compute` must be large enough to close the window, and the rule warns when it is not.
 By default each kept state's phase makes its full-space amplitude real and positive at one point: at a leaf, its largest entry with nonnegative coordinates; at a branch, the joint peak of its dominant product component.
 The spec's scalar constant is added at the root only, so the `energies` of child nodes exclude it.
 Bare-state bookkeeping (labels, overlaps) is available through `bare_labels` and `bare_overlaps`.

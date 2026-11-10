@@ -108,5 +108,7 @@ struct FakeDevice end                                                           
     @test resolve(Auto(), (isleaf=true, dims=[7, 11, 13], m=10)) isa ShiftInvert        # 1001: leaf, CPU
     @test resolve(Auto(on=FakeDevice), (isleaf=true, dims=[7, 11, 13], m=10)) isa ChebyshevFilter
     @test resolve(Auto(), (isleaf=false, dims=[60, 60], m=10)) isa LOBPCG
+    @test resolve(Auto(), (isleaf=false, dims=[60, 60], m=1200)) isa Dense              # 3600 < 3m + 5: block solver infeasible
+    @test resolve(Auto(), (isleaf=true, dims=[40, 40], m=600)) isa Dense
     @test Node([:a => ChargeBasis(3)]).solver isa Auto
 end

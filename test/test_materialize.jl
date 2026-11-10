@@ -33,6 +33,22 @@ end
     @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-9
     @test modes(full) == [:theta, :phi, :zeta]
 end
+@testset "within: an energy window as the kept set of a node" begin
+    using KronFreeCircuits: within
+    θ = (E_J=30.0, E_C=1.2, n_g=0.25); spec = load_spec(fixture("transmon.json"))
+    all_states = energies(materialize(Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=lowest(0)), spec, θ))
+    sys = materialize(Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=within(40.0)), spec, θ)
+    E = energies(sys)
+    @test E == all_states[1:length(E)] && all(E .- E[1] .<= 40.0) && all_states[length(E)+1] - E[1] > 40.0
+    @test length(energies(materialize(Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=within(40.0; max=3)), spec, θ))) == 3
+    # a branch keeps a window of its own spectrum; the window is not closed when every computed state lies inside it
+    leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=within(40.0))
+    open_window = Node([leaf]; solver=Dense(), compute=0, keep=within(1e6))              # the branch has as many states as the leaf kept
+    @test length(energies(@test_logs (:warn, r"not closed") materialize(open_window, spec, θ))) == length(E)
+    # a parent asking for more pairs than its windowed child kept: compute is clamped to the actual size, Auto picks Dense
+    clamped = Node([leaf]; compute=50, keep=lowest(50))
+    @test length(energies(materialize(clamped, spec, θ))) == length(E)
+end
 @testset "requested port and edge warning" begin
     θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=π); spec = load_spec(fixture("fluxonium.json"))
     sys = materialize(Node([:varphi_1 => PhaseGrid(-10π, 10π, 401)]; keep=lowest(6), ports=[(:varphi_1, nport())]), spec, θ)
