@@ -114,16 +114,8 @@ end
 # whose `ValueError` becomes an `ArgumentError`.
 function _in_frame(res::Py, S::AbstractMatrix{<:Real})::Py
     types = pyconvert(Vector{String}, pylist(res.coords.types))
-    N = length(types)
-    size(S) == (N, N) ||
-        throw(ArgumentError("frame: S must be $(N)×$(N) for the $N retained modes, got $(join(size(S), "×"))"))
-    all(isfinite, S) || throw(ArgumentError("frame: every entry of S must be finite"))
-    return try
-        res.transform(to_sympy_frame(S, types))
-    catch err
-        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
-        throw(ArgumentError("frame: " * pyconvert(String, pystr(err.v))))
-    end
+    _check_frame(S, length(types))
+    return _frame_call(() -> res.transform(to_sympy_frame(S, types)))
 end
 
 """
@@ -151,6 +143,98 @@ function KronFreeCircuits.Spec(res::Py; frame::Union{Nothing,AbstractMatrix{<:Re
     data = circuit_quantization().to_spec(res; subs=_pysubs(res, subs), simplify, mode_names=names)
     text = pyconvert(String, pyimport("json").dumps(data; allow_nan=false))
     return parse_spec(text)
+end
+
+# ---- The loop route: a numeric Hamiltonian made once at fixed values, and its spec in any frame without SymPy.
+
+# The size and finiteness of a frame `S` over `N` retained modes, checked in Julia before any Python call.
+function _check_frame(S::AbstractMatrix, N::Int)
+    size(S) == (N, N) ||
+        throw(ArgumentError("frame: S must be $(N)×$(N) for the $N retained modes, got $(join(size(S), "×"))"))
+    all(isfinite, S) || throw(ArgumentError("frame: every entry of S must be finite"))
+    return nothing
+end
+
+# `f()`, a circuit-quantization frame change, with the `ValueError` of an inadmissible frame as an `ArgumentError`
+# carrying the Python message; any other exception passes through.
+function _frame_call(f)
+    return try
+        f()
+    catch err
+        err isa PythonCall.PyException && pyisinstance(err.v, pybuiltins.ValueError) || rethrow()
+        throw(ArgumentError("frame: " * pyconvert(String, pystr(err.v))))
+    end
+end
+
+# `values` (a NamedTuple, or a Dict keyed by Symbols or strings) as Float64s in the order of the circuit's parameters
+# `names`; an unknown, repeated or missing name, or a value that is not a finite real number, is an `ArgumentError`.
+function _parameter_values(values, names::Vector{Symbol})::NamedTuple
+    values isa Union{NamedTuple,AbstractDict} ||
+        throw(ArgumentError("values must be a NamedTuple or a Dict from parameter name to number, got $(typeof(values))"))
+    listing = "; the circuit's parameters are " * join(names, ", ")
+    given = Dict{Symbol,Float64}()
+    for (k, v) in pairs(values)
+        k isa Union{Symbol,AbstractString} ||
+            throw(ArgumentError("values: a parameter name must be a Symbol or a string, got $(repr(k))$listing"))
+        name = Symbol(k)
+        name in names || throw(ArgumentError("values: $name is not a parameter of the circuit$listing"))
+        haskey(given, name) && throw(ArgumentError("values: $name is given more than once"))
+        (v isa Real && !(v isa Bool) && isfinite(v)) ||
+            throw(ArgumentError("values: $name = $(repr(v)) must be a finite real number"))
+        given[name] = Float64(v)
+    end
+    absent = filter(n -> !haskey(given, n), names)
+    isempty(absent) || throw(ArgumentError("values: no value for $(join(absent, ", "))$listing"))
+    return NamedTuple{Tuple(names)}(Tuple(given[n] for n in names))
+end
+
+"""
+    QuantizedCircuit(res::Py; values) -> QuantizedCircuit{Py}
+
+The circuit-quantization `Result` `res` evaluated once at the parameter values `values`, for building specs in many
+frames with no symbolic work: `circuit_quantization.numeric_hamiltonian` of the spec `to_spec(res)`.
+`values` is a `NamedTuple`, or an `AbstractDict` keyed by `Symbol`s or strings, giving a finite real number for every
+parameter of the circuit; an unknown or missing name is an `ArgumentError` that names it and lists the circuit's
+parameters, raised before anything is evaluated.
+The modes are named as in `Spec(res)`.
+"""
+function KronFreeCircuits.QuantizedCircuit(res::Py; values)
+    cq = circuit_quantization()
+    spec = cq.load_spec(cq.to_spec(res))
+    names = [Symbol(pyconvert(String, p.name)) for p in spec.parameters]
+    θ = _parameter_values(values, names)
+    mode_names = [Symbol(pyconvert(String, m[0])) for m in spec.modes]
+    handle = cq.numeric_hamiltonian(spec, pydict(Dict(string(k) => v for (k, v) in pairs(θ))))
+    return QuantizedCircuit(handle, θ, mode_names)
+end
+
+# The spec of constants of the numeric Hamiltonian `h`, with the modes named `mode_names`.
+function _numeric_spec(h::Py, mode_names::Vector{Symbol})::Spec
+    types = pyconvert(Vector{String}, h.types)
+    cosines = [(pyconvert(Float64, E), pyconvert(Vector{Float64}, w), pyconvert(Float64, d)) for (E, w, d) in h.cosines]
+    return numeric_spec(; modes=[n => Symbol(t) for (n, t) in zip(mode_names, types)],
+                        E_C=pyconvert(Matrix{Float64}, h.E_C), E_L=pyconvert(Matrix{Float64}, h.E_L),
+                        flux_linear=pyconvert(Vector{Float64}, h.flux_linear), n_g=pyconvert(Vector{Float64}, h.n_g),
+                        cosines, constant=pyconvert(Float64, h.constant))
+end
+
+"""
+    Spec(qc::QuantizedCircuit{Py}) -> Spec
+    Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real}) -> Spec
+
+The spec of constants of `qc` in its base frame, or in the frame `φ = S φ′`: [`numeric_spec`](@ref) of the arrays of
+`circuit_quantization`'s NumPy frame change `transformed(S)`, with no symbolic work.
+`S` follows the rules of `Spec(res; frame=S)`, and the modes are named and retyped as there; its size and finiteness
+are checked in Julia, its admissibility by circuit-quantization, and an inadmissible `S` is an `ArgumentError`.
+In the new frame each compact mode's offset charge is the source part transformed by `Sᵀ` plus the static sector part
+transformed by `S_ccᵀ`, and a noncompact mode carries no sector offset.
+"""
+KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}) = _numeric_spec(qc.handle, qc.mode_names)
+
+function KronFreeCircuits.Spec(qc::QuantizedCircuit{Py}, S::AbstractMatrix{<:Real})
+    _check_frame(S, length(qc.mode_names))
+    S_np = pyimport("numpy").array(Matrix{Float64}(S))
+    return _numeric_spec(_frame_call(() -> qc.handle.transformed(S_np)), qc.mode_names)
 end
 
 end

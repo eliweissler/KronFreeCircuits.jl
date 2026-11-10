@@ -14,12 +14,14 @@ function circuit_quantization end
     QuantizedCircuit{H}
 
 A circuit quantized by circuit-quantization at fixed parameter values.
-`handle` is the Python numeric Hamiltonian in the base frame, and `values` is the `NamedTuple` of parameter values used.
-Constructed by the PythonCall extension.
+`handle` is the Python numeric Hamiltonian in the base frame, and `values` is the `NamedTuple` of parameter values used, as `Float64` in the circuit's parameter order.
+`mode_names` names the retained modes in order, as the circuit-quantization spec of the circuit does; the numeric Hamiltonian carries no names, so they are taken once, at construction, and every frame keeps them.
+Constructed by the PythonCall extension, as `QuantizedCircuit(res; values)`.
 """
 struct QuantizedCircuit{H}
     handle::H
     values::NamedTuple
+    mode_names::Vector{Symbol}
 end
 
 """

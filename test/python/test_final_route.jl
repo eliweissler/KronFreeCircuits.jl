@@ -1,30 +1,23 @@
 include("kite.jl")
 
-# The numeric route in the frame S at θ, as Julia arrays: circuit-quantization's checked NumPy frame change.
-# The reference the symbolic route is compared with; `Spec(QuantizedCircuit(res; values=θ), S)` takes its place
-# once it exists.
-function numeric_route(res::Py, θ::NamedTuple, S::AbstractMatrix{<:Real})
-    h = circuit_quantization().numeric_hamiltonian(res, pyvalues(θ)).transformed(pylist(pylist.(eachrow(S))))
-    return (types=Symbol.(pyconvert(Vector{String}, pylist(h.types))),
-            E_C=pyconvert(Matrix{Float64}, h.E_C), E_L=pyconvert(Matrix{Float64}, h.E_L),
-            flux_linear=pyconvert(Vector{Float64}, h.flux_linear), n_g=pyconvert(Vector{Float64}, h.n_g),
-            n_g_sector=pyconvert(Vector{Float64}, h.n_g_sector),
-            cosines=[(energy=pyconvert(Float64, E), omega=pyconvert(Vector{Float64}, w), offset=pyconvert(Float64, d))
-                     for (E, w, d) in h.cosines])
-end
+# The numeric route in the frame S at θ: the loop route, `Spec(QuantizedCircuit(res; values=θ), S)`, a spec of
+# constants built from circuit-quantization's checked NumPy frame change.
+numeric_route(res::Py, θ::NamedTuple, S::AbstractMatrix{<:Real}) = Spec(QuantizedCircuit(res; values=θ), S)
 
-# The symbolic spec `s` at θ equals the numeric route `n`, with the fresh compact sector labels `n_g{j}` of `s` given
-# the numeric route's transformed sector values.
-function agrees(s::Spec, θ::NamedTuple, n)
-    labels = (Symbol("n_g$j") => n.n_g_sector[j] for (j, m) in enumerate(s.modes) if m.type === :c)
-    v = merge(θ, NamedTuple(labels))
+# The symbolic spec `s` in the frame S at θ equals the numeric route `n`, with the fresh compact sector labels `n_g{j}`
+# of `s` given their transformed values, S_ccᵀ applied to the sector values in θ.
+function agrees(s::Spec, θ::NamedTuple, n::Spec, S::AbstractMatrix{<:Real})
+    c = [j for (j, m) in enumerate(s.modes) if m.type === :c]
+    labels = Symbol.("n_g" .* string.(c))
+    v = merge(θ, NamedTuple{Tuple(labels)}(Tuple(S[c, c]' * [Float64(θ[k]) for k in labels])))
     ≈(x, y) = isapprox(x, y; rtol=1e-10, atol=1e-12)
     ev(c) = c(v)
-    return [m.type for m in s.modes] == n.types &&
-           all(ev.(s.E_C) .≈ n.E_C) && all(ev.(s.E_L) .≈ n.E_L) &&
-           all(ev.(s.flux_linear) .≈ n.flux_linear) && all(ev.(s.n_g) .≈ n.n_g) &&
+    num(c) = c((;))
+    return isempty(n.parameters) && s.modes == n.modes &&
+           all(ev.(s.E_C) .≈ num.(n.E_C)) && all(ev.(s.E_L) .≈ num.(n.E_L)) &&
+           all(ev.(s.flux_linear) .≈ num.(n.flux_linear)) && all(ev.(s.n_g) .≈ num.(n.n_g)) &&
            length(s.cosines) == length(n.cosines) &&
-           all(ev(c.energy) ≈ d.energy && all(c.omega .≈ d.omega) && ev(c.offset) ≈ d.offset
+           all(ev(c.energy) ≈ num(d.energy) && all(c.omega .≈ d.omega) && ev(c.offset) ≈ num(d.offset)
                for (c, d) in zip(s.cosines, n.cosines))
 end
 
@@ -33,7 +26,7 @@ res, θ, frames = kite()
 @testset "final route keeps parameters symbolic in a fixed frame" begin
     t = @elapsed s = Spec(res; frame=frames.optimum)
     @test !isempty(s.parameters)
-    @test agrees(s, θ, numeric_route(res, θ, frames.optimum))
+    @test agrees(s, θ, numeric_route(res, θ, frames.optimum), frames.optimum)
     @test t < 60                                              # a regression guard, not a target
     @test_throws ArgumentError Spec(res; frame=ones(2, 2))
 end
@@ -42,15 +35,15 @@ end
     S = frames[name]
     s = Spec(res; frame=S)
     @test sort(s.parameters) == sort(collect(keys(θ)))
-    @test agrees(s, θ, numeric_route(res, θ, S))
+    @test agrees(s, θ, numeric_route(res, θ, S), S)
 end
 
 @testset "a nonzero compact offset charge stays on the compact mode" begin
     θg = merge(θ, (n_g1=0.3,))
     s, n = Spec(res; frame=frames.optimum), numeric_route(res, θg, frames.optimum)
-    @test agrees(s, θg, n)
+    @test agrees(s, θg, n, frames.optimum)
     @test [m.type for m in s.modes] == [:c, :e, :e]
-    @test n.n_g_sector == [0.3, 0.0, 0.0] && n.n_g ≈ [0.3, 0.0, 0.0]
+    @test [m.type for m in n.modes] == [:c, :e, :e] && [g((;)) for g in n.n_g] ≈ [0.3, 0.0, 0.0]
     @test s.n_g[1](θg) == 0.3 && all(iszero(g(θg)) for g in s.n_g[2:3])
 end
 
