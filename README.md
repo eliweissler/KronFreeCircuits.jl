@@ -7,7 +7,7 @@ This is a personal research project and largely implemented using Claude Code. U
 Kron-free hierarchical diagonalization of superconducting circuits.
 A circuit is a tree of nodes: each leaf diagonalizes a few modes (charge basis, phase grid, or Fock basis), and each parent combines its children's kept eigenstates.
 Operators are never assembled as Kronecker products; they are applied axis by axis on the tensor of the mode basis, so composite systems with large Hilbert spaces stay tractable.
-Hamiltonian terms come from a JSON circuit spec, which is exported by the `circuit-quantization` package.
+Hamiltonian terms come from a JSON circuit spec, which is exported by the `circuit-quantization` package, or from a `Spec` built in memory from a circuit-quantization session in Julia (see "Defining circuits from Julia").
 The hand-written specs in `test/fixtures` remain as the test inputs.
 
 ## Sketch
@@ -115,6 +115,110 @@ save_spec(res, "my_circuit.json")   # res: a quantization result
 The hand-written fixtures are cross-checked against specs generated from the corresponding lumped circuits (`test/test_generated_specs.jl`, using the committed files in `test/fixtures/generated/`).
 `test/fixtures/generate_specs.py` regenerates them; run it with circuit-quantization's Python environment only when regenerating, since Python is not a test dependency.
 The documented convention differences between the two sets are asserted in the test (spec §20g).
+
+## Defining circuits from Julia
+
+A circuit can also be defined, quantized and solved in one Julia session, with no spec file passed between Python and Julia.
+circuit-quantization still does the quantization: you call its Python API from Julia through [PythonCall](https://github.com/JuliaPy/PythonCall.jl), and this package turns the result into a `Spec` in memory.
+The interface is a package extension, loaded only when PythonCall is loaded beside this package; without PythonCall the package never imports Python, and calling `circuit_quantization()` says "load PythonCall to use the circuit-quantization interface".
+The design is in spec §20j and `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md`.
+
+You need a Python environment with circuit-quantization installed (Python ≥ 3.11, SymPy ≥ 1.13), and PythonCall in the Julia environment you work in (`Pkg.add("PythonCall")`).
+The extension installs no Python packages.
+Point PythonCall at that environment's interpreter before PythonCall is loaded, with two environment variables:
+
+```bash
+export JULIA_CONDAPKG_BACKEND=Null                        # use an existing Python, do not let CondaPkg make one
+export JULIA_PYTHONCALL_EXE=/path/to/env/bin/python       # the Python that has circuit-quantization installed
+```
+
+If `circuit_quantization` cannot be imported, the first call fails with a message naming the interpreter PythonCall used and these two variables.
+
+A session that defines the KITE (the cos 2φ transmon of circuit-quantization's `examples/product_state_demo.py`), builds its spec in two frames, solves one of them and writes a run record:
+
+```julia
+using KronFreeCircuits, PythonCall
+
+cq = circuit_quantization()                                   # the Python module, imported once
+sympy = pyimport("sympy")
+
+E_J, E_CJ, E_CS, E_L = sympy.symbols("E_J E_CJ E_CS E_L"; positive=true)
+eps, delta = sympy.Symbol("epsilon"; real=true), sympy.Symbol("delta"; real=true)
+L(E) = cq.ghz_to_henry(E)
+C(E) = cq.ghz_to_farad(E)
+circuit = cq.Circuit(pylist([
+    cq.Branch("L1", 1, 2; L=L(2 * E_L)),
+    cq.Branch("L2", 1, 3; L=L(2 * E_L)),
+    cq.Branch("CS", 1, 6; C=C(E_CS)),
+    cq.Branch("J1", 2, 4; C=C(E_CJ) * (1 + eps), EJ=E_J * (1 + eps)),
+    cq.Branch("J2", 3, 5; C=C(E_CJ) * (1 - eps), EJ=E_J * (1 - eps)),
+    cq.Branch("L3", 5, 6; L=L(2 * E_L)),
+    cq.Branch("L4", 4, 6; L=L(2 * E_L)),
+]); ground=6)
+cycles = pydict(Dict("kite" => pydict(Dict("L1" => 1, "J1" => 1, "L4" => 1, "L2" => -1, "J2" => -1, "L3" => -1)),
+                     "cb" => pydict(Dict("CS" => 1, "L1" => -1, "J1" => -1, "L4" => -1))))
+fluxes = pydict(Dict("kite" => cq.phase_to_weber(sympy.pi + delta), "cb" => cq.phase_to_weber(0)))
+loops = cq.Loops.from_branch_dict(circuit, cycles, fluxes)
+q, h = sympy.Rational(1, 4), sympy.Rational(1, 2)
+shares = pydict(Dict("kite" => pydict(Dict("L1" => q, "L4" => q, "L2" => -q, "L3" => -q, "CS" => h)),
+                     "cb" => pydict(Dict("CS" => 1))))
+B = cq.B_from_shares(circuit, loops, shares)
+Z = sympy.Matrix(pylist([pylist(r) for r in ([1, 0, 0, 0, 0], [1, -h, h, 1, 0], [1, -h, -h, 0, 1],
+                                             [0, h, -h, 1, 0], [0, h, h, 0, 1])]))
+res = cq.quantize(circuit, loops, Z, pytuple(("c", "e", "e", "fz", "fz")); B)   # modes varphi_1 (c), varphi_2, varphi_3 (e)
+
+spec = Spec(res)                                              # symbolic parameters, in memory
+
+θ = (E_J=16.83, E_CJ=4.82, E_CS=0.072, E_L=1.27, epsilon=0.03, delta=0.0, n_g1=0.0)
+S = [1.0 0.2354 0.2306; 0.0 0.6962 0.7339; 0.0 -0.5719 0.629]   # the paper's optimum frame, φ = S φ′
+
+qc = QuantizedCircuit(res; values=θ)                          # evaluated once, for many frames
+spec_S = Spec(qc, S)                                          # numeric, in the frame S: the loop route
+spec_Ssym = Spec(res; frame=S)                                # symbolic, in the frame S: the final route
+
+# One leaf per mode; each phase grid is centered at the minimum of the extended modes' quadratic potential.
+e = findall(m -> m.type === :e, spec_S.modes)
+value(c) = real(c((;)))                                       # a constant coefficient's value
+center = Dict(zip(e, -([value(spec_S.E_L[i, j]) for i in e, j in e] \ [value(spec_S.flux_linear[i]) for i in e])))
+basis(i, m) = m.type === :c ? ChargeBasis(10) : PhaseGrid(center[i] - 2.5π, center[i] + 2.5π, 121)
+leaves = [Node([m.name => basis(i, m)]; solver=Dense(), compute=16, keep=lowest(16)) for (i, m) in enumerate(spec_S.modes)]
+sys = materialize(Node(leaves; compute=4, keep=lowest(4)), spec_S, (;))
+energies(sys)                                                 # the four lowest levels, in GHz
+
+write("kite_optimum.json", run_record(res; frame=S, values=θ, metadata=(note="KITE at the optimum frame",)))
+rec = load_record("kite_optimum.json")                        # (; result, spec, frame, values)
+```
+
+The same circuit, with its parameter values and three frames, is `kite()` in `test/python/kite.jl`.
+The tree above is small, for illustration: its four levels lie 1e-4 to 7e-4 GHz above the converged ones, and `materialize` prints warnings about the higher kept leaf states (phase grids too small for them, and phase fixing), which `bench/kite_frames/README.md` explains.
+`bench/kite_frames/run.jl` solves the three frames on converged trees, and its README shows that the four lowest levels agree across frames to 7e-6 GHz.
+
+There are two routes to a spec in a new frame `φ = S φ′`.
+`S` is a square real matrix over the retained modes; it must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer, unimodular compact block, and an inadmissible `S` is an `ArgumentError` on both routes.
+- The final route, `Spec(res; frame=S, subs=nothing, simplify=true, mode_names=nothing)`, keeps the parameters symbolic: it is circuit-quantization's `transform` and `to_spec` followed by `parse_spec`, so it is exactly the `Spec` that `load_spec` reads from the file `save_spec` writes.
+  It takes about a second (below), so it suits a frame fixed once, for a sweep over circuit parameters.
+  `subs` replaces parameters by name with numbers, other names or SymPy expressions, and `mode_names` names the modes (default `varphi_1`, `varphi_2`, ...).
+- The loop route, `QuantizedCircuit(res; values=θ)` once and then `Spec(qc, S)` per frame, evaluates the circuit at fixed values and changes frames with NumPy, with no symbolic work; it suits a loop that optimizes the frame.
+  `values` must give every parameter of the circuit by name; an unknown or missing name is an `ArgumentError` listing the circuit's parameters.
+  Every coefficient of the result is a constant, so nothing is compiled anywhere from the frame change through `materialize`.
+
+Both routes apply the same rule to offset charges: the gate-voltage part transforms as `Sᵀ`, and each compact mode carries its own static offset label, which noncompact modes never do.
+`numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines, constant)` builds a `Spec` of constants from plain arrays directly, without Python.
+
+Entries that should be zero often come out of a floating-point coordinate change as round-off, and the package would treat each as a real coupling.
+Zeroing them is explicit: `numeric_spec`, `Spec(qc[, S])` and `Spec(res; ...)` take `zero_rtol = 1e-12` and `zero_atol = 0.0`.
+An `E_C` or `E_L` entry no larger than `max(zero_rtol * scale, zero_atol)`, with `scale` the largest magnitude in that matrix, becomes exactly zero, and so does a cosine's `omega` entry no larger than `zero_rtol` times that cosine's largest `omega` entry (on a compact mode, times the smaller of that entry and 1); `zero_rtol = 0, zero_atol = 0` turns zeroing off.
+For example, `Spec(qc, S; zero_rtol=1e-9)` zeroes entries below `1e-9` of the matrix scale.
+On the final route the keywords are passed to circuit-quantization's `to_spec`, which needs its branch `to-spec-zero-tolerance` (not yet on its `main`).
+
+`run_record(res; frame, values, metadata)` returns one JSON document for the end of a run.
+It is circuit-quantization's `to_record` of the circuit in the run's frame, so `parse_spec` reads it as a spec and circuit-quantization's `load_record` rebuilds the circuit from it in Python; this package adds its own version and git commit under `_generator.kronfree`, the caller's `metadata` under `_metadata`, and a `_kronfree` block with the frame and values.
+`load_record` returns the spec of the run, the symbolic `Result` that was passed to `run_record`, the frame and the values, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run.
+
+Measured on an Intel i7-11700K with Julia 1.13.2 on one thread (2026-11-10): `Spec(qc, S)` for the three-mode KITE takes 0.134 ms per call in a tight loop, against a design target of 5 ms; `Spec(res; frame=S)` takes 0.37 s for the KITE and 0.80 s for six-mode coupled zero-pis.
+`bench/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: 0.366 ms for the frame change, 0.594 ms through `materialize`'s setup, and no coefficient compiled in the loop.
+
+The Python tests are a separate tier, never run by `Pkg.test()`; see "Tests" below.
 
 ## Periodic phase grid
 
@@ -225,6 +329,15 @@ The [KITE references](docs/science/kite.md) prepare both the inductively shunted
 experiment and the capacitively shunted protected circuit for future spectra and
 matrix-element benchmarks alongside the four-mode fluxonium coupler.
 
+The Python tier tests the circuit-quantization interface and has its own environment, `test/python`; it needs the Python environment of "Defining circuits from Julia" and is never included by `Pkg.test()`:
+
+```bash
+julia --project=test/python -e 'using Pkg; Pkg.instantiate()'
+JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=/path/to/env/bin/python julia --project=test/python test/python/runtests.jl
+```
+
+The default tier checks that the package itself stays free of Python: no file under `src/` loads or calls PythonCall, and the extension is not loaded.
+
 The device tests have their own environment and need a CUDA device:
 
 ```bash
@@ -254,6 +367,7 @@ KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environ
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
 The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
+The circuit-quantization interface (2026-11-10: a PythonCall extension with the symbolic and loop routes to a spec in a new frame, `numeric_spec`, constant coefficients that never compile, and run records; spec §20j) is built and not yet merged into `main`; what is done and what is open is in `docs/superpowers/STATUS.md`.
 The next plan (5) is automatic differentiation rules.
 Later plans:
 

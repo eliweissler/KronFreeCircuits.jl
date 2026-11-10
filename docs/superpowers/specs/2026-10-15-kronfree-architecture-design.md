@@ -54,7 +54,8 @@ Eli's Python package `circuit-quantization` (`~/src/circuit-quantization`) produ
 
 - A "mishmash" of device-specific backends. There must be one apply interface whose implementations are chosen by operator *structure*, never by device.
 - Any code path that silently falls back to generic indexing of a lazy matrix (the failure mode of the `mat_free_hacking` AbstractMatrix experiment).
-- A runtime dependency on Python or on ITensor.
+- A runtime dependency on Python *in the core*, or on ITensor.
+  Amended 2026-11-10 (Section 20j): the anti-goal was "a runtime dependency on Python"; Python is now reachable through an optional PythonCall extension, and `using KronFreeCircuits` without PythonCall still loads, passes the default tests and never imports Python.
 - Parameters hidden inside basis matrices, which would make every local operator parameter-dependent and break the autodiff design.
 
 ## 3. Constraints
@@ -445,11 +446,12 @@ The one requirement on the first version is the one already stated in Section 13
 
 Core dependencies: `LinearAlgebra`, `SparseArrays` (stdlib); `KernelAbstractions`; `KrylovKit`; `LOBPCGEigensolver`; `ChainRulesCore`; `Adapt`; `GPUArraysCore`; `JSON3`; `RuntimeGeneratedFunctions`.
 
-Extensions (weak dependencies): `CUDA` (strided-batched gemm, cuSOLVER dense eigen); `QuantumToolbox`; `QuantumOptics`.
+Extensions (weak dependencies): `CUDA` (strided-batched gemm, cuSOLVER dense eigen); `QuantumToolbox`; `QuantumOptics`; `PythonCall` (the circuit-quantization interface, extension only; Section 20j).
 
 Test-only: `ITensors` (reference apply), `FiniteDifferences` and `ChainRulesTestUtils` (rules), `Zygote` (engine under test), `Test`.
 
-Deliberately absent: `NNlib` (the batched gemm is ten lines in the CUDA extension), `ITensors` at runtime, `PythonCall`, `IterativeSolvers` (unmaintained), `Symbolics`, `QuantumToolbox` as the operator container.
+Deliberately absent: `NNlib` (the batched gemm is ten lines in the CUDA extension), `ITensors` at runtime, `IterativeSolvers` (unmaintained), `Symbolics`, `QuantumToolbox` as the operator container.
+Amended 2026-11-10 (Section 20j): `PythonCall` was listed here as deliberately absent; it is now a weak dependency that loads the extension `KronFreeCircuitsPythonCallExt`, and nothing in the core imports it.
 
 Python side: `circuit-quantization` gains `export_julia_spec`, using the standard-library `json` module and SymPy's `julia_code` printer.
 As built, that exporter is `to_spec` and `save_spec` (Section 20g), superseding `export_julia_spec`.
@@ -527,6 +529,7 @@ Recorded here so the document stays the authority; each is also in the plan-1 le
 - Section 5.2, noise operators (for plan 5 and a later noise plan): the spec gains an `operators` section of named general term lists (coefficient expression plus (mode, port) factors) carrying analytic derivative operators (∂H/∂φ_ext as sine terms, ∂H/∂E_J, ∂H/∂n_g) and element operators such as the charge on a lossy capacitor, the flux across a lossy inductor, and sin(φ_J/2) across a junction; plus a `noise_channels` table mapping elements and loops to those operators and parameters. Julia derives the same derivative operators automatically for cross-checking and implements the rate formulas.
 - Section 6, half-integer ports: sin(φ_J/2) needs e^{±iω_jφ_j/2}; legal on grids and in Fock; on compact modes it requires a doubled charge basis on half-integer charges (the odd-parity sector is the same circuit at n_g shifted by one half, and the operator connects the sectors, as in quasiparticle tunneling); to be added as a basis variant only when a quasiparticle channel is requested.
 - Architecture decisions reaffirmed: the JSON spec remains the Python–Julia contract (the topological, parameter-independent content from Python; parameter-dependent coefficients compiled in Julia); a PythonCall extension for in-memory spec transfer is an optional convenience, never a dependency; porting the symbolic quantization machinery to Julia is rejected unless parameter-dependent coordinate choices become first-class, in which case only that numeric step moves.
+  Superseded in part on 2026-11-10 by Section 20j: the PythonCall extension now exists and does more than in-memory spec transfer (numeric frame changes and run records), it is still optional and never a dependency of the core, and the numeric frame change stays in circuit-quantization rather than moving to Julia.
 
 ### 20c. Backend and solver decisions of 2026-10-16 (ITensor audit; plan 2)
 
@@ -784,6 +787,109 @@ Decided 2026-10-26.
   The last compares `Dense` with `LOBPCG` on a degenerate spectrum, and all three solvers on a copy whose offset charges lift the degeneracy, because single-vector `Lanczos` does not resolve multiplets (see the `Node` docstring in `src/tree.jl` and the `Lanczos` docstring).
 - **Z4 pilot.** The hierarchy `[[1,4,5],[2,6,7],[3]]` is now accepted.
   The rerun of the pilot with the root-operator Hermiticity check, and the convergence sweep (retentions, then primitive cutoffs), are pending on ewdesktop (Eli).
+
+### 20j. The circuit-quantization interface (2026-11-10)
+
+One Julia session can now define a circuit with circuit-quantization, choose its coordinates, build a `Spec` in memory, solve it, and write a single JSON run record, with no file passed between a Python and a Julia session.
+circuit-quantization stays a Python package and does all the quantization; Julia calls its Python API through PythonCall.
+The design is `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md` and the plan `docs/superpowers/plans/2026-11-10-circuit-quantization-interface.md`.
+This amends Sections 2 (anti-goals), 15 (packages) and 20b.
+
+**What it supersedes.**
+Section 20b said: "the JSON spec remains the Python–Julia contract (the topological, parameter-independent content from Python; parameter-dependent coefficients compiled in Julia); a PythonCall extension for in-memory spec transfer is an optional convenience, never a dependency; porting the symbolic quantization machinery to Julia is rejected unless parameter-dependent coordinate choices become first-class, in which case only that numeric step moves."
+What replaces it:
+the kronfree-spec version 1 format remains the contract, and every route through the extension produces either that document or the `Spec` that `parse_spec` builds from it;
+the extension does more than in-memory transfer, since it also changes coordinate frames numerically inside a loop and writes and reads run records;
+it is still optional and never a dependency of the core;
+and the numeric frame change, which a frame optimization now needs on every iteration, stays in circuit-quantization (NumPy) instead of moving to Julia.
+Nothing of the symbolic machinery is ported.
+
+**Where it lives.**
+The core declares the interface without any Python: `src/pyinterface.jl` holds the function stubs `circuit_quantization`, `run_record` and `load_record`, the struct `QuantizedCircuit{H}` (fields `handle`, `values`, `mode_names`), and an error hint, so that calling a stub without the extension says "load PythonCall to use the circuit-quantization interface".
+The methods live in the package extension `KronFreeCircuitsPythonCallExt` (`ext/KronFreeCircuitsPythonCallExt.jl`), which Julia loads when `PythonCall` (a weak dependency, compat 0.9.29) is loaded beside the package, as the CUDA extension is.
+The Python interpreter is the user's own environment with circuit-quantization installed; PythonCall is pointed at it with `JULIA_CONDAPKG_BACKEND=Null` and `JULIA_PYTHONCALL_EXE=<that interpreter>`.
+The extension installs nothing, and when `circuit_quantization` does not import, the first call fails with a message naming the interpreter in use and the two variables.
+A default-tier test (`test/test_helpers.jl`, "the core never mentions Python") checks that no file under `src/` contains `using PythonCall`, `import PythonCall`, `PythonCall.` or `pyimport`, and that the extension is not loaded in the default tier.
+The default tier's environment (`test/Project.toml`) does not list PythonCall, so it runs without it.
+
+**The two routes to a spec in a new frame.**
+A frame is the secondary coordinate transformation `φ = S φ′` over the retained modes (the paper's residual transformation).
+`S` is admissible when it is invertible, mixes no noncompact mode into a compact one (zeros below the compact block), and has an integer, unimodular compact block.
+Both routes leave admissibility to circuit-quantization and turn its `ValueError` into an `ArgumentError`; the size and finiteness of `S` are checked in Julia first, before any Python call.
+Both retype the modes in the new frame by circuit-quantization's structural rule.
+
+- *The symbolic route*, `Spec(res; frame=S, subs, simplify, mode_names, zero_rtol, zero_atol)` for a circuit-quantization `Result` `res`, keeps the parameters symbolic.
+  It applies `res.transform` to an exact copy of `S` (`to_sympy_frame`), then circuit-quantization's `to_spec`, `json.dumps` and `parse_spec`, so it is by construction the `Spec` that `load_spec` reads from the file that `save_spec` writes.
+  Without `frame` it is the spec of `res` in its own coordinates.
+  The frame reaches SymPy as exact integers in the compact block (each entry within `1e-12` of an integer) and as the exact rational of each entry's shortest round-trip decimal string elsewhere.
+  Passing floats straight through is not only slow in general (Section 3 of the design measured 60 s on a six-mode circuit) but fails: round-off leaves the KITE's `E_L` at its optimum frame asymmetric by about `2e-16`, and the exporter's symbolic symmetry check rejects it.
+  `subs` maps parameter names to numbers, to other names or to SymPy expressions, matched to the circuit's own SymPy symbols (symbol identity includes assumptions, so a fresh symbol of the same name would silently not match); an unknown name is an `ArgumentError`.
+- *The loop route* evaluates the circuit once and then changes frames numerically.
+  `QuantizedCircuit(res; values)` takes a value for every parameter by name (a `NamedTuple` or a `Dict`; an unknown, repeated or missing name is an `ArgumentError` that lists the circuit's parameters) and holds circuit-quantization's `numeric_hamiltonian` of `to_spec(res)` in the base frame.
+  `Spec(qc)` is its spec of constants in that frame, and `Spec(qc, S)` the spec in the frame `S`, from the arrays of circuit-quantization's NumPy frame change `transformed(S)` through `numeric_spec`, with no symbolic work and no expression strings.
+  The modes keep the names of `Spec(res)`; the numeric Hamiltonian carries no names, so `QuantizedCircuit` stores them (`mode_names`).
+
+**The offset-charge convention.**
+The offset charge has two parts in circuit-quantization: a source part from gate voltages, on every mode, and a static sector label on each compact mode.
+In a new frame the source part transforms as `Sᵀ`, the sector labels live on the compact modes only and transform with `S_ccᵀ`, and their components on noncompact modes are dropped, because a static offset on a noncompact mode is removable by a gauge transformation.
+The symbolic route issues a fresh label `n_g{j}` for each compact mode `j` of the new frame; the loop route carries the two parts separately and applies the same rule.
+With a nonzero offset charge on the KITE at its optimum frame, the loop-route spec equals the symbolic-route spec with the values substituted (`test/python/test_final_route.jl`).
+
+**Constant coefficients never compile (core).**
+A numeric spec is built on every iteration of a frame loop, so a coefficient that compiled a function would cost milliseconds per coefficient and grow the generated-function cache without bound.
+A constant `Coefficient` (from `Coefficient(x::Number)`, or from an expression string that parses to a number) therefore carries a `_Constant` (`src/parameters.jl`) as its function and compiles nothing, and arithmetic among constants (`*`, `+`, unary `-`, a number times a constant, `phase_factor`) folds to a constant.
+A folded constant may be complex (a phase factor), and both `expr_string` and the real-arithmetic classification of Section 20f accept it, so a numeric spec keeps the arithmetic class of the symbolic spec it was evaluated from (`test/test_terms.jl`).
+
+**`numeric_spec` (core).**
+`numeric_spec(; modes, E_C, E_L, flux_linear, n_g, cosines, constant, symmetry_tol, zero_rtol, zero_atol)` (`src/spec.jl`) builds a `Spec` with no parameters from plain numeric arrays, the same `Spec` that `parse_spec` builds from a JSON document of the same numbers, with every coefficient a constant and an exact zero a literal zero, as `"0"` is in a JSON spec.
+`E_C` and `E_L` are symmetrized at round-off level: with `scale` the largest magnitude in the matrix, a pair differing by at most `symmetry_tol * scale` (default `1e-10`) becomes its mean, and a larger asymmetry is an `ArgumentError` naming the pair.
+An `omega` entry on a compact mode within `1e-12` of an integer is rounded to it, and any other is rejected.
+The loop route calls it on the arrays that come back from Python.
+
+**Round-off zeroing is an explicit option.**
+A circuit quantized in a floating-point coordinate basis exports entries that should be zero as round-off numbers (in the three-fluxonium bench, `E_C` and `E_L` entries around `1e-14` to `1e-11` at matrix scales of 1 to 10 GHz, and cosine `omega` entries around `1e-17`).
+The package treats every nonzero entry as a real term, so such entries change which modes are coupled.
+Eli's decision (2026-11-10): zeroing at a relative tolerance is acceptable but must be explicit; the default is `1e-12` relative, and a bench may pass `1e-9`.
+The keywords `zero_rtol = 1e-12` and `zero_atol = 0.0` are taken by `numeric_spec`, by `Spec(qc[, S])` (forwarded to `numeric_spec`) and by `Spec(res; ...)` (forwarded to circuit-quantization's `to_spec`), with the same meaning on both sides:
+after symmetrization, an entry of a fully numeric `E_C` or `E_L` (diagonal included) of magnitude at most `max(zero_rtol * scale, zero_atol)` becomes exactly zero, where `scale` is the largest magnitude in that matrix;
+in each cosine, an `omega` entry of magnitude at most `zero_rtol` times that cosine's largest `omega` magnitude becomes exactly zero, on a compact mode at most `zero_rtol` times the smaller of that magnitude and 1 (relative only: `zero_atol` does not apply to `omega`);
+`zero_rtol = 0, zero_atol = 0` turns zeroing off;
+a negative or non-finite tolerance is an `ArgumentError` naming the keyword.
+This replaces a hard-coded rule (pairs below `1e-15` of the scale, off-diagonal only) that both sides had used before.
+
+**Run records.**
+`run_record(res; frame, values, metadata)` returns JSON text that is at once a kronfree-spec version 1 document (`parse_spec` reads it) and a circuit-quantization record (its `load_record` rebuilds the circuit).
+The document is circuit-quantization's own `to_record` of `res` in the run's frame, which writes the spec fields and `_circuit` (branches, ground, loops, flux assignment and the SymPy symbols with their assumptions), `_frame` (`Z_full`, the full mode types and `S`) and `_values` (the parameter values, when given, which also make the spec fields numeric).
+Julia adds three keys: `_generator.kronfree` (this package's version and git commit, `null` when not available), `_metadata` (the caller's `metadata`, which must be JSON-serializable), and the Julia-owned `_kronfree`, which holds the frame of `res` as it was passed (`base_frame`, in the encoding of `_frame`), the `frame` argument and the `values`.
+`load_record(source)`, from JSON text or a file, returns `(; result, spec, frame, values)`: `spec` is the spec of the run, `result` the symbolic `Result` that was passed to `run_record`, rebuilt in its own frame, and `frame` the frame that was applied, so `Spec(result; frame)` is the symbolic spec of the run.
+Nothing in a record is evaluated: numbers are JSON numbers and expressions go through circuit-quantization's restricted parser.
+The tree is Julia code and is not recorded; that belongs to the export and caching plan.
+
+**Measurements.**
+On ewdesktop (Intel i7-11700K, Julia 1.13.2, one thread), 2026-11-10.
+
+- Loop route, `Spec(qc, S)` for the three-mode KITE at its optimum frame, after warm-up, mean of 1000 calls: 0.134 ms per call, of which circuit-quantization's NumPy frame change is 0.086 ms and the array conversion plus `numeric_spec` 0.030 ms.
+  The design's target was 5 ms.
+- Symbolic route, `Spec(res; frame=S)`, after one warm-up call: 0.37 s for the KITE at its optimum frame, and 0.80 s for the six-mode coupled zero-pis with a float `S`.
+- The KITE in three frames in one session (`bench/kite_frames`; figures from `bench/kite_frames/README.md`, which a later run of the bench may revise): means of 200 iterations of a loop over random admissible frames near the optimum, on a machine shared with other jobs, were 0.366 ms for the frame change alone, 0.594 ms for the frame change through the end of `materialize`'s setup (everything before the first eigensolve), and 1312 ms for a full `materialize`, dominated by the eigensolves.
+  No coefficient compiled anywhere in the loop: every coefficient was a `_Constant`, the generated-function cache stayed empty, and Julia's cumulative compile time did not increase.
+  The three frames' four lowest energies agree to 7.2e-6 GHz, and the ground energy is −9.523981 GHz.
+  They lie about 1.4e-5 GHz above the circuit-quantization paper's reference levels; an exploration run that solved the KITE in Julia on the reference calculation's own grids (charge cutoff 24, 160-point phase grids with steps of about 0.28) reproduced the paper's four levels to within 5e-7 GHz, so the offset is the reference grid's discretization error, not a difference in the Hamiltonian (`bench/kite_frames/README.md`).
+
+**Deviations from the plan.**
+`QuantizedCircuit` carries a third field, `mode_names`, which the plan did not have: circuit-quantization's numeric Hamiltonian has no mode names, so they are taken once from the spec of the `Result` and kept in every frame.
+The KITE bench's root uses the `Auto()` solver, which resolves to LOBPCG there, instead of the `Dense` root of the plan: with 24 to 40 states kept per leaf the root has 24³ to 40³ product states, beyond what `Dense` diagonalizes in reasonable time (the reasoning and the measurements are in `bench/kite_frames/README.md`).
+The leaves are `Dense`.
+
+**circuit-quantization.**
+The interface needs that repository's commits of 2026-11-10 (an integer-valued float compact block accepted, the export symmetry check with round-off repair, the numeric frame change with its checks as public API, and run records), on its `main` at `9c26fd2`.
+The zero-tolerance keywords of `to_spec` are on its local branch `to-spec-zero-tolerance`, not yet on `main`.
+
+**Tests.**
+The default tier stays Python-free.
+The Python tier, `test/python/` with its own environment, is never included by `test/runtests.jl` and runs as
+`JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=<python> julia --project=test/python test/python/runtests.jl`.
+It covers the module import and its error message, `Spec(res)` against every committed generated fixture, the symbolic and loop routes and their agreement (including the nonzero offset charge), inadmissible frames on both routes, and run records written and read back, once in a fresh Julia session.
 
 ## 21. Builder check
 

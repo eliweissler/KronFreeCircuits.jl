@@ -1,6 +1,42 @@
-# Status, 2026-11-01
+# Status, 2026-11-10
 
 **2026-11-10:** three projects are scoped before a feature freeze (circuit-quantization interface, mean-field basis augmentation, perturbative derivatives); see `docs/superpowers/HANDOFF-2026-11-10.md` for the designs, the plan in progress and what is blocked.
+The mean-field proposal and plan of 2026-10-28 (`2026-10-28-mean-field-leaves-proposal.md`, `plans/2026-10-28-mean-field-leaves.md`) are superseded by the 2026-11-10 design `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md` and were never implemented.
+
+## The circuit-quantization interface (project 1, 2026-11-10)
+
+One Julia session can now define a circuit with circuit-quantization through PythonCall, build its `Spec` in memory in any admissible coordinate frame, solve it, and write a run record (design `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md`, plan `docs/superpowers/plans/2026-11-10-circuit-quantization-interface.md`, architecture §20j; §2, §15 and §20b are amended).
+The work is on the local branch `cq-interface`, off `main`; it is not pushed or merged, and merging and pushing are Eli's.
+
+Done:
+- In the core, without Python: constant coefficients that fold and never compile (`_Constant`), and `numeric_spec`, a `Spec` of constants from plain arrays.
+- The package extension `KronFreeCircuitsPythonCallExt` (weak dependency `PythonCall`): `circuit_quantization()`, the symbolic route `Spec(res; frame=S)`, the loop route `QuantizedCircuit(res; values)` and `Spec(qc, S)`, and `run_record` and `load_record`.
+- The guard that the core stays free of Python: a default-tier test that no file under `src/` loads or calls PythonCall, and that the extension is not loaded there.
+- `bench/kite_frames`: the KITE defined, moved through its published, normal-mode and optimum frames, solved and recorded in one session (results in `bench/kite_frames/README.md`).
+- Round-off zeroing as an explicit option, `zero_rtol = 1e-12` and `zero_atol = 0.0` on `numeric_spec`, `Spec(qc[, S])` and `Spec(res; ...)` (Eli's decision: zeroing at a relative tolerance is acceptable but must be explicit; a bench may pass `1e-9`), committed here at `106c0b8` and in circuit-quantization at `c8c8714`.
+
+Measured on ewdesktop (i7-11700K, Julia 1.13.2, one thread), 2026-11-10: the loop route takes 0.134 ms per frame change for the three-mode KITE (target 5 ms), and the symbolic route 0.37 s for the KITE and 0.80 s for the six-mode coupled zero-pis.
+The bench's loop figures are in `bench/kite_frames/README.md` and in architecture §20j.
+In the bench the three frames' four lowest levels agree to 7.2e-6 GHz and lie about 1.4e-5 GHz above the circuit-quantization paper's reference levels; an exploration run on the reference calculation's own grids (charge cutoff 24, 160-point phase grids, steps about 0.28) reproduced the paper's levels to within 5e-7 GHz, so the offset is the reference grid's discretization error (`bench/kite_frames/README.md`).
+
+Regression check: a two-fluxonium bench smoke run before and after this branch gave bitwise identical levels in all four stages.
+On the documentation commit, which is based on `44ee9c4` and does not yet contain `106c0b8`, the default tier and the Python tier (236 tests) pass; the slow tier passed on the first task's commit and has not yet been run on the final branch.
+
+Open:
+- Acceptance item 5, `bench/hensel_three_fluxonia` from a spec produced by `to_spec` with no hand assembly (plan Task 9).
+  The first attempt reproduced the hand-assembled spec only to about 2e-9 of the matrix scale and left round-off entries where the hand assembly had exact zeros; that led to the zero-tolerance option.
+  The comparison with `zero_rtol = 1e-9` is still to be run.
+- The slow tier on the final branch.
+
+Dependency on circuit-quantization (`~/src/circuit-quantization`): the interface needs that repository's commits of 2026-11-10 (an integer-valued float compact block accepted, the export round-off repair, the numeric frame change with its checks, run records), on its `main` at `9c26fd2`.
+The zero-tolerance keywords of its `to_spec` are on its local, unpushed branch `to-spec-zero-tolerance` (`c8c8714`), which is not yet on that repository's `main`; `Spec(res; zero_rtol, zero_atol)` needs it.
+
+Python tier, on ewdesktop (the environment is the conda environment `cq-z4`; the plan's `circuit_quantization` environment exists only on the Mac):
+
+```bash
+$HOME/.juliaup/bin/julia --project=test/python -e 'using Pkg; Pkg.instantiate()'
+JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$HOME/anaconda3/envs/cq-z4/bin/python $HOME/.juliaup/bin/julia --project=test/python test/python/runtests.jl
+```
 
 ## Where things stand
 
@@ -31,7 +67,7 @@ Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "W
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).
 Proposed by Eli (2026-10-20), not yet designed:
 - Local matrix-element queries in the full space after materialization (a single-mode operator, or a product across subsystems, between the root's kept states, lifted on demand through the stored eigenvectors); this is the core the noise plan's element operators would use. A product of factors on modes inside one child needs a joint port; the joint port now exists (§20i) for terms of the Hamiltonian, and only the user-requested form (`Node(ports=...)`, selection rules) is missing.
-- A more robust circuit ingest than the JSON interchange in the long term, such as a direct SymPy interface to circuit-quantization; today the interchange is guarded by load checks and, for the BO reduced specs, a numeric cross-check of spectra and potentials (`test/fixtures/bo/validate_reduced.py` → `test/fixtures/bo_reference/python_reduced_levels.json`, compared in `test/test_bo.jl`).
+- A more robust circuit ingest than the JSON interchange in the long term, such as a direct SymPy interface to circuit-quantization (since 2026-11-10 the circuit-quantization interface above builds specs in memory; the JSON route stays); the file route is guarded by load checks and, for the BO reduced specs, a numeric cross-check of spectra and potentials (`test/fixtures/bo/validate_reduced.py` → `test/fixtures/bo_reference/python_reduced_levels.json`, compared in `test/test_bo.jl`).
 
 ## Open items, in priority order
 
