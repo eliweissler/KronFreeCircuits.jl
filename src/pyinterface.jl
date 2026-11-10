@@ -25,17 +25,18 @@ struct QuantizedCircuit{H}
 end
 
 """
-    run_record
+    run_record(res; frame=nothing, values=nothing, metadata=(;)) -> String
 
-Write a record of a solver run on a circuit from circuit-quantization.
+The run record of a circuit-quantization `Result` in the frame `frame`, as JSON text: a kronfree-spec document that `parse_spec` reads and `circuit_quantization.load_record` rebuilds, with this package's version and git commit under `_generator.kronfree` and `metadata` under `_metadata`.
 Defined by the PythonCall extension: load PythonCall to use the circuit-quantization interface.
 """
 function run_record end
 
 """
-    load_record
+    load_record(source) -> (; result, spec, frame, values)
 
-Read a record written by [`run_record`](@ref).
+Read a record written by [`run_record`](@ref), from JSON text or a file.
+`spec` is the spec of the run, and `result` is the symbolic `Result` that was passed to `run_record`, in its own frame, so `Spec(result; frame)` is the symbolic spec of the run.
 Defined by the PythonCall extension: load PythonCall to use the circuit-quantization interface.
 """
 function load_record end
