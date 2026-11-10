@@ -1,5 +1,7 @@
 # Status, 2026-11-01
 
+**2026-11-10:** three projects are scoped before a feature freeze (circuit-quantization interface, mean-field basis augmentation, perturbative derivatives); see `docs/superpowers/HANDOFF-2026-11-10.md` for the designs, the plan in progress and what is blocked.
+
 ## Where things stand
 
 Plans 1, 1b, 2, 2b, 3 and 4 are done.
