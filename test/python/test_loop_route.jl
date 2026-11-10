@@ -1,6 +1,7 @@
 # The loop route: a QuantizedCircuit made once at fixed values, and Spec(qc, S) from circuit-quantization's NumPy
 # frame change, compared with the symbolic route and with the arrays Python returns.
 include("kite.jl")
+include("circuits.jl")
 
 evalc(c) = c((;))                                              # a constant coefficient's value
 ≊(x, y) = isapprox(x, y; rtol=1e-10, atol=1e-12)
@@ -25,7 +26,7 @@ function sector_labels(θ::NamedTuple, S::AbstractMatrix, types)
     return NamedTuple{Tuple(labels)}(Tuple(S[c, c]' * [Float64(θ[k]) for k in labels]))
 end
 
-# The arrays circuit-quantization's NumPy frame change returns, converted entry by entry.
+# The arrays circuit-quantization's NumPy frame change returns, converted to Julia arrays.
 function python_arrays(res::Py, θ::NamedTuple, S::AbstractMatrix{<:Real})
     h = circuit_quantization().numeric_hamiltonian(res, pyvalues(θ)).transformed(pylist(pylist.(eachrow(S))))
     return (types=Symbol.(pyconvert(Vector{String}, pylist(h.types))),
@@ -36,6 +37,9 @@ function python_arrays(res::Py, θ::NamedTuple, S::AbstractMatrix{<:Real})
                      for (E, w, d) in h.cosines])
 end
 
+# A frame as the NumPy array circuit-quantization's numeric frame change takes.
+_np_frame(S::AbstractMatrix) = pyimport("numpy").array(Matrix{Float64}(S))
+
 # A static-array-like matrix: its size is in its type and it is not a Matrix.
 struct Fixed3 <: AbstractMatrix{Float64}
     data::NTuple{9,Float64}
@@ -45,7 +49,7 @@ Base.size(::Fixed3) = (3, 3)
 Base.getindex(M::Fixed3, i::Int, j::Int) = M.data[i + 3(j - 1)]
 
 res, θ, frames = kite()
-qc =QuantizedCircuit(res; values=θ)
+qc = QuantizedCircuit(res; values=θ)
 base_types = [m.type for m in Spec(qc).modes]
 # The optimum frame with the compact mode's sign flipped (φ′₁ → -φ′₁): S_cc = -1, still admissible.
 flipped = copy(frames.optimum); flipped[:, 1] .*= -1
@@ -126,6 +130,7 @@ end
     bad = copy(frames.optimum); bad[2, 1] = 0.1                  # a noncompact row feeding the compact column
     e = err(() -> Spec(qc, bad))
     @test e isa ArgumentError && occursin("S1[1, 0]", e.msg) && occursin("mixes", e.msg)
+    @test occursin("count from 0", e.msg)                        # Python's indices, said to be Python's
     half = copy(I3); half[1, 1] = 0.5
     e = err(() -> Spec(qc, half))                                # compact block not an integer
     @test e isa ArgumentError && occursin("integer", e.msg)
@@ -174,9 +179,11 @@ end
     b = Spec(qc, S; zero_rtol=1e-9)
     @test iz(b.E_L[2, 3]) && iz(b.E_L[3, 2]) && evalc(b.E_L[2, 2]) == evalc(a.E_L[2, 2])
     @test iz(Spec(qc, S; zero_rtol=0, zero_atol=1e-10).E_L[2, 3])
-    @test !iz(Spec(qc, S; zero_rtol=0, zero_atol=0).E_C[1, 2])  # zeroing off: the normal frame's round-off survives
-    @test iz(Spec(qc, frames.normal).E_C[1, 2])                 # and the default zeroes it
-    @test !iz(Spec(qc; zero_rtol=0).E_C[1, 1])
+    @test !iz(Spec(qc, frames.normal; zero_rtol=0, zero_atol=0).E_C[1, 2])  # zeroing off: the normal frame's round-off
+    @test iz(Spec(qc, frames.normal).E_C[1, 2])                              # survives, and the default zeroes it
+    # the base-frame method forwards the tolerances too: a QuantizedCircuit whose base frame is the normal frame
+    qn = QuantizedCircuit(qc.handle.transformed(_np_frame(frames.normal)), qc.values, qc.mode_names)
+    @test iz(Spec(qn).E_C[1, 2]) && !iz(Spec(qn; zero_rtol=0).E_C[1, 2])
     # the loop route and the symbolic route zero the same entries, at either tolerance
     for zr in (1e-12, 1e-9)
         l, s = Spec(qc, S; zero_rtol=zr), Spec(res; frame=S, subs=θ, zero_rtol=zr)
@@ -187,4 +194,25 @@ end
     @test_throws "zero_rtol" Spec(broken, S; zero_rtol=-1.0)
     @test_throws "zero_atol" Spec(broken, S; zero_atol=NaN)
     @test_throws "zero_atol" Spec(broken; zero_atol=Inf)
+end
+
+@testset "two compact modes: the offset-charge convention with S_cc ≠ ±1" begin             # Important 4
+    res2, _ = fixture_result("two_transmons")
+    # element values for E_C1 = 0.3, E_C2 = 0.25 and g = 0.08 GHz (see the fixture's comment), nonzero sector offsets
+    θ2 = (x_1=0.0749 / 0.24, x_2=0.0749 / 0.29, x_c=8 * 0.0749 / 0.08, n_g1=0.3, n_g2=0.1, E_J1=12.0, E_J2=10.0)
+    q2 = QuantizedCircuit(res2; values=θ2)
+    S = [1.0 1.0; 0.0 1.0]                                       # S_cc = S: Sᵀ, S⁻¹, S and S⁻ᵀ all differ
+    base, a = Spec(q2), Spec(q2, S)
+    @test [m.type for m in a.modes] == [:c, :c]
+    n0, n1 = evalc.(base.n_g), evalc.(a.n_g)
+    @test n0 ≈ [0.3, 0.1] && n1 ≈ S' * n0                        # the loop route: Sᵀ n_g = (0.3, 0.4)
+    @test !(n1 ≈ S \ n0) && !(n1 ≈ S * n0) && !(n1 ≈ S' \ n0)
+    s = Spec(res2; frame=S)                                      # the symbolic route, fresh labels n_g1, n_g2
+    @test same_spec(a, s, merge(θ2, sector_labels(θ2, S, [m.type for m in base.modes])))
+    @test !same_spec(a, s, θ2)                                   # and not at the base labels' values
+    # the spectrum, independent of both routes' bookkeeping: the six lowest levels of the framed spec equal the base
+    # frame's on a full charge basis of 31 states per mode (they agree to 5e-14 GHz at this cutoff, 2e-11 at 12)
+    tree = Node([:varphi_1 => ChargeBasis(15), :varphi_2 => ChargeBasis(15)]; solver=Dense(), keep=lowest(6))
+    E0, E1 = energies(materialize(tree, base, (;))), energies(materialize(tree, a, (;)))
+    @test maximum(abs.(E1 - E0)) < 1e-11
 end

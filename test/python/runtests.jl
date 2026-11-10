@@ -4,6 +4,10 @@
 # The default tier (test/runtests.jl) never includes this directory.
 using Test, KronFreeCircuits, PythonCall
 
+Base.get_extension(KronFreeCircuits, :KronFreeCircuitsPythonCallExt) === nothing &&
+    error("the PythonCall extension of KronFreeCircuits did not load; the Manifest of test/python may be stale: " *
+          "run Pkg.resolve() and Pkg.instantiate() with --project=test/python")
+
 @testset verbose=true "Python tier" begin
     for f in sort(filter(f -> startswith(f, "test_") && endswith(f, ".jl"), readdir(@__DIR__)))
         include(f)
