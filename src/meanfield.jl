@@ -246,7 +246,8 @@ function mean_field_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, chi
     keys = child_keys(parent, terms, child)
     mf = mean_field_terms(parent, terms, θ, child, others; outside)
     ports, joint_ports = _split_keys(keys)
-    solved = _solve_node(child, bare.children, vcat(_terms_at(child, terms), mf), θ; ports, joint_ports, real=false)
+    solved = _solve_node(child, bare.children, vcat(_terms_at(child, terms), mf), θ; ports, joint_ports, real=false,
+                         retain=:never)                       # re-solved every iteration, never differentiated
     table = expectations(solved, keys; state, weights)
     E = weights === nothing ? solved.energies[state] : sum(weights[i] * solved.energies[i] for i in eachindex(weights))
     shift = sum((t.coeff((;)) * table[_factor_key(t)] for t in mf); init=0.0 + 0.0im)

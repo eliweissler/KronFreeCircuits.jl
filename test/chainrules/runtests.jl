@@ -50,6 +50,17 @@ end
     P13(t) = spectrum(c.root, c.spec, t; ports=key).ports[2][1, 3]
     fd = first(fd_derivative(P13, c.θ, :g; h=1e-3)) - 0.5 * first(fd_derivative(P13, c.θ, :n_g1; h=1e-3))
     @test ẏ.ports[2][1, 3] ≈ fd rtol=1e-6
+    @test all(eltype(ẏ.ports[p]) === eltype(y.ports[p]) for p in eachindex(y.ports))     # real ports of a real root
+    # a zero cotangent or tangent gives zeros without running the derivative pass (whose options here would be refused)
+    bad = (; lintol=-1.0)
+    yb, backb = ChainRulesCore.rrule(spectrum, c.root, c.spec, θ; ports=key, derivative_options=bad)
+    @test all(iszero, (backb(ZeroTangent())[4][x] for x in keys(θ)))
+    @test all(iszero, (backb(Tangent{typeof(yb)}(; energies=zeros(length(yb.energies))))[4][x] for x in keys(θ)))
+    @test_throws "`lintol` must be positive" backb(Tangent{typeof(yb)}(; energies=ones(length(yb.energies))))
+    Δ0 = Tangent{typeof(θ)}(; g=0.0)
+    _, ẏ0 = ChainRulesCore.frule((NoTangent(), NoTangent(), NoTangent(), Δ0), spectrum, c.root, c.spec, θ; ports=key,
+                                 derivative_options=bad)
+    @test all(iszero, ẏ0.energies) && all(P -> all(iszero, P), ẏ0.ports)
     # options the rules set themselves are refused
     @test_throws ArgumentError ChainRulesCore.rrule(spectrum, c.root, c.spec, θ; ports=key, derivative_options=(; order=2))
 end

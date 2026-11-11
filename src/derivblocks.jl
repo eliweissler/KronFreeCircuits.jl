@@ -16,6 +16,9 @@ flagged pairs.
 `detuning` is the smallest `|E_i − E_l|` and `coupling` the largest coupling among the flagged pairs: the first-order
 matrix element `|⟨ψ_l|∂H/∂x|ψ_i⟩|`, or for a pair flagged by a second-order clash the second-order one, the overlap of
 `ψ_l` with the second-order right-hand side of `ψ_i`.
+For a block flagged in more than one way `coupling` is the largest of quantities that may have different units
+(first-order couplings to different parameters, a second-order matrix element for a pair flagged by a second-order
+clash): it is for reporting, not for arithmetic.
 `exact` is true when a flagged pair is exactly degenerate: the per-state derivatives of its states are `NaN`, and the
 block's effective Hamiltonian is what is defined.
 `order` is the order of the effective Hamiltonian in the displacement (the `order` of [`derivatives`](@ref)).
@@ -25,6 +28,8 @@ block's effective Hamiltonian is what is defined.
 `M^{xy}[b, b′] = ⟨(∂H/∂x) ψ_b|Y^y_{b′}⟩` and `Y^y_{b′} = Σ_{l ∉ B} ψ_l ⟨ψ_l|∂H/∂y|ψ_{b′}⟩ / (E_{b′} − E_l)` over every
 state of the node outside the block, kept or not: the outside states folded in to second order in the displacement.
 A block state exactly degenerate with an unkept state it couples to (a selection-boundary record) makes these pieces `NaN`.
+`tr(H1[x])` and `tr(H2[(x, x)])` are the block-invariant sums of the first and second derivatives of the block's
+energies, which exist even when the per-state derivatives are `NaN`.
 See [`block_levels`](@ref).
 """
 struct NearDegenerateBlock
@@ -58,7 +63,9 @@ The energies (ascending) and states of the block `b` at a finite displacement of
 `H_eff(δ) = diag(E_B) + Σ_x δ_x H1[x] + ½ Σ_x δ_x² H2[(x, x)] + δ_x δ_λ H2[(x, λ)]` (the last term for a mixed block,
 the second-order terms when `b.order == 2`).
 `states` holds one column per level, its coefficients in the block's states at `θ`.
-A parameter not named is not displaced; a name that is not one of `b.parameters` is an `ArgumentError`.
+A parameter not named is not displaced; a name that is not one of `b.parameters` is an `ArgumentError`, and so is an
+effective Hamiltonian that is not finite at the displacement (a block state exactly degenerate with a state outside the
+kept set, see the selection-boundary records).
 The energies differ from those of a re-solve at the displaced point (at fixed selection) by `O(|δ|³ v³ / g²)`, with
 `v` the block's largest coupling to the states outside it and `g` its gap to them; with `b.order == 1` by
 `O(|δ|² v² / g)`.
@@ -77,6 +84,11 @@ function block_levels(b::NearDegenerateBlock, displacement::NamedTuple)
     for ((x, y), M) in b.H2
         H .+= (x === y ? δ(x)^2 / 2 : δ(x) * δ(y)) .* M
     end
+    all(isfinite, H) ||
+        throw(ArgumentError("the effective Hamiltonian of the block of states $(b.states) of the node on modes " *
+                            "$(modes(b.node)) is not finite at this displacement: a block state is exactly degenerate " *
+                            "with a state outside the kept set that it couples to (see the selection-boundary records, " *
+                            "`d.boundary`), or a child's derivative is undefined"))
     F = eigen(Hermitian((H + H') / 2))
     return (; energies=F.values, states=F.vectors)
 end

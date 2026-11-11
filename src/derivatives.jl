@@ -52,6 +52,29 @@ function _port_derivatives(mn::MaterializedNode, V1::AbstractMatrix, dx::Vector{
     return ports, joint
 end
 
+# The columns of `R` that are not finite.
+_nonfinite_columns(R::AbstractMatrix) = Int[j for j in axes(R, 2) if !all(isfinite, view(R, :, j))]
+
+# Whether a child's derivative data holds a value that is not finite.
+_undefined(d) = d isa NodeDerivative &&
+    (!all(isfinite, d.energies) || !all(isfinite, d.vectors) || any(P -> !all(isfinite, P), values(d.ports)) ||
+     any(P -> !all(isfinite, P), values(d.joint_ports)))
+
+# The modes of the children of `mn` whose derivative data in any of `data` (per axis a `NodeDerivative` or `nothing`)
+# is undefined.
+function _undefined_children(mn::MaterializedNode, data::Vector{Any}...)
+    return [collect(Symbol, modes(c.node)) for (a, c) in enumerate(mn.children) if any(d -> _undefined(d[a]), data)]
+end
+
+# The one warning of a node and a pass whose kept states `cols` have undefined derivatives because a child's are.
+function _warn_inherited(mn::MaterializedNode, cols::Vector{Int}, data::Vector{Any}...)
+    kids = _undefined_children(mn, data...)
+    @warn "Node on modes $(modes(mn.node)): the derivatives of kept states $cols are undefined (NaN) because a " *
+          "child's derivative is undefined (" *
+          (isempty(kids) ? "the derivative operator is not finite" : "children on modes $(join(kids, ", "))") * ")"
+    return nothing
+end
+
 """
     _node_first_order(mn, H1, res, dx; boundary=nothing, report=nothing) -> NodeDerivative
 
@@ -61,6 +84,9 @@ Energies by Hellmann–Feynman, `∂E_j = Re⟨ψ_j|H1|ψ_j⟩`.
 States by `∂ψ_j = w_j + i a_j ψ_j`, with `w_j = Σ_{l≠j} ψ_l ⟨ψ_l|H1|ψ_j⟩ / (E_j − E_l)` and the gauge `a_j` that keeps
 the peak amplitude `ℓ_j · ψ_j` real (zero on a real node).
 A kept state degenerate with a state it couples to has `NaN` derivatives, with one warning per call.
+A column of `H1 V` that is not finite (a child's derivative is undefined, design P5) is kept out of the resolvent, the
+selection-boundary test and the block search, and every output of that state is `NaN` (its gauge too, on a real node),
+with one warning per call naming the children whose derivatives are undefined.
 The result's `children` is `dx` itself.
 With `boundary = (; records, x, δx, r)` the selection-boundary test of `_selection_boundary!` is run for the parameter `x` and its records pushed to `records`.
 With a function `report`, `report(R, clashes)` is called with `R = H1 V` (on the host) and the `clashes` of `_apply_resolvent`: the near-degenerate block search reads them (`_first_order_flags!`).
@@ -71,6 +97,8 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
     E = mn.energies
     n = length(E)
     R = Array(H1 * adapt(H1.on, V))
+    inherited = _nonfinite_columns(R)          # a child's derivative is undefined (design P5): NaN here too
+    R[:, inherited] .= 0                        # kept out of the resolvent, of the boundary test and of the blocks
     dE = Float64[real(dot(view(V, :, j), view(R, :, j))) for j in 1:n]
     W, clashes = _apply_resolvent(res, R, E, [[j] for j in 1:n])
     bad = findall(!isempty, clashes)
@@ -78,6 +106,11 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
         dE[bad] .= NaN
         @warn "Node on modes $(modes(mn.node)): kept states $bad are degenerate with states they couple to " *
               "($(join(("$j with $(clashes[j])" for j in bad), ", ")); 0 is an unkept state); their derivatives are NaN"
+    end
+    if !isempty(inherited)
+        dE[inherited] .= NaN
+        W[:, inherited] .= NaN
+        _warn_inherited(mn, inherited, dx)
     end
     boundary === nothing ||
         _selection_boundary!(boundary.records, mn, res, R, clashes, boundary.x; δx=boundary.δx, r=boundary.r)
@@ -93,6 +126,7 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
         gauge = Float64[-imag(L0[j, j] + (L1 === nothing ? 0 : L1[j, j])) / real(A[j, j]) for j in 1:n]
         V1 = Matrix{T}(W .+ V .* transpose(im .* gauge))
     end
+    gauge[inherited] .= NaN
     A1 = _peak_map(mn, V1, amps)
     L1 === nothing || (A1 = A1 + L1)
     ports, joint = _port_derivatives(mn, V1, dx)
@@ -167,6 +201,9 @@ from the second derivative of the phase convention (`ℓ_j · ψ_j` real; zero o
 The result's `gauge` is `b`, its `children` is `dxλ` itself.
 A kept state degenerate with a state its right-hand side couples to, or already `NaN` at first order, has `NaN`
 derivatives, with one warning per call.
+When a child's first- or second-order data is undefined, the columns of the right-hand side that are not finite and the
+node's own first-order `NaN` states are inherited from it (design P5): they are kept out of the resolvent, are `NaN`
+(gauge included), and are reported by one warning naming those children, not as degeneracies of this node.
 With `boundary = (; records, key)` the clashes of kept states with unkept computed states at second order are recorded
 by `_selection_boundary!` (its clash records only) under the pass's key `key`, `_pairkey(x, λ)`, and pushed to `records`.
 With a function `report`, `report(RHS, clashes)` is called with the right-hand side (its first-order `NaN` columns zeroed) and the `clashes` of `_apply_resolvent`: the near-degenerate block search reads them (`_second_order_flags!`).
@@ -185,18 +222,26 @@ function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::
     RHS = apply(Hx, Wλ) .- Wλ .* transpose(dX.energies) .+ apply(Hλ, Wx) .- Wx .* transpose(dΛ.energies) .+ apply(Hxλ, V)
     undefined(d::NodeDerivative, j) = isnan(d.energies[j]) || any(isnan, view(d.vectors, :, j))
     first_bad = [j for j in 1:n if undefined(dX, j) || undefined(dΛ, j)]
-    RHS[:, first_bad] .= 0                      # kept out of the resolvent (and of a linear solve)
+    # A child's undefined derivative (at first or second order) makes columns of the right-hand side not finite, and
+    # the node's own first-order NaNs then came from it too (design P5): those columns are inherited, not degenerate.
+    nonfinite = setdiff(_nonfinite_columns(RHS), first_bad)     # the own first-order NaN columns are NaN here too
+    child_undefined = !isempty(_undefined_children(mn, dx, dλ, dxλ))
+    inherited = child_undefined ? sort!(union(nonfinite, first_bad)) : nonfinite
+    own_first = setdiff(first_bad, inherited)
+    RHS[:, union(first_bad, nonfinite)] .= 0   # kept out of the resolvent (and of a linear solve)
     d2E = Float64[real(dot(view(V, :, j), view(RHS, :, j))) for j in 1:n]
     G, clashes = _apply_resolvent(res, RHS, E, [[j] for j in 1:n])
     clashing = findall(!isempty, clashes)
-    bad = sort!(union(first_bad, clashing))
-    if !isempty(bad)
-        @warn "Node on modes $(modes(mn.node)): kept states $bad have no second derivatives (NaN): " *
+    bad = sort!(union(own_first, clashing, inherited))
+    if !isempty(own_first) || !isempty(clashing)
+        own = sort!(union(own_first, clashing))
+        @warn "Node on modes $(modes(mn.node)): kept states $own have no second derivatives (NaN): " *
               (isempty(clashing) ? "" : "states $clashing are degenerate with states they couple to at second order " *
                "($(join(("$j with $(clashes[j])" for j in clashing), ", ")); 0 is an unkept state)") *
-              (isempty(clashing) || isempty(first_bad) ? "" : "; ") *
-              (isempty(first_bad) ? "" : "states $first_bad are degenerate at first order")
+              (isempty(clashing) || isempty(own_first) ? "" : "; ") *
+              (isempty(own_first) ? "" : "states $own_first are degenerate at first order")
     end
+    isempty(inherited) || _warn_inherited(mn, inherited, dx, dλ, dxλ)
     boundary === nothing || _selection_boundary!(boundary.records, mn, res, RHS, clashes, boundary.key; plain=false)
     report === nothing || report(RHS, clashes)
     normalization = Float64[-real(dot(view(Wx, :, j), view(Wλ, :, j))) - dX.gauge[j] * dΛ.gauge[j] for j in 1:n]
@@ -217,6 +262,7 @@ function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::
         V2 = Matrix{T}(U .+ V .* transpose(normalization .+ im .* gauge))
         gauge[bad] .= NaN
     end
+    gauge[inherited] .= NaN
     d2E[bad] .= NaN
     V2[:, bad] .= NaN
     A2 = _peak_map(mn, V2, amps)
@@ -291,8 +337,9 @@ parameter of `wrt` and for `x ≠ λ` each pair of `mixed`, likewise nested, or 
 (`kept`, a column of the node's vectors) close to an unkept computed state (`unkept`, its index among the node's
 computed pairs), with `coupling` `NaN` when it was not computed; `parameter` is the parameter of a first-order pass,
 or the pair `_pairkey(x, λ)` of a second-order pass, which records only clashes (an exact degeneracy with a coupling).
-`linear_solves` holds one record `(; modes, columns, iterations, residual)` per linear solve on the complement of a
-node's computed states, with `residual` the largest relative true residual of its columns.
+`linear_solves` holds one record `(; modes, columns, iterations, residual, from_start)` per linear solve on the
+complement of a node's computed states, with `residual` the largest true residual of its columns relative to the norm
+of each column's whole right-hand side, and `from_start` the columns converged from the start (no solve).
 """
 struct Derivatives
     sys::System
@@ -328,9 +375,16 @@ Cost: one first-order pass per parameter and, with `order = 2`, one second-order
 pair, each about one resolvent application (a linear solve at an iterative node) per kept state per node it visits.
 A second-order pass rebuilds the operators `∂H/∂x`, `∂H/∂λ` and `∂²H/∂x∂λ` at each node; only the first-order data
 and each node's resolvent are kept between passes.
+Every parameter's first-order data for the whole tree is kept in the returned object, so its memory grows with the
+number of parameters; `order = 2` runs the single-parameter second-order pass for every parameter of `wrt`.
+The pass reads `node.solver` and `node.compute` from the tree, so the tree must not be modified between
+[`materialize`](@ref) and `derivatives`.
 
 Keywords:
 - `wrt`: a parameter name or a collection of names, each a key of `sys.θ`; duplicates are removed.
+  A name that nothing in the system depends on (no term, no augmented child's bare term, not the constant) is an
+  `ArgumentError` when the system's spec does not declare it, and otherwise gives zeros with one warning
+  ("nothing in this system depends on :x; its derivatives are zero").
 - `order`: `1` (first derivatives) or `2` (also the second derivative along each parameter of `wrt` alone).
 - `mixed`: the pairs of parameters whose mixed second derivatives are wanted, a collection of pairs such as
   `((:E_J, :varphi_ext),)`, each of two different parameters of `wrt`; a pair given in either order is the same pair.
@@ -353,13 +407,26 @@ Keywords:
   A kept state that clashes (is degenerate with a state its right-hand side couples to) only at second order has `NaN`
   second derivatives with a warning; a clash with an unkept computed state is also recorded in `boundary`, with the
   pair `_pairkey(x, λ)` of the pass as its `parameter`.
-- `degenerate_tol`: the detuning (GHz) at or below which two states are exactly degenerate; a kept state degenerate
-  with a state it couples to has `NaN` derivatives.
-- `lintol`, `linmaxiter`: the relative tolerance and iteration limit of the linear solve at a node without its
-  complete spectrum (an iterative node): the part of each state derivative orthogonal to the node's computed states
-  solves `(E_j − H) w_j = (∂H/∂x) ψ_j` on their orthogonal complement by a preconditioned conjugate gradient, whose true residual
-  is checked and recorded in `linear_solves`; a solve that misses the tolerance is an error.
-  A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones.
+- `degenerate_tol`: the detuning (GHz) at or below which two states are exactly degenerate, nonnegative; a kept
+  state degenerate with a state it couples to has `NaN` derivatives.
+  A child whose derivative is `NaN` makes the derivatives of its ancestors' states that involve it `NaN` (design P5),
+  with one warning per node and pass naming the child, and no error, degeneracy warning or block at the ancestors on
+  that account; the child's own block stays available.
+- `lintol`, `linmaxiter`: the relative tolerance (positive) and iteration limit (positive) of the linear solve at a
+  node without its complete spectrum (an iterative node): the part of each state derivative orthogonal to the node's
+  computed states solves `(E_j − H) w_j = (∂H/∂x) ψ_j` on their orthogonal complement by a Jacobi-preconditioned
+  conjugate gradient.
+  Its right-hand side is `(∂H/∂x) ψ_j` with its components on the computed states subtracted, and its residual is
+  measured against `‖(∂H/∂x) ψ_j‖`, the norm of the whole right-hand side of that column (the scale of the whole
+  derivative): for a parameter internal to a weakly coupled child that right-hand side lies almost inside the computed
+  states, and a tolerance relative to its small complement part would be below round-off.
+  A column whose complement part is already below `lintol` times that norm is converged from the start (no solve).
+  Each solve's true residual is checked and recorded in `linear_solves` (`residual`, the largest true residual relative
+  to that norm, and `from_start`, the columns converged from the start); a solve that misses the tolerance is an error.
+  The iteration count grows roughly linearly with a grid leaf's point count (measured: 744, 1505 and 3055 iterations
+  at 3001, 6001 and 12001 points at the default settings), so `linmaxiter` may need raising for very fine grids.
+  A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones, and
+  records no selection-boundary pairs (its unkept computed states are not known).
 - `given_independent`: declares the `GivenSystem` children independent of every parameter.
   Their energies and operators are numbers whose dependence on the parameters is unknown, so without it a tree with a
   `GivenSystem` child is an `ArgumentError`; with it they have no derivative data, like a basis, and read as zeros.
@@ -394,8 +461,12 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
             throw(ArgumentError("`scale` for :$k must be a positive finite number, got $v"))
     end
     r > 0 || throw(ArgumentError("`r` must be positive, got $r"))
+    degenerate_tol >= 0 || throw(ArgumentError("`degenerate_tol` must be nonnegative, got $degenerate_tol"))
+    lintol > 0 || throw(ArgumentError("`lintol` must be positive, got $lintol"))
+    linmaxiter > 0 || throw(ArgumentError("`linmaxiter` must be positive, got $linmaxiter"))
     _check_differentiable(sys; given_independent)
     routed = _derivative_terms(sys)
+    _check_used(sys, routed, params)
     resolvents = IdDict{Any,Resolvent}()
     first = Dict{Symbol,Any}()
     boundary, linear_solves = Any[], Any[]
@@ -449,6 +520,22 @@ function _check_wrt(wrt, θ::NamedTuple)
                                             "are $(join(":" .* string.(keys(θ)), ", "))"))
     end
     return unique(Symbol[x for x in names])
+end
+
+# A parameter of `params` that no term of the tree (`routed`, augmented children's bare terms included) nor the
+# constant depends on: an `ArgumentError` when the system has a spec that does not declare it (a θ key the spec never
+# named), else one warning that its derivatives are zero (a declared parameter, for instance one `substitute` replaced
+# by a number, or a system built from a term list).
+function _check_used(sys::System, routed, params::Vector{Symbol})
+    for x in params
+        used = x in sys.constant.deps || any(t -> x in t.coeff.deps, Iterators.flatten(values(routed)))
+        used && continue
+        sys.spec !== nothing && !(x in sys.spec.parameters) &&
+            throw(ArgumentError("`wrt` names :$x, which nothing in this system depends on and which its spec does not " *
+                                "declare; the spec's parameters are $(join(":" .* string.(sys.spec.parameters), ", "))"))
+        @warn "nothing in this system depends on :$x; its derivatives are zero"
+    end
+    return nothing
 end
 
 # The tree may hold no node the pass cannot differentiate: a node whose phases followed a previous solution, or a
@@ -588,7 +675,7 @@ function _node_derivative(root_data, sys::System, node::Node)
             c isa MaterializedNode && push!(stack, (c, d === nothing ? nothing : d.children[a]))
         end
     end
-    throw(ArgumentError("node is not part of this system's tree"))
+    throw(ArgumentError("the node on modes $(modes(node)) is not part of this system's tree"))
 end
 
 function _first_data(d::Derivatives, x::Symbol)
@@ -646,6 +733,16 @@ function port(d::Derivatives, x::Symbol, key::AbstractVector{Tuple{Symbol,Port}}
     return nd === nothing ? zero(P) : nd.joint_ports[_sortkey!(collect(Tuple{Symbol,Port}, key))]
 end
 
+"""
+    port(d::Derivatives, x, kind::Symbol, mode::Symbol, node=root; k=0.0) -> Matrix
+
+The spec-form spelling `port(d, :E_J, :n, :varphi_1)` of the first derivative along `x` of a port, as
+`port(sys, kind, mode, node; k)`: `kind` is one of `:n, :n2, :phi, :phi2, :expiphi, :exp2pin`, and `k` the exponent
+coefficient of the exponential ports.
+"""
+port(d::Derivatives, x::Symbol, kind::Symbol, mode::Symbol, node::Node=d.sys.root.node; k::Real=0.0) =
+    port(d, x, mode, port_of_kind(kind, k), node)
+
 function _second_data(d::Derivatives, x::Symbol, λ::Symbol)
     key = _pairkey(x, λ)
     haskey(d.second, key) && return d.second[key]
@@ -699,3 +796,12 @@ function port(d::Derivatives, x::Symbol, λ::Symbol, key::AbstractVector{Tuple{S
     nd = _node_derivative(data, d.sys, node)
     return nd === nothing ? zero(P) : nd.joint_ports[_sortkey!(collect(Tuple{Symbol,Port}, key))]
 end
+
+"""
+    port(d::Derivatives, x, λ, kind::Symbol, mode::Symbol, node=root; k=0.0) -> Matrix
+
+The spec-form spelling `port(d, :E_J, :E_J, :n, :varphi_1)` of the second derivative along `(x, λ)` of a port, as
+`port(sys, kind, mode, node; k)`.
+"""
+port(d::Derivatives, x::Symbol, λ::Symbol, kind::Symbol, mode::Symbol, node::Node=d.sys.root.node; k::Real=0.0) =
+    port(d, x, λ, mode, port_of_kind(kind, k), node)

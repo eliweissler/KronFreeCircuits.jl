@@ -2,8 +2,9 @@ using Test, LinearAlgebra, SparseArrays, KronFreeCircuits
 
 include("helpers.jl")
 
-# Two tiers. The default runs the fast unit-level files (under a minute). KRONFREE_SLOW_TESTS=1 runs every file: also the
-# end-to-end, solver, catalogue and Born–Oppenheimer files, and last the published-reference reproductions.
+# Two tiers. The default runs the fast unit-level files (minutes, not seconds; docs/superpowers/STATUS.md records the
+# measured time). KRONFREE_SLOW_TESTS=1 runs every file: also the end-to-end, solver, catalogue and Born–Oppenheimer
+# files, and last the published-reference reproductions.
 # `Pkg.test(test_args=["test_bo.jl", ...])` runs only the named files, in either tier.
 const SLOW_FILES = ("test_apply.jl", "test_bo.jl", "test_catalogue.jl", "test_character.jl", "test_composite_slow.jl", "test_derivatives_iterative.jl",
                     "test_derivatives_kite.jl", "test_generated_specs.jl", "test_materialize.jl", "test_meanfield_kite.jl", "test_solvers.jl")

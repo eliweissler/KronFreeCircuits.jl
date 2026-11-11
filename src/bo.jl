@@ -50,7 +50,8 @@ function bo_surface(fast_root::Node, p::PromotedSpec, θ::NamedTuple, grid::Abst
     g = Vector{Float64}(grid)
     E = zeros(Float64, bands, length(g))
     for (j, x) in enumerate(g)
-        sys = materialize(fast_root, p.fast, merge(θ, NamedTuple{(p.parameter,)}((x,))))
+        # only the energies are read: no node retains its unkept vectors here
+        sys = materialize(fast_root, p.fast, merge(θ, NamedTuple{(p.parameter,)}((x,))); _retain=:never)
         e = energies(sys)
         length(e) >= bands ||
             throw(ArgumentError("bo_surface: bands = $bands, but the fast tree keeps only $(length(e)) states"))

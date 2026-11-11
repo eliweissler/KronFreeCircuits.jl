@@ -35,7 +35,9 @@ end
     # the augmented child was built at another value of a parameter that only a node below it uses: materialize does not
     # see that (it checks the child's own bare terms); the derivative pass must refuse
     θ1 = shifted(c.θ, :E_J1, 0.5)
-    @test_throws ArgumentError derivatives(quiet(() -> materialize(c.root, c.spec, θ1; augmented=[aug(c.θ)])); wrt=:g23)
+    stale = quiet(() -> materialize(c.root, c.spec, θ1; augmented=[aug(c.θ)]))           # materialize accepts it
+    @test_throws "the augmented child on modes" derivatives(stale; wrt=:g23)
+    @test_throws "E_J1" derivatives(stale; wrt=:g23)
 end
 
 @testset "second order through an augmented branch child beside a real sibling" begin

@@ -52,6 +52,18 @@ end
     d2 = derivatives(sys; wrt=(:g23, :n_g2), order=2, mixed=((:g23, :n_g2),))
     @test energies(d1, :n_g2, :g23) ≈ energies(d2, :n_g2, :g23) rtol=1e-10
     @test eigenvectors(d1, :g23, :n_g2) ≈ eigenvectors(d2, :n_g2, :g23) rtol=1e-9
+    # the two calls above compute the same pass: the pass itself with the roles of x and λ swapped agrees to round-off
+    K = KronFreeCircuits
+    routed = K._derivative_terms(sys); res = IdDict{Any,K.Resolvent}(); parts = (:coefficients, :ports, :energies)
+    lin = (; lintol=1e-10, linmaxiter=5000, log=nothing, truncate=false)
+    pass1(x) = K._first_order_pass(sys, routed, x, res; degenerate_tol=1e-9, parts, lin,
+                                   boundary=(; records=Any[], x, δx=nothing, r=0.1))
+    fx, fλ = pass1(:n_g2), pass1(:g23)
+    a = K._second_order_pass(sys, routed, :n_g2, :g23, fx, fλ, res; parts, records=Any[])
+    b = K._second_order_pass(sys, routed, :g23, :n_g2, fλ, fx, res; parts, records=Any[])
+    @test a.energies ≈ b.energies rtol=1e-12 atol=1e-12
+    @test a.vectors ≈ b.vectors rtol=1e-12 atol=1e-12
+    @test a.ports[(:varphi_1, nport())] ≈ b.ports[(:varphi_1, nport())] rtol=1e-12 atol=1e-12
 end
 
 @testset "a mixed derivative for dephasing; the two-parameter API" begin

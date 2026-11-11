@@ -11,6 +11,8 @@ function same_derivatives(ci, cd, x; kwargs...)
     end
     return di
 end
+# The iterative solvers run at LOBPCG(tol = 1e-11), Lanczos(tol = 1e-12) and ShiftInvert(tol = 1e-11): eigensolver
+# tolerances tightened for derivatives, as the plan's Decision 11 prescribes.
 tree(solver; kw...) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lowest(6), kw...)     # root dimension 144
 
 @testset "the linear-solve route equals the full-spectrum route" begin
@@ -64,6 +66,26 @@ end
         @test norm(eigenvectors(di, x, λ) - eigenvectors(dd, x, λ), Inf) <= 1e-5 * norm(eigenvectors(dd, x, λ), Inf)
         for p in (nport(), expiphi(1.0))
             @test norm(port(di, x, λ, :varphi_1, p) - port(dd, x, λ, :varphi_1, p), Inf) <= 1e-5 * norm(port(dd, x, λ, :varphi_1, p), Inf)
+        end
+    end
+end
+
+@testset "weak coupling, first and second order: a child-internal parameter's right-hand side lies almost inside the known states" begin
+    # the complement solve converges against the whole right-hand side ‖R_j‖ (the parent's computed states hold all but
+    # ‖Q R_j‖/‖R_j‖ ≈ 1e-4 … 1e-7 of it); the same tolerances as the testsets above
+    for periodic in (false, true), g in (0.03, 0.003, 3e-4)
+        di_sys = dc_solve(tree(LOBPCG(tol=1e-11); periodic, g)); dd_sys = dc_solve(tree(Dense(); periodic, g))
+        for x in (:E_J2, :E_C1, :g, :n_g1)
+            di = derivatives(di_sys; wrt=x, order=2); dd = derivatives(dd_sys; wrt=x, order=2)
+            @test all(s -> s.residual <= 1e-9, di.linear_solves)
+            @test energies(di, x) ≈ energies(dd, x) rtol=1e-8 atol=1e-9
+            @test norm(eigenvectors(di, x) - eigenvectors(dd, x), Inf) <= 1e-6 * norm(eigenvectors(dd, x), Inf)
+            @test energies(di, x, x) ≈ energies(dd, x, x) rtol=1e-6 atol=1e-8
+            @test norm(eigenvectors(di, x, x) - eigenvectors(dd, x, x), Inf) <= 1e-5 * norm(eigenvectors(dd, x, x), Inf)
+            for p in (nport(), expiphi(1.0))
+                @test norm(port(di, x, :varphi_1, p) - port(dd, x, :varphi_1, p), Inf) <= 1e-6 * norm(port(dd, x, :varphi_1, p), Inf)
+                @test norm(port(di, x, x, :varphi_1, p) - port(dd, x, x, :varphi_1, p), Inf) <= 1e-5 * norm(port(dd, x, x, :varphi_1, p), Inf)
+            end
         end
     end
 end

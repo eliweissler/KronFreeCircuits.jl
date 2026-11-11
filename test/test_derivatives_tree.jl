@@ -78,6 +78,31 @@ end
     @test_throws ArgumentError derivatives(sys; wrt=:g12, scale=(E_J1=0.1,))
     @test_throws ArgumentError derivatives(sys; wrt=:g12, scale=(g12=-1.0,))
     @test_throws ArgumentError derivatives(sys; wrt=:g12, r=0.0)
+    @test_throws "`degenerate_tol` must be nonnegative" derivatives(sys; wrt=:g12, degenerate_tol=-1e-9)
+    @test_throws "`lintol` must be positive" derivatives(sys; wrt=:g12, lintol=0.0)
+    @test_throws "`linmaxiter` must be positive" derivatives(sys; wrt=:g12, linmaxiter=0)
+    @test_throws "node on modes [:varphi_9]" energies(d, :g12, Node([:varphi_9 => ChargeBasis(2)]; solver=Dense()))
+    # the spec-form spelling of a port, at first and second order, as `port(sys, kind, mode, node; k)`
+    @test port(d, :g12, :n, :varphi_1) == port(d, :g12, :varphi_1, nport())
+    @test port(d, :g12, :n, :varphi_1, c.inner) == port(d, :g12, :varphi_1, nport(), c.inner)
+    d2 = derivatives(sys; wrt=(:g12, :E_J1), order=2, mixed=((:g12, :E_J1),))
+    @test port(d2, :g12, :E_J1, :n, :varphi_1) == port(d2, :g12, :E_J1, :varphi_1, nport())
+    @test port(d2, :E_J1, :E_J1, :n, :varphi_1, c.inner) == port(d2, :E_J1, :E_J1, :varphi_1, nport(), c.inner)
+    @test isempty(Test.detect_ambiguities(KronFreeCircuits))
+    # a parameter that nothing depends on: an error when the spec does not declare it (a θ key the spec never named, or a
+    # parameter `substitute` replaced by a number), else zeros with one warning
+    extra = dc_solve(c, merge(c.θ, (unused=1.0,)))
+    @test_throws "nothing in this system depends on and which its spec does not declare" derivatives(extra; wrt=:unused)
+    @test_throws ":E_J1, :E_J2, :E_J3, :g12, :g23, :n_g2" derivatives(extra; wrt=:unused)
+    sub = KronFreeCircuits.substitute(c.spec, (n_g2=0.09,))
+    ssub = quiet(() -> materialize(c.root, sub, c.θ))
+    @test_throws ":n_g2" derivatives(ssub; wrt=:n_g2)
+    declared = KronFreeCircuits.parse_spec(replace(chain3_json, "\"n_g2\"]" => "\"n_g2\", \"spare\"]"))
+    sdecl = quiet(() -> materialize(c.root, declared, merge(c.θ, (spare=1.0,))))
+    dz = @test_logs (:warn, "nothing in this system depends on :spare; its derivatives are zero") derivatives(sdecl; wrt=(:spare, :g12))
+    @test all(iszero, energies(dz, :spare)) && energies(dz, :g12) ≈ energies(d, :g12)
+    sterms = quiet(() -> materialize(c.root, circuit_terms(c.spec), merge(c.θ, (spare=1.0,)); constant=constant_term(c.spec)))
+    @test_logs (:warn, r"depends on :spare") derivatives(sterms; wrt=:spare)
     # a node whose phases followed a previous solution cannot be differentiated; the same node solved fresh can
     spec = load_spec(fixture("transmon.json")); θ(ng) = (E_J=30.0, E_C=1.2, n_g=ng)
     leaf = Node([:varphi_1 => ChargeBasis(30)]; solver=Dense(), keep=lowest(3), phase=:follow)
@@ -86,7 +111,7 @@ end
     @test all(isfinite, energies(derivatives(s0; wrt=:n_g), :n_g))
 end
 
-@testset "trees with stored-data children, and nodes without their complete spectrum" begin
+@testset "augmented and given-system children, and a node without its complete spectrum, are differentiated (an undeclared given system is refused)" begin
     # an augmented child is differentiated at its fixed stored basis (Task 10; test_derivatives_stored.jl checks values)
     c = dc_two_transmons(); terms = circuit_terms(c.spec); B = c.leaves[2]
     bareB = bare_child(c.root, terms, c.θ, B)

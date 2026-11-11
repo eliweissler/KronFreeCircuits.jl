@@ -14,6 +14,8 @@ _component(t::Tangent, name::Symbol) = _unzero(unthunk(getproperty(t, name)))
 _component(t::NamedTuple, name::Symbol) = _unzero(unthunk(get(t, name, ZeroTangent())))
 _unzero(x) = x === nothing ? ZeroTangent() : x
 _iszero(x) = x isa AbstractZero
+# A cotangent or tangent component that is zero: a structural zero, or numbers that are all zero.
+_allzero(x) = _iszero(x) || (x isa Number && iszero(x)) || (x isa AbstractArray && all(_allzero, x))
 
 # `Σ_i Ē_i ∂E_i/∂x + Σ_p Re Σ_{ij} conj(P̄_p[i, j]) ∂P_p[i, j]/∂x` for one parameter's derivatives `dy`.
 function _contract(Ē, P̄, dy)
@@ -37,9 +39,13 @@ function ChainRulesCore.rrule(::typeof(spectrum), root::Node, spec::Spec, θ::Na
     jacobian = Ref{Any}(nothing)            # the derivatives, formed on the pullback's first call
     function spectrum_pullback(ȳ)
         ȳ = unthunk(ȳ)
+        Ē, P̄ = _component(ȳ, :energies), _component(ȳ, :ports)
+        if _allzero(Ē) && (_iszero(P̄) || all(P -> _allzero(_unzero(unthunk(P))), P̄))
+            # a zero cotangent: zeros, without the derivative pass
+            return NoTangent(), NoTangent(), NoTangent(), Tangent{typeof(θ)}(; map(_ -> 0.0, θ)...)
+        end
         jacobian[] === nothing && (jacobian[] = KronFreeCircuits._spectrum_derivatives(sys, ports, derivative_options))
         J = jacobian[]
-        Ē, P̄ = _component(ȳ, :energies), _component(ȳ, :ports)
         θ̄ = map(x -> haskey(J, x) ? _contract(Ē, P̄, J[x]) : 0.0, NamedTuple{keys(θ)}(keys(θ)))
         return NoTangent(), NoTangent(), NoTangent(), Tangent{typeof(θ)}(; θ̄...)
     end
@@ -51,10 +57,15 @@ function ChainRulesCore.frule((_, _, _, Δθ), ::typeof(spectrum), root::Node, s
     KronFreeCircuits._check_spectrum_options(ports, derivative_options)
     sys = materialize(root, spec, θ)
     y = KronFreeCircuits._spectrum_output(sys, ports)
-    J = KronFreeCircuits._spectrum_derivatives(sys, ports, derivative_options)
-    Ė = zero(y.energies)
-    Ṗ = [zero(P) for P in y.ports]
     Δθ = unthunk(Δθ)
+    Ė = zero(y.energies)
+    if all(x -> _allzero(_component(Δθ, x)), keys(θ))
+        # a zero tangent: zeros, without the derivative pass
+        return y, Tangent{typeof(y)}(; energies=Ė, ports=[zero(P) for P in y.ports])
+    end
+    J = KronFreeCircuits._spectrum_derivatives(sys, ports, derivative_options)
+    # the tangent of a port has the promoted element type of the port and of its derivative
+    Ṗ = [zeros(promote_type(eltype(P), (eltype(dy.ports[p]) for dy in values(J))...), size(P)) for (p, P) in enumerate(y.ports)]
     for (x, dy) in J
         δ = _component(Δθ, x)
         _iszero(δ) && continue

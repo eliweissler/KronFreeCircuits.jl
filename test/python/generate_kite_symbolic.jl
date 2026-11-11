@@ -1,6 +1,7 @@
 # Generator of test/fixtures/kite/optimum_symbolic.json: the KITE at the paper's optimum frame with the flux offset
 # `delta`, the offset charge `n_g1` and the junction energy `E_J` left symbolic, for the derivative tests of
 # test/test_derivatives_kite.jl.
+# The committed fixture was generated with circuit-quantization at commit c8c8714 (branch to-spec-zero-tolerance).
 # A generator, not a test file: test/python/runtests.jl does not include it.
 #
 # Run it with the interpreter that has circuit-quantization installed, from the repository root:
@@ -11,10 +12,13 @@
 using KronFreeCircuits, PythonCall, LinearAlgebra
 include("kite.jl")
 res, θ, frames = kite()
+# The KITE's parameters other than E_J, and the optimum frame, as test/python/kite.jl defines them (ported from
+# circuit-quantization's examples/product_state_demo.py and examples/hierarchical_kite.py).
 spec = Spec(res; frame=frames.optimum, subs=(E_CJ=4.82, E_CS=0.072, E_L=1.27, epsilon=0.03))
 save_spec(normpath(joinpath(@__DIR__, "..", "fixtures", "kite", "optimum_symbolic.json")), spec)
 println("parameters: ", spec.parameters)
 # The four lowest levels on the tree of test/test_derivatives_kite.jl at a generic point, to be pinned in that file.
+# The bases are the mean-field reference's on the optimum frame (test/fixtures/kite/meanfield_reference.json, `optimum.grid`).
 bases = [:varphi_1 => ChargeBasis(16), :varphi_2 => PhaseGrid(-18.915907192616967, 18.915907192616967, 120; order=8),
          :varphi_3 => PhaseGrid(-17.714011073078225, 17.714011073078225, 120; order=8)]
 root = Node([Node([m => b]; solver=Dense(), keep=lowest(12)) for (m, b) in bases]; solver=Dense(), compute=6, keep=lowest(4))

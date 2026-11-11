@@ -64,6 +64,10 @@ end
     θ = (a=1.0, b=4.0, c=0.8, E_Cf=1.0, E_Cs=0.5)
     shifted = IdDict{Node,Expectations}(F => pinned_expectations(child_keys(root, terms, F), Dict(:f => 0.4)))
     ms = mean_field_child(root, terms, θ, S, bare_child(root, terms, θ, S), shifted)
+    # re-solved inside the self-consistent loop and never differentiated: no unkept vectors are retained, although S is a
+    # compute-limited Dense node that would retain its whole spectrum (retain = :auto)
+    @test ms.solved.retained.vectors === nothing && !ms.solved.retained.complete
+    @test bare_child(root, terms, θ, S).retained.complete                       # the bare solve keeps the node's setting
     @test ms.solved.energies[1] ≈ 0.5 * sqrt(8 * 0.5 * 1.0) - (0.8 * 0.4)^2 / (2 * 1.0) atol=1e-6   # ½ω − (c φ_f)²/2a
     @test ms.expectations[[(:s, phiport())]] ≈ -0.8 * 0.4 / 1.0 atol=1e-6
     @test ms.bare_energy ≈ ms.solved.energies[1] - 0.8 * 0.4 * real(ms.expectations[[(:s, phiport())]]) atol=1e-9

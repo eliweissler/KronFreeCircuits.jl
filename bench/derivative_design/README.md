@@ -15,6 +15,7 @@ The project depends on this package by path (`[sources]`), on Optim, Zygote, Lin
 No `Manifest.toml` is committed (`Manifest*.toml` is ignored by git); the run below resolved Optim 2.3.2 and Zygote 0.7.16.
 The script writes no files and has no options: everything it reports goes to standard output, and the full output of the recorded run is copied at the end of this file.
 It sets one BLAS thread and does not use the GPU.
+The bench is not part of any test tier: neither `Pkg.test()` (with or without `KRONFREE_SLOW_TESTS=1`) nor the Python, rules or device tiers run it.
 
 ## The problem
 

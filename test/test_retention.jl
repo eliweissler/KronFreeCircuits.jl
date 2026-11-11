@@ -1,5 +1,5 @@
 using Test, LinearAlgebra, KronFreeCircuits
-using KronFreeCircuits: Retained, GivenSystem, Term, Factor, Coefficient, Port, bare_child, augment, UnionReport
+using KronFreeCircuits: Retained, GivenSystem, Term, Factor, Coefficient, Port
 
 @testset "retention of computed pairs" begin
     spec = load_spec(fixture("transmon.json")); θ = (E_J=30.0, E_C=1.2, n_g=0.25)
@@ -21,6 +21,18 @@ using KronFreeCircuits: Retained, GivenSystem, Term, Factor, Coefficient, Port, 
     nv = materialize(Node([b]; solver=Dense(), compute=10, keep=lowest(4), retain=:never), spec, θ).root.retained
     @test nv.vectors === nothing && !nv.complete && nv.unkept == 5:10 && isapprox(nv.energies, full.energies[1:10]; atol=1e-10)
     @test_throws ArgumentError Node([b]; retain=:sometimes)
+    # retention changes what is stored beside the kept states, not the kept states: the full decomposition of a retaining
+    # compute-limited Dense node gives the same kept energies, vectors (with their fixed phases) and ports
+    # (measured when the final review was written: at most 4e-13)
+    twin(retain) = materialize(Node([b]; solver=Dense(), compute=10, keep=lowest(4), retain,
+                                    ports=[(:varphi_1, nport()), (:varphi_1, expiphi(1.0))]), spec, θ)
+    sa, sn = twin(:auto), twin(:never)
+    @test sa.root.retained.complete && !sn.root.retained.complete
+    @test energies(sa) ≈ energies(sn) atol=1e-12
+    @test eigenvectors(sa) ≈ eigenvectors(sn) atol=1e-12
+    for p in (nport(), expiphi(1.0))
+        @test port(sa, :varphi_1, p) ≈ port(sn, :varphi_1, p) atol=1e-12
+    end
     # a Dense node above 1000 states retains only when asked
     fl = load_spec(fixture("fluxonium.json")); θf = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=2.0)
     grid = :varphi_1 => PhaseGrid(-10π, 10π, 1201; order=8)

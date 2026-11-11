@@ -21,8 +21,12 @@ end
 
 # Whether `node`, solved by the resolved `solver` on a product space of dimension `N`, retains its unkept vectors.
 const _RETAIN_DENSE_MAX = 1000
-_retains(node::Node, solver::Solver, N::Int) =
-    node.retain === :always || (node.retain === :auto && !(solver isa Dense && N > _RETAIN_DENSE_MAX))
+# `retain` overrides the node's own setting (`nothing`: the node's): the internal solves whose results are never
+# differentiated (inside the mean-field loop, `bo_surface`) pass `:never`.
+function _retains(node::Node, solver::Solver, N::Int, retain::Union{Nothing,Symbol}=nothing)
+    r = retain === nothing ? node.retain : retain
+    return r === :always || (r === :auto && !(solver isa Dense && N > _RETAIN_DENSE_MAX))
+end
 
 # The `Retained` of a node that stores only its kept states: their `energies`, no unkept state, complete when the kept
 # `vectors` span the product space of dimensions `dims`.
@@ -176,11 +180,12 @@ materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficie
     _materialize_terms(root, terms, θ, constant, previous, modetypes; augmented)
 
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
-                     extra_terms::Vector{Term}=Term[], augmented::AbstractVector=AugmentedChild[])
+                     extra_terms::Vector{Term}=Term[], augmented::AbstractVector=AugmentedChild[],
+                     _retain::Union{Nothing,Symbol}=nothing)
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     _check_bases(root, modetypes)
     sys = _materialize_terms(root, vcat(circuit_terms(spec), extra_terms), θ, constant_term(spec), previous, modetypes;
-                             augmented)
+                             augmented, retain=_retain)
     return System(sys.root, spec, sys.terms, sys.θ, sys.constant, sys.augmented)
 end
 
@@ -188,13 +193,14 @@ end
 # The `augmented` children (`AugmentedChild`) reach `_materialize` as their solved nodes by node, and they and their
 # ancestors are marked complex after `classify` (`_augmented_nodes!`).
 function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, previous,
-                            modetypes::Dict{Symbol,Symbol}; augmented::AbstractVector=AugmentedChild[])
+                            modetypes::Dict{Symbol,Symbol}; augmented::AbstractVector=AugmentedChild[],
+                            retain::Union{Nothing,Symbol}=nothing)
     parents = isempty(augmented) ? nothing : _check_augmented(root, augmented, previous, θ)
     routed, realnodes, needed, needed_joint = _plan(root, terms, θ, constant, modetypes)
     aug = parents === nothing ? nothing : _augmented_nodes!(realnodes, parents, augmented, needed, needed_joint)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes; augmented=aug)
+    mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes; augmented=aug, retain)
     return System(mroot, nothing, terms, θ, constant, collect(Any, augmented))
 end
 
@@ -664,7 +670,8 @@ _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dim
 # constant, and its previous solution at the same tree position), then this node on them (`_solve_node`).
 # A node child found in `augmented` (node => solved node, from `_augmented_nodes!`) is taken from there, not solved.
 function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, constant, prev, realnodes;
-                      augmented::Union{Nothing,IdDict{Node,MaterializedNode}}=nothing)
+                      augmented::Union{Nothing,IdDict{Node,MaterializedNode}}=nothing,
+                      retain::Union{Nothing,Symbol}=nothing)
     children = Any[]
     for (i, ch) in enumerate(node.children)
         if ch isa GivenSystem
@@ -674,11 +681,12 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
         elseif augmented !== nothing && haskey(augmented, ch)
             push!(children, augmented[ch])
         else
-            push!(children, _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes; augmented))
+            push!(children, _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes;
+                                         augmented, retain))
         end
     end
     return _solve_node(node, children, routed[node], θ; constant, ports=needed[node], joint_ports=needed_joint[node],
-                       real=realnodes[node], prev)
+                       real=realnodes[node], prev, retain)
 end
 
 # The previous kept vectors in the current product basis (`_transport_previous`), so that the follow rule and the
@@ -702,7 +710,7 @@ end
 # `prev` is the node's previous solution (same tree position) or `nothing`, as in `materialize`.
 function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ::NamedTuple; constant::Number=0.0,
                      ports::Vector{Tuple{Symbol,Port}}=Tuple{Symbol,Port}[], joint_ports::Vector{_FactorKey}=_FactorKey[],
-                     real::Bool=false, prev=nothing)
+                     real::Bool=false, prev=nothing, retain::Union{Nothing,Symbol}=nothing)
     dims = Int[_childdim(c) for c in children]
     # The LOBPCG initial block stays raw; the selection and the phase compare transported vectors.
     reference = _previous_reference(node, prev, children, dims)
@@ -722,8 +730,11 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     # A retaining Dense node computes its whole spectrum, and its selection sees the lowest `m` pairs as before.
     m = _compute_count(node, dims)
     N = prod(dims)
-    retain = _retains(node, solver, N)
+    retain = _retains(node, solver, N, retain)
     Eall, Vall = retain && solver isa Dense && m < N ? solve(Dense(), H, 0) : _solve(solver, H, m, prev, dims)
+    size(Vall, 2) >= m && length(Eall) >= m ||
+        throw(ArgumentError("the solver $(typeof(solver)) of the node on modes $(modes(node)) returned " *
+                            "$(min(size(Vall, 2), length(Eall))) eigenpairs, fewer than the $m it was asked to compute"))
     E, V = size(Vall, 2) == m ? (Eall, Vall) : (Eall[1:m], Vall[:, 1:m])
 
     # (5)-(7) Ports the selection rule inspects, on all computed vectors; select; slice.
