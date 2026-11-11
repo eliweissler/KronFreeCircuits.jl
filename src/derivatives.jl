@@ -56,7 +56,7 @@ function _port_derivatives(mn::MaterializedNode, V1::AbstractMatrix, dx::Vector{
 end
 
 """
-    _node_first_order(mn, H1, res, dx) -> NodeDerivative
+    _node_first_order(mn, H1, res, dx; boundary=nothing) -> NodeDerivative
 
 The first derivatives of the node `mn` along one parameter, from `H1 = ∂H/∂x` (a `KronFreeOperator` on any storage),
 the node's resolvent `res` and its children's derivative data `dx` (as given to `_derivative_operator`).
@@ -65,8 +65,10 @@ States by `∂ψ_j = w_j + i a_j ψ_j`, with `w_j = Σ_{l≠j} ψ_l ⟨ψ_l|H1|�
 the peak amplitude `ℓ_j · ψ_j` real (zero on a real node).
 A kept state degenerate with a state it couples to has `NaN` derivatives, with one warning per call.
 The result's `children` is `dx` itself.
+With `boundary = (; records, x, δx, r)` the selection-boundary test of `_selection_boundary!` is run for the parameter `x` and its records pushed to `records`.
 """
-function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::Resolvent, dx::Vector{Any}) where {T}
+function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::Resolvent, dx::Vector{Any};
+                           boundary=nothing) where {T}
     V = mn.vectors
     E = mn.energies
     n = length(E)
@@ -79,6 +81,8 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
         @warn "Node on modes $(modes(mn.node)): kept states $bad are degenerate with states they couple to " *
               "($(join(("$j with $(clashes[j])" for j in bad), ", ")); 0 is an unkept state); their derivatives are NaN"
     end
+    boundary === nothing ||
+        _selection_boundary!(boundary.records, mn, res, R, clashes, boundary.x; δx=boundary.δx, r=boundary.r)
     amps = _peak_amps(mn)
     L1 = nothing
     for (k, d) in enumerate(dx)
@@ -103,6 +107,47 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
     return NodeDerivative{T}(dE, V1, gauge, ports, joint, Matrix{T}(A1), dx)
 end
 
+"""
+    _selection_boundary!(records, mn, res, R, clashes, x; δx, r) -> records
+
+The selection-boundary test (design §3) of the node `mn` along the parameter `x`, over each kept state `i` and each other known state `l` of its resolvent `res`, with `R = (∂H/∂x) V` and `clashes` from `_apply_resolvent`.
+The coupling `|⟨ψ_l|R[:, i]⟩|` of a pair is zero by the per-column rule of `_apply_resolvent`, `≤ 1e-10 ‖R[:, i]‖`.
+With a scale `δx` the pair is recorded when its coupling is not zero and `coupling · δx > r |E_i − E_l|`; without one (`δx === nothing`) when `|E_i − E_l| ≤ 1e-6 max(|E_i − E_1|, |E_l − E_1|)`, with `E_1` the lowest known energy, and its `coupling` is `NaN`.
+In either case a clash of column `i` with an unkept state (a `0` in `clashes[i]`) is recorded with its coupling, the partner recomputed by the same rule; it replaces a plain record of the same pair.
+Each record is `(; node, parameter, kept, unkept, detuning, coupling)`, with `kept` a column of the node's vectors and `unkept` the state's index among the node's computed pairs; one `@warn` reports them all.
+"""
+function _selection_boundary!(records::Vector, mn::MaterializedNode, res::Resolvent, R::AbstractMatrix,
+                              clashes::Vector{Vector{Int}}, x::Symbol; δx, r)
+    E, Eo = res.energies, res.other_energies
+    isempty(Eo) && return records
+    Co = res.other_vectors' * R                 # as in `_apply_resolvent`
+    E1 = min(minimum(E), minimum(Eo))
+    found = NamedTuple[]
+    for i in axes(R, 2)
+        zero_overlap = 1e-10 * norm(view(R, :, i))
+        unkept_clash = 0 in clashes[i]
+        for l in eachindex(Eo)
+            detuning = abs(E[i] - Eo[l])
+            coupling = abs(Co[l, i])
+            coupled = coupling > zero_overlap
+            clash = unkept_clash && detuning <= res.degenerate_tol && coupled
+            plain = δx === nothing ? detuning <= 1e-6 * max(abs(E[i] - E1), abs(Eo[l] - E1)) :
+                                     coupled && coupling * δx > r * detuning
+            (clash || plain) || continue
+            push!(found, (; node=mn.node, parameter=x, kept=i, unkept=res.other_indices[l], detuning,
+                          coupling=clash || δx !== nothing ? Float64(coupling) : NaN))
+        end
+    end
+    isempty(found) && return records
+    finite = [f.coupling for f in found if !isnan(f.coupling)]
+    @warn "selection boundary: node on modes $(modes(mn.node)), parameter :$x: kept states close to unkept computed " *
+          "states, (kept, unkept) = $(join(("($(f.kept), $(f.unkept))" for f in found), ", ")); smallest detuning " *
+          "$(minimum(f.detuning for f in found)) GHz, largest coupling $(isempty(finite) ? NaN : maximum(finite)); " *
+          "the fixed-selection derivative is fragile there"
+    append!(records, found)
+    return records
+end
+
 # The pass through the whole tree, and the API.
 
 _pairkey(x::Symbol, λ::Symbol) = x <= λ ? (x, λ) : (λ, x)
@@ -116,8 +161,12 @@ The derivatives of a materialized tree, returned by [`derivatives`](@ref) and re
 `mixed` the mixed pairs of second order.
 `first[x]` is the root's first-order derivative data along `x` (a `NodeDerivative`, the children's nested in it), or
 `nothing` when nothing in the tree depends on `x`.
-`second`, `blocks`, `boundary` and `linear_solves` hold second-order data, near-degenerate blocks, selection-boundary
-records and linear-solve records; this version of the pass leaves them empty.
+`second` and `blocks` hold second-order data and near-degenerate blocks; this version of the pass leaves them empty.
+`boundary` holds the selection-boundary records `(; node, parameter, kept, unkept, detuning, coupling)`: a kept state
+(`kept`, a column of the node's vectors) close to an unkept computed state (`unkept`, its index among the node's
+computed pairs), with `coupling` `NaN` when it was not computed.
+`linear_solves` holds one record `(; modes, columns, iterations, residual)` per linear solve on the complement of a
+node's computed states, with `residual` the largest relative true residual of its columns.
 """
 struct Derivatives
     sys::System
@@ -153,11 +202,19 @@ Keywords:
 - `scale`: a `NamedTuple` of typical displacements `δx` of parameters in `wrt`, positive and finite, for the
   near-degeneracy test `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx > r |E_i − E_l|`.
 - `r`: the ratio of that test, positive.
-  This version validates `scale` and `r` but does not yet report near-degenerate blocks.
+  This version reports no near-degenerate blocks between kept states yet.
+  It does run the selection-boundary test at every visited node: a kept state close to an unkept computed state (by
+  the test above when `scale` has an entry for the parameter, else when their detuning is at most `1e-6` times their
+  distance from the node's lowest computed energy), or degenerate with one it couples to, is recorded in `boundary`
+  with one warning per node and parameter, since the derivative at a fixed selection is fragile there.
+  States beyond a node's `compute` were never computed and cannot be tested.
 - `degenerate_tol`: the detuning (GHz) at or below which two states are exactly degenerate; a kept state degenerate
   with a state it couples to has `NaN` derivatives.
-- `lintol`, `linmaxiter`: the tolerance and iteration limit of the linear solve at a node without its complete
-  spectrum (an iterative node), which is not available yet: such a node is an `ArgumentError`.
+- `lintol`, `linmaxiter`: the relative tolerance and iteration limit of the linear solve at a node without its
+  complete spectrum (an iterative node): the part of each state derivative orthogonal to the node's computed states
+  solves `(E_j − H) w_j = (∂H/∂x) ψ_j` on their orthogonal complement by a preconditioned conjugate gradient, whose true residual
+  is checked and recorded in `linear_solves`; a solve that misses the tolerance is an error.
+  A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones.
 - `given_independent`: declares the `GivenSystem` children independent of the parameters; a tree with a
   `GivenSystem` child is an `ArgumentError` in this version whatever its value, as is a tree with an augmented child.
 
@@ -165,7 +222,7 @@ A node whose phases followed a previous solution (`phase = :follow` with `previo
 """
 function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple=(;), r::Real=0.1,
                      degenerate_tol::Real=1e-9, lintol::Real=1e-10, linmaxiter::Int=5000,
-                     given_independent::Bool=false, _parts=(:coefficients, :ports, :energies))
+                     given_independent::Bool=false, _parts=(:coefficients, :ports, :energies), _truncate::Bool=false)
     params = _check_wrt(wrt, sys.θ)
     order == 1 || throw(ArgumentError("order = $order is not available; only first derivatives (order = 1) are"))
     isempty(mixed) || throw(ArgumentError("`mixed` pairs need order = 2, which is not available"))
@@ -179,11 +236,14 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
     routed = route(sys.root.node, sys.terms)
     resolvents = IdDict{Any,Resolvent}()
     first = Dict{Symbol,Any}()
+    boundary, linear_solves = Any[], Any[]
+    lin = (; lintol, linmaxiter, log=linear_solves, truncate=_truncate)
     for x in params
-        first[x] = _first_order_pass(sys, routed, x, resolvents; degenerate_tol, parts=_parts)
+        bd = (; records=boundary, x, δx=get(scale, x, nothing), r)
+        first[x] = _first_order_pass(sys, routed, x, resolvents; degenerate_tol, parts=_parts, lin, boundary=bd)
     end
     return Derivatives(sys, params, order, Tuple{Symbol,Symbol}[], first, Dict{Tuple{Symbol,Symbol},Any}(), Any[],
-                       Any[], Any[])
+                       boundary, linear_solves)
 end
 
 # `wrt` as a vector of distinct parameter names of `θ`, in order.
@@ -220,8 +280,11 @@ function _check_differentiable(sys::System)
 end
 
 # The first-order pass along `x`: every node whose subtree depends on `x`, children first; the root's `NodeDerivative`,
-# or `nothing`.  `resolvents` caches one `Resolvent` per node across parameters.
-function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{Any,Resolvent}; degenerate_tol, parts)
+# or `nothing`.  `resolvents` caches one `Resolvent` per node across parameters; `lin` holds the keywords of the linear
+# solve given to `_resolvent`, and `boundary` those of the selection-boundary test (`_node_first_order`).
+# At a node with a linear solve, `∂H/∂x` is built on the storage of the node's forward operator.
+function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{Any,Resolvent}; degenerate_tol, parts,
+                           lin, boundary)
     root = sys.root.node
     depends = IdDict{Any,Bool}()
     function dependent(mn::MaterializedNode)
@@ -233,18 +296,21 @@ function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{An
         dependent(mn) || return nothing
         dx = Any[c isa MaterializedNode ? visit(c) : nothing for c in mn.children]
         constant = mn.node === root ? sys.constant : Coefficient(0)
-        H1 = _derivative_operator(mn, routed[mn.node], sys.θ, x, dx; constant, parts)
-        res = get!(() -> _node_resolvent(sys, mn; degenerate_tol), resolvents, mn.node)
-        return _node_first_order(mn, H1, res, dx)
+        res = get!(() -> _node_resolvent(sys, mn; degenerate_tol, lin...), resolvents, mn.node)
+        on = res.complement === nothing ? Array : res.complement.H.on
+        H1 = _derivative_operator(mn, routed[mn.node], sys.θ, x, dx; constant, parts, on)
+        return _node_first_order(mn, H1, res, dx; boundary)
     end
     return visit(sys.root)
 end
 
-# The resolvent of `mn`, with its forward operator rebuilt only when `_resolvent` needs it (a Dense node that did not
-# retain its computed pairs).
-function _node_resolvent(sys::System, mn::MaterializedNode; degenerate_tol)
-    needs_H = !mn.retained.complete && _resolve_node_solver(mn.node, mn.children) isa Dense
-    return _resolvent(mn, needs_H ? operator(sys, mn.node) : nothing; degenerate_tol)
+# The resolvent of `mn`, with its forward operator rebuilt only when `_resolvent` needs it: a node without its complete
+# spectrum that does not keep every state of its space (a Dense one to re-diagonalize, any other for its linear solve,
+# unless `truncate` leaves the solve out).
+function _node_resolvent(sys::System, mn::MaterializedNode; degenerate_tol, lintol, linmaxiter, log, truncate)
+    dense = _resolve_node_solver(mn.node, mn.children) isa Dense
+    needs_H = !mn.retained.complete && size(mn.vectors, 2) < prod(mn.dims) && (dense || !truncate)
+    return _resolvent(mn, needs_H ? operator(sys, mn.node) : nothing; degenerate_tol, lintol, linmaxiter, log, truncate)
 end
 
 """

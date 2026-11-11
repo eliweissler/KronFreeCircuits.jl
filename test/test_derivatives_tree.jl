@@ -100,7 +100,10 @@ end
     top = Node([ga, gb]; solver=Dense(), keep=lowest(6))
     sg = materialize(top, [Term(Coefficient("g", [:g]), [Factor(:a, Port(:x, 0)), Factor(:b, Port(:x, 0))])], (g=0.1,))
     @test_throws "GivenSystem :a" derivatives(sg; wrt=:g)
-    # a node without its complete spectrum: the sum over states cannot be completed without a linear solve (Task 6)
+    # a node without its complete spectrum is no longer refused: the sum over states is completed by a linear solve on
+    # the complement of its computed states (Task 6), recorded with its true residual
     si = dc_solve(dc_two_transmons(solver=Lanczos(tol=1e-12), compute=8))
-    @test_throws "linear solve" derivatives(si; wrt=:g)
+    di = derivatives(si; wrt=:g)
+    @test !isempty(di.linear_solves) && all(s -> s.residual <= 1e-9, di.linear_solves)
+    @test energies(di, :g) ≈ energies(derivatives(dc_solve(dc_two_transmons()); wrt=:g), :g) rtol=1e-8 atol=1e-9
 end
