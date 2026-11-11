@@ -7,7 +7,7 @@ using KronFreeCircuits: Coefficient, differentiate, phase_factor, iszero_expr, c
              "(x*y)^(x+1)", "1//2 * x", "sqrt(x)", "exp(x*y)", "log(x)", "cos(x)", "sin(2*x)", "tan(x/2)", "cosh(x)",
              "sinh(x)", "tanh(x)", "abs(x - 1)", "abs(x - 3)", "cis(x)", "cispi(x)", "conj(cis(x) * y)", "real(cis(x)*x)",
              "imag(cis(x)*x)", "abs(cis(x) * (x + 2))", "sign(y) * x", "sign(x - 3) * x", "exp(im * x) * pi + ℯ^x",
-             "sqrt(cis(x))", "log(cis(x) + 2)", "x .* y .+ x .^ 2"]
+             "sqrt(cis(x))", "log(cis(x) + 2)", "x .* y .+ x .^ 2", "cos(π * x) * y", "x + y + x"]
     for src in cases, θ in [(x=0.7, y=1.3), (x=1.9, y=0.6), (x=1.2, y=2.4)], v in P
         c = Coefficient(src, P)
         d1 = differentiate(c, v)
@@ -38,6 +38,25 @@ end
     # sign of a possibly complex argument that depends on x
     @test_throws ArgumentError differentiate(Coefficient("sign(cis(x)) * x", [:x, :y]), :x)
     @test differentiate(Coefficient("sign(cis(y)) * x", [:x, :y]), :x)((x=1.0, y=0.2)) ≈ sign(cis(0.2))
+end
+
+@testset "differentiate: constant folding never changes a value" begin
+    θ = (x=1.3, y=0.2)
+    tiny = Coefficient("x / 1.0e-170", [:x, :y])                                   # 1.0e-170^2 underflows to 0.0
+    @test iszero_expr(differentiate(tiny, :y))
+    @test differentiate(tiny, :x)(θ) ≈ 1e170
+    wrap = Coefficient("x / 4294967296", [:x, :y])                                 # 4294967296^2 wraps to 0 in Int64
+    @test differentiate(wrap, :x)(θ) ≈ 1 / 4294967296
+    @test iszero_expr(differentiate(wrap, :y))
+    big_product = Coefficient("x * 4294967296 * 4294967296", [:x, :y])             # evaluates in Float64 as written
+    @test big_product(θ) ≈ 1.3 * 2.0^64
+    d = differentiate(big_product, :x)
+    @test d(θ) ≈ 1.8446744073709552e19
+    check_fd(d(θ), fd_derivative(t -> big_product(t), θ, :x; h=2e-3); rtol=1e-8, atol=1e-10)
+    big_power = Coefficient("x * 4294967296^2", [:x, :y])
+    check_fd(differentiate(big_power, :x)(θ), fd_derivative(t -> big_power(t), θ, :x; h=2e-3); rtol=1e-8, atol=1e-10)
+    @test_throws ArgumentError KronFreeCircuits._diff(Expr(:ref, :x, 1), :x)        # an unexpected node names itself
+    @test_throws ArgumentError KronFreeCircuits._diff("x", :x)
 end
 
 @testset "differentiate: every coefficient of the JSON fixtures" begin

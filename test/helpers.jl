@@ -428,8 +428,8 @@ end
 """
     fd_derivative(f, θ, x; h) -> (value, err)
 
-The first derivative of `f(θ)` (a number or an array) in `x`, from the central difference `(f(θ + s) − f(θ − s)) / 2s`
-Richardson-extrapolated over the steps `h`, `h/2`, `h/4`: `value = R(h/2)`, `err = ‖R(h) − R(h/2)‖∞`.
+The first derivative of `f(θ)` (a number or an array) in `x`, from the central difference `(f(θ + s) − f(θ − s)) / 2s`.
+It is Richardson-extrapolated over the steps `h`, `h/2`, `h/4`: `value = R(h/2)`, `err = ‖R(h) − R(h/2)‖∞`.
 """
 fd_derivative(f, θ::NamedTuple, x::Symbol; h::Real) =
     _richardson(s -> (f(shifted(θ, x, s)) .- f(shifted(θ, x, -s))) ./ (2s), h)
@@ -447,8 +447,8 @@ end
 """
     fd_mixed(f, θ, x, λ; hx, hλ) -> (value, err)
 
-The mixed derivative of `f(θ)` in `x` and `λ`, from `(f(+,+) − f(+,−) − f(−,+) + f(−,−)) / (4 s² hx hλ)` at the
-displacements `±s·hx` of `x` and `±s·hλ` of `λ`, extrapolated over `s = 1, 1/2, 1/4`: `value = R(1/2)`, `err = ‖R(1) − R(1/2)‖∞`.
+The mixed derivative of `f(θ)` in `x` and `λ`, from `(f(+,+) − f(+,−) − f(−,+) + f(−,−)) / (4 s² hx hλ)` at the displacements `±s·hx` of `x` and `±s·hλ` of `λ`.
+It is extrapolated over `s = 1, 1/2, 1/4`: `value = R(1/2)`, `err = ‖R(1) − R(1/2)‖∞`.
 """
 function fd_mixed(f, θ::NamedTuple, x::Symbol, λ::Symbol; hx::Real, hλ::Real)
     at(a, b) = f(shifted(shifted(θ, x, a), λ, b))
@@ -463,8 +463,7 @@ fd_pair(f, θ, x::Symbol, λ::Symbol; hx::Real, hλ::Real = hx) =
 """
     check_fd(analytic, fd; rtol=1e-6, atol=0)
 
-Two `@test`s against the finite difference `fd = (value, err)`: `err ≤ rtol·‖value‖∞ + atol` (the difference is trustworthy)
-and `‖analytic − value‖∞ ≤ rtol·‖value‖∞ + atol`, with `‖·‖∞` the largest absolute element.
+Two `@test`s against the finite difference `fd = (value, err)`: `err ≤ rtol·‖value‖∞ + atol` (the difference is trustworthy) and `‖analytic − value‖∞ ≤ rtol·‖value‖∞ + atol`, with `‖·‖∞` the largest absolute element.
 """
 function check_fd(analytic, fd::Tuple; rtol::Real = 1e-6, atol::Real = 0.0)
     value, err = fd
