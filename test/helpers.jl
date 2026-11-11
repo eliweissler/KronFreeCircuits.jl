@@ -590,3 +590,17 @@ function _fd_child(at, c, child, fd)
     return K.NodeDerivative{eltype(m.vectors)}(fd(θ -> K.materialized(at(θ), child).energies), zero(m.vectors), zeros(length(m.kept)),
                                                ports, joint, zero(m.peak_amplitudes), Any[nothing for _ in m.children])
 end
+
+# What the per-node rules need at the root of a one-node system: the node, "no child data", its terms, its resolvent.
+function node_setup(sys)
+    K = KronFreeCircuits
+    mn = sys.root
+    res = K._resolvent(mn, mn.retained.complete ? nothing : K.operator(sys))
+    return (; mn, none=Any[nothing for _ in mn.children], terms=K.route(mn.node, sys.terms)[mn.node], res)
+end
+# The first-order rule on a one-node system.
+function node_first_order(sys, x::Symbol; setup=node_setup(sys))
+    K = KronFreeCircuits
+    H1 = K._derivative_operator(setup.mn, setup.terms, sys.θ, x, setup.none; constant=sys.constant)
+    return K._node_first_order(setup.mn, H1, setup.res, setup.none)
+end
