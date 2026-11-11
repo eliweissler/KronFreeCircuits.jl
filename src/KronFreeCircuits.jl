@@ -28,7 +28,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
        MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
        BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented, mean_field_augment,
-       suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks, NearDegenerateBlock, block_levels
+       suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks, NearDegenerateBlock, block_levels, spectrum
 
 include("parameters.jl")
 include("spec.jl")
@@ -56,6 +56,7 @@ include("derivoperator.jl")
 include("resolvent.jl")
 include("derivatives.jl")
 include("derivblocks.jl")
+include("spectrum.jl")
 include("bo.jl")
 include("dressed.jl")
 include("pyinterface.jl")
