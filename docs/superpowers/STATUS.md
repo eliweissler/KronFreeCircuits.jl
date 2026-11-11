@@ -189,6 +189,7 @@ The slow tier passed in 13m11s; its only warnings are the 20 `fix_phases!` ones,
 The Python tier passed 336 of 336 in 1m30s.
 The rules tier passed (9, 9 and 12 tests in its three testsets) in 52 s.
 The device tier gave 313 passed and 13 errored: the 13 errors are the known complex-`LOBPCG` testsets of `test/cuda/test_device.jl` (lines 61, 252, 258, 280, 313, 394, 435 to 437, 522 and 524 to 526), and `test/cuda/test_derivatives_device.jl` passed 12 of 12.
+After a reboot of the machine on 2026-11-11 the cuBLAS fault was gone, and the device tier, rerun on the same code with the GPU otherwise idle, passed 469 of 469 in 2m24s, with no errors: the complex-`LOBPCG` testsets pass and `test/cuda/test_derivatives_device.jl` passes 12 of 12.
 
 ## Where things stand
 
@@ -267,6 +268,8 @@ Proposed by Eli (2026-10-20), not yet designed:
 - Whether an augmented child's union basis should ever move with the parameters (today it is held fixed, so the derivative is that of the projected problem).
 - Whether followed sweeps (`phase = :follow` with `previous`) need differentiating; today they are refused.
 - The device fault: reboot or reset the GPU and rerun a 2×2 `CUBLAS.trsm!` with `ComplexF64`; if it persists, re-download the CUDA runtime artifact, then report it to JuliaGPU/CUDA.jl (no compat bound: the older stack fails the same way).
+  Resolved on 2026-11-11 by a reboot of the machine: the 2×2 `CUBLAS.trsm!` with `ComplexF64` then succeeded and the device tier passed 469 of 469.
+  What the reboot changed is not established; it also brought kernel 7.0.0-42 in place of 7.0.0-38, with the same driver version (595.99.02).
 - Comparing the second-order state and normalization formulas derived for the derivatives (architecture §20l) with `tight_binding.tex`.
 - Merging `derivatives` into `main`, and pushing.
 - Guard stopping rule for LOBPCG on stiff leaves.

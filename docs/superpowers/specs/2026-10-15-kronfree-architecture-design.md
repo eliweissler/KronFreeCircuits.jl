@@ -1291,6 +1291,8 @@ Diagnosed on the build machine: cuBLAS's complex-double triangular solve (`cubla
 It is not caused by this project or by dependency versions: `origin/main` fails identically with the new environment, this code fails identically with the old one (CUDA 6.4.2, GPUArrays 11.5.16), and a copy of the environment that passed this tier on 2026-10-18 fails today on the minimal case (if that log was indeed from this machine and depot: the 2026-10-18 log may come from another machine or depot, which is the second unproven suspect).
 Unproven: why it passed on 2026-10-18 (no relevant depot file, Julia install or driver module changed since 2026-10-15), and whether the CUDA runtime artifact is damaged (its tree hash does not match its name; its files are unmodified since installation).
 Recommended to the owner, not done: no compat bound (the old stack fails the same way); reboot or reset the GPU and rerun a 2×2 `CUBLAS.trsm!` with `ComplexF64`; if it still fails, re-download the CUDA runtime artifact; if it persists, report the 2×2 reproduction to JuliaGPU/CUDA.jl.
+Follow-up, 2026-11-11: after a reboot of the build machine the 2×2 solve succeeded and the whole device tier passed (469 of 469), so the fault was a state of that machine and not of the code or the dependency versions; what the reboot changed is not established.
+The derivative pass on the device is still tested at a real `LOBPCG` node only.
 Consequently a complex iterative node's derivative pass, mixed pairs and blocks are untested on the device.
 
 **Measured on the KITE** (design acceptance 7 and 8; `test/test_derivatives_kite.jl`, slow tier).
