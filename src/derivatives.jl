@@ -427,6 +427,10 @@ Keywords:
   the start (no solve).
   Each solve's true residual is checked and recorded in `linear_solves` (`residual`, `from_start`, `at_floor`,
   `floor_residual`); a column that misses both its target and the round-off cap is an error.
+  A column at the floor or converged from the start is accurate to about `1000 eps ‖(∂H/∂x) ψ_j‖ / gap` in absolute
+  terms, `gap` the distance from `E_j` to the lowest state outside the computed ones; this exceeds 1e-6 of `‖∂ψ_j‖`
+  when `‖∂ψ_j‖ gap / ‖(∂H/∂x) ψ_j‖ < 2.2e-7` (on the two-transmon test tree, a parameter internal to one transmon at
+  couplings below about 3e-5).
   The iteration count grows roughly linearly with a grid leaf's point count (measured: 744, 1505 and 3055 iterations
   at 3001, 6001 and 12001 points at the default settings), so `linmaxiter` may need raising for very fine grids.
   A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones, and

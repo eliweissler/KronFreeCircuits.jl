@@ -145,7 +145,7 @@ Departures from the design and decisions Eli has not seen (each with its reason 
 - `scale` (the `δx` of the block test) is a keyword `NamedTuple` per parameter (Ruling 3; design §4.4 marks this as unconfirmed).
 - The `:follow` restriction is narrowed (Ruling 2): only a node whose phases were actually fixed by following a previous solution is an `ArgumentError` (workaround: re-materialize at the point without `previous`); a `follow` selection is fine with `phase = :positive_sector` given explicitly, or without `previous` (note that `keep = follow(...)` defaults to `phase = :follow`).
 - Retention is on by default (Ruling 7, despite the measured cost above); the default was not changed after the convergence measurement, nor after the final review measured a stored sweep (the `System`s of a 21-point sweep of one 901-point leaf take 130 MB with retention against 0.81 MB without).
-- The linear solve is a hand-written conjugate gradient that runs on any device (P3), and the `ShiftInvert` factorization is not reused, which is that choice's cost; its residual is measured against each column's whole right-hand side.
+- The linear solve is a hand-written conjugate gradient that runs on any device (P3), and the `ShiftInvert` factorization is not reused, which is that choice's cost; each column converges on the scale of its own complement part, `‖Q R_j‖`, or stops at the round-off floor.
 - The selection-boundary threshold without `scale` is the plan's (P8): a detuning at most 1e-6 times the distance from the lowest computed energy.
 - A `wrt` parameter nothing depends on is an `ArgumentError` when the spec does not declare it, else zeros with a warning.
 - Exactly degenerate coupled states give `NaN` derivatives with a reported block, and a `NaN` child makes every ancestor `NaN` (plan Decision P5), at a `Dense` or an iterative parent, with one warning per node naming the child.
@@ -171,7 +171,7 @@ Baseline test status, 2026-11-11, on the code before the final review's fixes, w
 - `bench/derivative_design/design.jl`: all four checks passed, with the recorded run's numbers to every printed digit except timings, 1m13s.
 - `bench/retention_cost.jl`: ran; the sizes equal the recorded ones, and the times were 0.035 → 0.087 s (transmon), 0.076 → 0.152 s (fluxonium) and 0.0055 → 0.0102 s (KITE) for `retain = :never` → `:auto`.
 
-Test status, 2026-11-11, on the final code of this project, after the final review's fixes (ewdesktop, Julia 1.13.2, load average 1 to 6.6 from another job):
+Test status, 2026-11-11, on the code after the final review's fixes and before the convergence-floor change below (ewdesktop, Julia 1.13.2, load average 1 to 6.6 from another job):
 - Default tier: passed, 28 files, no warnings, 5m50s.
 - Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 15m03s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints; its notices are the `F2 n_g = 1/2` note of `test/test_catalogue.jl` and the largest linear-solve iteration counts of `test/test_derivatives_iterative.jl` (188) and `test/test_derivatives_kite.jl` (60).
 - Python tier: passed, 336 of 336 tests, no warnings, 1m42s, against circuit-quantization at `c8c8714`.
@@ -182,7 +182,9 @@ Test status, 2026-11-11, on the final code of this project, after the final revi
 - The final review's scripts, rerun: the weak-coupling comparison (all 32 cases finish, state derivatives within 2.1e-8 of the dense route), the conjugate-gradient floor check (no column stagnates, at `lintol` down to 1e-11, in four fresh solves; before, one stagnated in each) and the `NaN` check (a `Dense` and an `LOBPCG` parent report `NaN` at both orders, with the child's block, and nothing throws).
 
 Test status of the complement solve's stopping-rule fix (2026-11-11, after the re-review; branch `derivatives-cg-floor`, ewdesktop, one Julia process at a time while the owner benchmarked): only these were run after the change, all passing: `test_derivatives_complement.jl`, `test_retention.jl`, `test_meanfield.jl`, `test_derivatives_iterative.jl`, `test_derivatives_kite.jl`, `test_derivatives_node.jl`, `test_derivatives_tree.jl`, `test_derivatives_second.jl`, `test_derivatives_second_tree.jl`, `test_derivatives_blocks.jl`, `test_derivatives_stored.jl` and `test_spectrum.jl` by name, and the final review's scripts for weak coupling, the conjugate-gradient floor, the default solvers and the per-column accuracy.
+After the follow-up commit (the floor's accuracy bound documented, the solve checks of the tests extended to floor columns, a fast per-column case at `g = 0.3`, the floor error message), `test_derivatives_complement.jl`, `test_derivatives_tree.jl` and `test_derivatives_iterative.jl` were run by name, all passing.
 The whole tiers (default, slow, Python, rules, device) were NOT rerun after this change; the rules tier was not run because its environment has no Manifest in the worktree.
+The fix's verifier recommends rerunning, when the machine is free: the default tier, the slow tier, the rules tier and the device derivative test (`test/cuda/test_derivatives_device.jl`).
 
 ## Where things stand
 

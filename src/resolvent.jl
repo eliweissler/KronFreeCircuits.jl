@@ -233,6 +233,7 @@ function _complement_solve(H::KronFreeOperator, D::AbstractVector, basis::Abstra
               "its complement part (true residual $(tr[j] / scale[j]) relative to the right-hand side) after " *
               "$iterations iterations (tolerance $tol, at most $maxiter iterations)")
     end
+    met0 = copy(met)                                               # met the target by the recurrence
     for j in 1:n
         j in from_start && continue
         if met[j] && tr[j] > 10 * goal[j]
@@ -240,10 +241,12 @@ function _complement_solve(H::KronFreeOperator, D::AbstractVector, basis::Abstra
             atfloor[j] = true                                      # the recurrence went below the true floor
         end
         atfloor[j] && tr[j] > cap[j] &&
-            error("the linear solve on the complement did not converge at column $j: its true residual is " *
-                  "$(tr[j] / b[j]) relative to its complement part after $iterations iterations, above 10 × $tol, " *
-                  "and $(tr[j] / scale[j]) relative to the right-hand side, above the round-off cap " *
-                  "$(_FLOOR_CAP) eps")
+            error("the linear solve on the complement did not converge at column $j: " *
+                  (met0[j] ? "it met its tolerance $tol by the recurrence, but its true residual is " *
+                             "$(tr[j] / b[j]) relative to its complement part, above 10 × $tol, and " :
+                             "it stopped at the round-off floor, but its final true residual is ") *
+                  "$(tr[j] / scale[j]) relative to the right-hand side, above the round-off cap $(_FLOOR_CAP) eps " *
+                  "(after $iterations iterations)")
     end
     residuals = [met[j] ? tr[j] / b[j] : 0.0 for j in 1:n]
     at_floor = [j for j in 1:n if atfloor[j] && !(j in from_start)]

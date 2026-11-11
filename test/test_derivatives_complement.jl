@@ -33,7 +33,7 @@ end
     tw(solver) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lowest(6), g=0.03)
     di = derivatives(dc_solve(tw(LOBPCG(tol=1e-11))); wrt=:E_J2)
     dd = derivatives(dc_solve(tw(Dense())); wrt=:E_J2)
-    @test all(s -> s.residual <= 1e-9, di.linear_solves)                             # 10 · lintol, relative to ‖Q R_j‖
+    @test all(s -> s.residual <= 1e-9 && isempty(s.at_floor), di.linear_solves)      # 10 · lintol, relative to ‖Q R_j‖
     @test energies(di, :E_J2) ≈ energies(dd, :E_J2) rtol=1e-8 atol=1e-9
     @test norm(eigenvectors(di, :E_J2) - eigenvectors(dd, :E_J2), Inf) <= 1e-6 * norm(eigenvectors(dd, :E_J2), Inf)
     for p in (nport(), expiphi(1.0))
@@ -42,6 +42,11 @@ end
     # each state's derivative on its own scale (the matrix-wide comparison above cannot see a small column); columns
     # whose dense derivative is below 1e-12 in norm are skipped (`percol_relerr`)
     @test maximum(percol_relerr(eigenvectors(di, :E_J2), eigenvectors(dd, :E_J2))) <= 1e-7
+    # at the ordinary coupling the column of state 1 (‖ψ′‖ = 4.9e-5) is small against ‖R_1‖ = 0.86: a convergence scale of
+    # ‖R_j‖ stopped it at 9.9e-9 of its own norm; on the complement's own scale it is 4.6e-12
+    t3(solver) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lowest(6), g=0.3)
+    d3 = derivatives(dc_solve(t3(LOBPCG(tol=1e-11))); wrt=:E_J2)
+    @test maximum(percol_relerr(eigenvectors(d3, :E_J2), eigenvectors(derivatives(dc_solve(t3(Dense())); wrt=:E_J2), :E_J2))) <= 1e-9
 end
 
 @testset "a node that keeps every state of its space needs no solve and no re-diagonalization" begin

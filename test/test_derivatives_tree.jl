@@ -131,6 +131,6 @@ end
     # the complement of its computed states (Task 6), recorded with its true residual
     si = dc_solve(dc_two_transmons(solver=Lanczos(tol=1e-12), compute=8))
     di = derivatives(si; wrt=:g)
-    @test !isempty(di.linear_solves) && all(s -> s.residual <= 1e-9, di.linear_solves)
+    @test !isempty(di.linear_solves) && all(s -> s.residual <= 1e-9 && isempty(s.at_floor), di.linear_solves)
     @test energies(di, :g) ≈ energies(derivatives(dc_solve(dc_two_transmons()); wrt=:g), :g) rtol=1e-8 atol=1e-9
 end

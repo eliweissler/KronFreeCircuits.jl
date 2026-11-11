@@ -20,7 +20,7 @@ tree(solver; kw...) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lo
     for x in (:g, :n_g1, :E_J2)
         di = same_derivatives(tree(LOBPCG(tol=1e-11)), tree(Dense()), x)
         @test !isempty(di.linear_solves)
-        @test all(s -> s.iterations < 5000 && s.residual <= 1e-9, di.linear_solves)       # 10 · lintol
+        @test all(s -> s.iterations < 5000 && s.residual <= 1e-9 && isempty(s.at_floor), di.linear_solves)   # 10 · lintol
         worst = max(worst, maximum(s.iterations for s in di.linear_solves))
     end
     # a complex node (design §5.1): periodic grids make the leaves and the root complex; the ports include expiphi
@@ -80,7 +80,7 @@ end
         di_sys = dc_solve(tree(LOBPCG(tol=1e-11); periodic, g)); dd_sys = dc_solve(tree(Dense(); periodic, g))
         for x in (:E_J2, :E_C1, :g, :n_g1)
             di = derivatives(di_sys; wrt=x, order=2); dd = derivatives(dd_sys; wrt=x, order=2)
-            @test all(s -> s.residual <= 1e-9, di.linear_solves)
+            @test all(s -> s.residual <= 1e-9 && isempty(s.at_floor), di.linear_solves)
             @test energies(di, x) ≈ energies(dd, x) rtol=1e-8 atol=1e-9
             @test norm(eigenvectors(di, x) - eigenvectors(dd, x), Inf) <= 1e-6 * norm(eigenvectors(dd, x), Inf)
             @test energies(di, x, x) ≈ energies(dd, x, x) rtol=1e-6 atol=1e-8

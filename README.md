@@ -413,6 +413,7 @@ At an iterative node they agree with the full-spectrum (`Dense`) route: for weak
 Each node's `∂H/∂x` has three parts: the derivatives of its own coefficients, its children's port derivatives and its children's energy derivatives.
 At a node with its complete spectrum the sum over states is exact; at an iterative node (`LOBPCG`, `Lanczos`, `ShiftInvert`, `ChebyshevFilter`) the part outside the computed states comes from a preconditioned conjugate-gradient solve.
 Each column converges to `lintol = 1e-10` relative to its own part outside the computed states, or, where that is below round-off, stops at the round-off floor (at most `1000 eps` of the whole right-hand side); the true residuals are recorded in `d.linear_solves`.
+Such a column, like one whose part outside the computed states is below that cap from the start, is accurate only to about `1000 eps ‖(∂H/∂x) ψ_j‖ / gap`, with `gap` the distance from `E_j` to the lowest state outside the computed ones; that exceeds 1e-6 of the state's derivative when `‖∂ψ_j‖ · gap / ‖(∂H/∂x) ψ_j‖ < 2.2e-7`, which on the two-transmon test tree means couplings below about 3e-5 for a parameter internal to one transmon (measured: no column stopped at the floor down to `g = 3e-6`, and the errors there, at most 1.1e-7, are the eigensolver's).
 
 `scale` gives a typical displacement `δx` for a parameter.
 A pair of kept states whose coupling `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx` exceeds `r = 0.1` times their detuning forms a near-degenerate block.
