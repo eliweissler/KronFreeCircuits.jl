@@ -149,6 +149,8 @@ The child's bare operator `H`, on its own terms only and in complex arithmetic, 
 Every column is kept, so the child presents `size(U, 2)` states, and its `compute` and `keep` settings do not apply.
 The kept vectors are `U * W` with `W` the eigenvectors of the projection, with the child's phase convention and the ports and joint ports of `child_keys(parent, terms, child)`.
 `report` is stored with the result, as is a copy of `U`.
+The result is used as built, at these `terms` and `θ`: `materialize` does not check them against its own, and it is the caller's job to rebuild it when they change.
+A union basis that is not made of eigenvectors of the child can trigger the parent's "heavy hybridization" phase warning, which reports on the phase convention and is not an error.
 An `ArgumentError` is thrown when `bare` is not a solve of `child`, when `U` does not have one row per state of the product space or has no column, and when `U' * U` differs from the identity by more than `1e-8`.
 """
 function augment(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node, bare::MaterializedNode,
@@ -176,8 +178,8 @@ function augment(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node,
 end
 
 # The parent of every node under `root` except the root, after checking `augmented` against the tree: each entry an
-# `AugmentedChild` whose node is in the tree and is not the root, no node given twice, no `previous`, and no ancestor of
-# an augmented node with `arithmetic = :real`.
+# `AugmentedChild` whose node is in the tree and is not the root, no node given twice, no augmented node inside another,
+# no `previous`, and neither an augmented node nor an ancestor of one with `arithmetic = :real`.
 function _check_augmented(root::Node, augmented::AbstractVector, previous)
     previous === nothing ||
         throw(ArgumentError("`augmented` cannot be combined with `previous`: an augmented child has no previous solution to follow"))
@@ -194,6 +196,9 @@ function _check_augmented(root::Node, augmented::AbstractVector, previous)
         haskey(parents, n) || throw(ArgumentError("the augmented node on modes $(modes(n)) is not a node of this tree"))
         n in seen && throw(ArgumentError("the node on modes $(modes(n)) is augmented twice"))
         push!(seen, n)
+        n.arithmetic === :real &&
+            throw(ArgumentError("the augmented node on modes $(modes(n)) has arithmetic = :real, but an augmented node " *
+                                "runs in complex arithmetic"))
         p = n
         while haskey(parents, p)
             p = parents[p]
@@ -202,8 +207,25 @@ function _check_augmented(root::Node, augmented::AbstractVector, previous)
                                     "augmented node on modes $(modes(n)), which runs in complex arithmetic"))
         end
     end
+    for a in augmented, b in augmented
+        p = a.node
+        while haskey(parents, p)
+            p = parents[p]
+            p === b.node &&
+                throw(ArgumentError("the augmented node on modes $(modes(a.node)) is inside the augmented node on modes " *
+                                    "$(modes(b.node)), which is not solved, so the inner one would not be used"))
+        end
+    end
     return parents
 end
+
+"""
+    augmented(sys) -> Vector{AugmentedChild}
+
+The augmented children that `sys` was built with (see `materialize`), in the order given, as a new vector.
+It is empty for a system built without them.
+"""
+augmented(sys::System) = AugmentedChild[a for a in sys.augmented]
 
 # The augmented children of a tree by node, each with the ports and joint ports the tree needs of it
 # (`_augmented_node`); every augmented node and every ancestor of one is marked complex in `realnodes`.

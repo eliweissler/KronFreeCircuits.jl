@@ -126,6 +126,22 @@ end
     sys1 = materialize(root, spec, θ; augmented=[aug1])
     @test energies(sys1) ≈ plain rtol=1e-9
     @test arithmetic(sys1, C) == :complex && arithmetic(sys1, root) == :complex && arithmetic(sys1, T2) == :real
+    # the system records its augmented children, and operator() refuses an augmented node but serves its ancestors
+    @test augmented(sysC) == [augC] && augmented(sysC)[1] === augC && isempty(augmented(materialize(root, spec, θ)))
+    @test_throws "augmented(sys)" KronFreeCircuits.operator(sysC, C)
+    H = KronFreeCircuits.operator(sysC, root); V = eigenvectors(sysC)
+    @test norm(H * V - V * Diagonal(energies(sysC))) < 1e-8
+    # two augmented siblings, both from their bare vectors
+    b3 = bare_child(root, terms, θ, T3)
+    aug3 = augment(root, terms, θ, T3, b3, b3.vectors, rep(6))
+    @test energies(materialize(root, spec, θ; augmented=[augC, aug3])) ≈ plain rtol=1e-9
+    # a single-column union basis
+    one = augment(C, terms, θ, T1, b1, b1.vectors[:, 1:1], rep(1))
+    sys_one = materialize(root, spec, θ; augmented=[one])
+    @test energies(sys_one, T1) ≈ b1.energies[1:1] && length(materialized(sys_one, C).dims) == 2 && materialized(sys_one, C).dims[1] == 1
+    # an augmented node inside another augmented node is refused, naming both, in either order
+    @test_throws r"varphi_1.*inside.*varphi_1, :varphi_2" materialize(root, spec, θ; augmented=[augC, aug1])
+    @test_throws r"varphi_1.*inside.*varphi_1, :varphi_2" materialize(root, spec, θ; augmented=[aug1, augC])
     # the root itself may not be augmented, and a real ancestor below the root is named
     broot = bare_child(Node([root]), terms, θ, root)
     @test_throws "root" materialize(root, spec, θ; augmented=[augment(Node([root]), terms, θ, root, broot, broot.vectors, rep(5))])
@@ -134,4 +150,10 @@ end
     rootr = Node([Cr, T3r]; solver=Dense(), compute=5, keep=lowest(5))
     b1r = bare_child(Cr, terms, θ, T1r)
     @test_throws "varphi_2" materialize(rootr, spec, θ; augmented=[augment(Cr, terms, θ, T1r, b1r, b1r.vectors, rep(6))])
+    # an augmented node whose own arithmetic is :real is refused, naming it
+    T1s = Node([:varphi_1 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6), arithmetic=:real)
+    Cs = Node([T1s, Node([:varphi_2 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6))]; solver=Dense(), compute=10, keep=lowest(10))
+    roots = Node([Cs, Node([:varphi_3 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6))]; solver=Dense(), compute=5, keep=lowest(5))
+    b1s = bare_child(Cs, terms, θ, T1s)
+    @test_throws "augmented node on modes [:varphi_1] has arithmetic = :real" materialize(roots, spec, θ; augmented=[augment(Cs, terms, θ, T1s, b1s, b1s.vectors, rep(6))])
 end

@@ -59,7 +59,8 @@ end
 
 A materialized tree: the root `MaterializedNode`, the `spec` it was built from (`nothing` when
 built from a term list), the `terms` it was built from, the parameters `θ` it was evaluated at,
-and the scalar `constant` added at the root.
+the scalar `constant` added at the root, and the [`AugmentedChild`](@ref)ren it was built with, in the order given
+(read them with [`augmented`](@ref); empty when none were given).
 """
 struct System
     root::MaterializedNode
@@ -67,7 +68,11 @@ struct System
     terms::Vector{Term}
     θ::NamedTuple
     constant::Coefficient
+    augmented::Vector{Any}      # of `AugmentedChild`, which `augment.jl` defines after this file
 end
+
+System(root::MaterializedNode, spec, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient) =
+    System(root, spec, terms, θ, constant, Any[])
 
 const _EDGE_TOL = 1e-6
 const _HYBRID_RATIO = 0.5
@@ -120,8 +125,10 @@ A term with two or more factors on one mode throws an `ArgumentError`.
 
 `augmented`, a vector of [`AugmentedChild`](@ref) (from [`augment`](@ref)), presents some nodes of the tree through a basis of their own: such a node is not solved, and its `solved` is used as that child, with any port or joint port the tree needs that it lacks formed from its kept vectors.
 The terms are routed as usual, so the terms inside an augmented node are not used, and its ancestors' operators are built exactly as on a solved child.
+An augmented child is used as built, at the terms and `θ` that `augment` was given: nothing checks them against this call's, and it is the caller's job to rebuild it when they change.
 An augmented node, and every ancestor of it, runs in complex arithmetic.
-An augmented node that is not in the tree or is its root, a node given twice, `augmented` together with `previous`, and an ancestor of an augmented node with `arithmetic = :real` each throw an `ArgumentError`.
+The `System` records the augmented children, which [`augmented`](@ref) returns.
+An augmented node that is not in the tree or is its root, a node given twice, an augmented node inside another one, `augmented` together with `previous`, and an augmented node or an ancestor of one with `arithmetic = :real` each throw an `ArgumentError`.
 """
 materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
             previous::Union{Nothing,System}=nothing, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}(),
@@ -134,7 +141,7 @@ function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Not
     _check_bases(root, modetypes)
     sys = _materialize_terms(root, vcat(circuit_terms(spec), extra_terms), θ, constant_term(spec), previous, modetypes;
                              augmented)
-    return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
+    return System(sys.root, spec, sys.terms, sys.θ, sys.constant, sys.augmented)
 end
 
 # The term-list form: the spec form delegates here with the spec's terms and constant.
@@ -148,7 +155,7 @@ function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, con
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
     mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes; augmented=aug)
-    return System(mroot, nothing, terms, θ, constant)
+    return System(mroot, nothing, terms, θ, constant, collect(Any, augmented))
 end
 
 # Everything `_materialize` needs for the tree under `root` solved on `terms`, after the checks (real parameters, bases
@@ -608,10 +615,15 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
                       augmented::Union{Nothing,IdDict{Node,MaterializedNode}}=nothing)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ? (augmented !== nothing && haskey(augmented, ch) ? augmented[ch] :
-                                       _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes;
-                                                    augmented)) :
-                        ch isa GivenSystem ? _materialize_given(ch) : ch.second)
+        if ch isa GivenSystem
+            push!(children, _materialize_given(ch))
+        elseif !(ch isa Node)
+            push!(children, ch.second)
+        elseif augmented !== nothing && haskey(augmented, ch)
+            push!(children, augmented[ch])
+        else
+            push!(children, _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes; augmented))
+        end
     end
     return _solve_node(node, children, routed[node], θ; constant, ports=needed[node], joint_ports=needed_joint[node],
                        real=realnodes[node], prev)
@@ -828,8 +840,18 @@ end
 The Hamiltonian of `node` in its product basis at `sys.θ`, rebuilt from the materialized children
 exactly as `materialize` built it (the root's includes the constant; its scratch and storage follow
 the node's solver, as resolved by `materialize`); it is real exactly when the node was materialized in real arithmetic.
+An ancestor of an augmented node gets the operator it was diagonalized with, on the augmented child's states.
+An augmented node itself throws an `ArgumentError`: its stored states diagonalize its bare operator projected on its
+union basis, not an operator on its product basis, and [`augmented`](@ref) gives the `AugmentedChild` with that basis
+and the bare terms.
+A node inside an augmented node is the one of the bare solve given to [`augment`](@ref), and its operator is rebuilt
+at `sys.terms` and `sys.θ`, which are the ones of that solve only when the caller kept them the same.
 """
 function operator(sys::System, node::Node=sys.root.node)::KronFreeOperator
+    any(a -> a.node === node, sys.augmented) &&
+        throw(ArgumentError("the node on modes $(modes(node)) is augmented: its stored states diagonalize its bare " *
+                            "operator projected on its union basis, not an operator on its product basis; " *
+                            "`augmented(sys)` gives the `AugmentedChild` with that basis and the bare terms"))
     mn = materialized(sys, node)
     routed = route(sys.root.node, sys.terms)
     c = node === sys.root.node ? sys.constant(sys.θ) : 0.0
