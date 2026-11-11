@@ -116,3 +116,27 @@ end
     @test_throws ArgumentError PeriodicGrid(15; sectors=2)
     @test KronFreeCircuits.modetype(PeriodicGrid(16)) === :c && KronFreeCircuits.spacing(PeriodicGrid(16)) ≈ 2π / 16
 end
+
+@testset "suggest_bases" begin
+    s = numeric_spec(; modes=[:a => :c, :b => :e], E_C=[0.072 0.072; 0.072 2.484170953858], E_L=[0.0 0.0; 0.0 2.54],
+                     flux_linear=[0.0, 0.0], n_g=[0.0, 0.0], cosines=[(17.3349, [1, -1.0], 0.0), (16.3251, [1, -1.0], 0.0)])
+    b = Dict(suggest_bases(s; charge_cutoff=16, max_points=120, extent_scale=1.5))
+    @test b[:a] == ChargeBasis(16)
+    zpf = (2 * 2.484170953858 / 2.54)^0.25; ω = sqrt(8 * 2.484170953858 * 2.54)
+    ext = 1.5 * max(6zpf, sqrt(2 * (2 * (17.3349 + 16.3251) + 12ω + 4 * 2.484170953858) / 2.54))
+    @test b[:b] == PhaseGrid(-ext, ext, 120)                       # capped: the formula asks for more than 120 points
+    @test Dict(suggest_bases(s; max_points=10_000))[:b].N == ceil(Int, 2 * (ext / 1.5) / min(zpf / 6, π / 6)) + 1
+    # the modes in the order of the spec, and the keywords passed on
+    @test first.(suggest_bases(s)) == [:a, :b]
+    @test Dict(suggest_bases(s; order=4))[:b].order == 4
+    # a mode no cosine touches takes the step zpf / 6
+    h = numeric_spec(; modes=[:x => :h], E_C=fill(0.5, 1, 1), E_L=fill(2.0, 1, 1), flux_linear=[0.0], n_g=[0.0])
+    zh = (2 * 0.5 / 2.0)^0.25; eh = max(6zh, sqrt(2 * (12 * sqrt(8 * 0.5 * 2.0) + 4 * 0.5) / 2.0))
+    @test only(suggest_bases(h; max_points=10_000)) == (:x => PhaseGrid(-eh, eh, ceil(Int, 2eh / (zh / 6)) + 1))
+    # refusals
+    @test_throws ArgumentError suggest_bases(numeric_spec(; modes=[:x => :e], E_C=fill(0.5, 1, 1), E_L=fill(0.0, 1, 1),
+                                                          flux_linear=[0.0], n_g=[0.0]))
+    @test_throws ArgumentError suggest_bases(s; charge_cutoff=0)
+    @test_throws ArgumentError suggest_bases(s; max_points=1)
+    @test_throws ArgumentError suggest_bases(s; extent_scale=0)
+end

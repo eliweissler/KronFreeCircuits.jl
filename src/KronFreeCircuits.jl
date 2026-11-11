@@ -27,7 +27,8 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        Expectations, straddling_terms, child_keys, expectations, pinned_expectations, delocalized_expectations,
        mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
        MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
-       BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented
+       BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented, mean_field_augment,
+       suggest_bases, edge_weight
 
 include("parameters.jl")
 include("spec.jl")
@@ -47,6 +48,7 @@ include("chebyshev.jl")
 include("selection.jl")
 include("phase.jl")
 include("materialize.jl")
+include("suggest.jl")
 include("meanfield.jl")
 include("augment.jl")
 include("bo.jl")

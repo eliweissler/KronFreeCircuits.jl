@@ -157,3 +157,42 @@ end
     b1s = bare_child(Cs, terms, θ, T1s)
     @test_throws "augmented node on modes [:varphi_1] has arithmetic = :real" materialize(roots, spec, θ; augmented=[augment(Cs, terms, θ, T1s, b1s, b1s.vectors, rep(6))])
 end
+
+@testset "mean_field_augment" begin
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params(); terms = circuit_terms(spec)
+    # wider than the zero-pi grid of test_materialize.jl, so that ten kept states of :phi stay clear of its edges
+    grid = PhaseGrid(-20π, 20π, 201; order=6)
+    A = Node([:theta => ChargeBasis(8)]; solver=Dense(), compute=10, keep=lowest(10))
+    B = Node([:phi => grid]; solver=Dense(), compute=10, keep=lowest(10))
+    root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
+    exact = energies(materialize(Node([:theta => ChargeBasis(8), :phi => grid];
+                                      solver=Dense(), compute=4, keep=lowest(4)), spec, θ))
+    # the solves of the charge leaf, keeping ten states, note a phase-convention fallback for some of them
+    w(n) = ntuple(_ -> (:warn, r"no weight on the phase mask"), n)
+    err(m, n; kw...) = (r = (@test_logs w(n)... mean_field_augment(root, spec, θ; m, kw...));
+                        maximum(abs, energies(materialize(root, spec, θ; augmented=r.children)) .- exact))
+    @test err(10, 15; bare=true) <= err(6, 14; bare=true) + 1e-12             # converges as m grows
+    r = @test_logs w(15)... mean_field_augment(root, spec, θ; m=8, bare=true, cap=2)
+    @test all(c.report.taken[end] >= 8 - 2 * length(r.used) for c in r.children)   # the bare ladder fills the rest
+    @test r.energy == r.solutions[1].energy && r.unconverged == 0
+    @test all(size(c.basis, 2) == 8 for c in r.children)
+    @test [c.node for c in r.children] == [A, B]
+    @test all(c.report.labels == [["solution $i" for i in r.used]; "bare"] for c in r.children)
+    @test r.used == [i for i in eachindex(r.solutions) if r.solutions[i].energy - r.energy <= 0.5][1:min(end, 4)]
+    @test (@test_logs w(14)... mean_field_augment(root, spec, θ; m=8, max_solutions=1)).used == [1]
+    small = Node([Node([:theta => ChargeBasis(8)]; solver=Dense(), compute=3, keep=lowest(3)), B];
+                 solver=Dense(), compute=4, keep=lowest(4))
+    @test_logs w(2)... (@test_throws "kept" mean_field_augment(small, spec, θ; m=8))
+    @test_throws ArgumentError mean_field_augment(root, spec, θ; m=8, cap=0)
+    @test_throws ArgumentError mean_field_augment(root, spec, θ; m=8, window=-1)
+    @test_throws ArgumentError mean_field_augment(root, spec, θ; m=8, max_solutions=0)
+    @test_throws ArgumentError mean_field_augment(root, spec, θ; m=0)
+    # the edge weight of a grid leaf is the measure of the PhaseGrid edge warning; a charge leaf has none
+    sB = r.solutions[1].children[B].solved
+    @test edge_weight(sB) == KronFreeCircuits._edge_support(sB.vectors[:, 1:1], sB.dims, 1, 3)[1] < 1e-6
+    @test edge_weight(r.solutions[1].children[A].solved) == 0.0
+    @test_throws ArgumentError edge_weight(materialized(materialize(root, spec, θ; augmented=r.children), root))
+    narrow = Node([:phi => PhaseGrid(-2.0, 2.0, 41)]; solver=Dense(), compute=1, keep=lowest(1))
+    wide = Node([A, narrow]; solver=Dense(), compute=1, keep=lowest(1))
+    @test edge_weight(@test_logs (:warn, r"too small") bare_child(wide, terms, θ, narrow)) > 1e-6
+end
