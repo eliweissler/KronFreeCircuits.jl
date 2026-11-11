@@ -232,18 +232,19 @@ function bare_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::No
 end
 
 """
-    mean_field_child(parent, terms, θ, child, bare, others; state=1, weights=nothing) -> MeanFieldChild
+    mean_field_child(parent, terms, θ, child, bare, others; state=1, weights=nothing, outside=nothing) -> MeanFieldChild
 
-One mean-field solve of `child`: its own node on its bare terms plus `mean_field_terms(parent, terms, θ, child, others)`, in complex arithmetic.
+One mean-field solve of `child`: its own node on its bare terms plus `mean_field_terms(parent, terms, θ, child, others; outside)`, in complex arithmetic.
 The children of `child` are taken from `bare` (from `bare_child`) and are not solved again.
 The expectations and the bare energy are taken in the `state`-th kept state, or averaged with `weights`, as in `expectations`.
 """
 function mean_field_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node, bare::MaterializedNode,
                           others::AbstractDict{Node,Expectations}; state::Int=1,
-                          weights::Union{Nothing,AbstractVector{<:Real}}=nothing)
+                          weights::Union{Nothing,AbstractVector{<:Real}}=nothing,
+                          outside::Union{Nothing,Expectations}=nothing)
     bare.node === child || throw(ArgumentError("`bare` is not a solution of `child`"))
     keys = child_keys(parent, terms, child)
-    mf = mean_field_terms(parent, terms, θ, child, others)
+    mf = mean_field_terms(parent, terms, θ, child, others; outside)
     ports, joint_ports = _split_keys(keys)
     solved = _solve_node(child, bare.children, vcat(_terms_at(child, terms), mf), θ; ports, joint_ports, real=false)
     table = expectations(solved, keys; state, weights)
@@ -281,4 +282,135 @@ function product_energy(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare_
     coupling = _real_sum(z, "the straddling terms' expectation at the node on modes $(modes(parent))",
                          "the straddling terms with these tables")
     return Float64(real(constant)) + sum(bare_energies[ch] for ch in parent.children) + coupling
+end
+
+"""
+    MeanFieldSolution
+
+A self-consistent mean-field solution of the children of a node: each child solved in the mean field of the others.
+`energy` is the product energy, `children` holds every child's `MeanFieldChild` of the last iteration, and `start` is where the run began.
+`converged` is `false` when the run stopped at its iteration limit, and `iterations` is the number of iterations run.
+Under mixing, the `expectations` and `bare_energy` of each child are the mixed values that `energy` was computed from, while `solved` holds the unmixed states of the last solve.
+"""
+struct MeanFieldSolution
+    energy::Float64
+    children::IdDict{Node,MeanFieldChild}
+    iterations::Int
+    converged::Bool
+    start
+end
+
+"""
+    default_starts(parent; displacements=(0.0, π, -π), max_starts=81) -> Vector{Any}
+
+The starts of the self-consistent loop: the delocalized start `nothing`, then every combination of `displacements` over the modes under `parent`.
+Each combination is a `Dict{Symbol,Float64}`, in the order of `modes(parent)` with the first mode varying slowest.
+More than `max_starts` combinations is an `ArgumentError`.
+"""
+function default_starts(parent::Node; displacements=(0.0, π, -π), max_starts::Int=81)
+    ms = modes(parent)
+    n = length(displacements)^length(ms)
+    n > max_starts && throw(ArgumentError("default_starts would make $n displaced starts " *
+                                          "($(length(displacements)) displacements over $(length(ms)) modes), " *
+                                          "more than max_starts = $max_starts; pass `starts` or raise `max_starts`"))
+    starts = Any[nothing]
+    for c in Iterators.product(fill(displacements, length(ms))...)          # the first factor varies fastest
+        push!(starts, Dict{Symbol,Float64}(m => Float64(c[end+1-i]) for (i, m) in enumerate(ms)))
+    end
+    return starts
+end
+
+# The starting table of every child of `parent` for the start `start`.
+function _initial_tables(parent::Node, terms::Vector{Term}, start)
+    start isa MeanFieldSolution || return IdDict{Node,Expectations}(
+        ch => (start === nothing ? delocalized_expectations(child_keys(parent, terms, ch)) :
+                                   pinned_expectations(child_keys(parent, terms, ch), start)) for ch in parent.children)
+    for ch in parent.children
+        haskey(start.children, ch) ||
+            throw(ArgumentError("the starting solution has no child on modes $(modes(ch)): it is not a solution of `parent`"))
+    end
+    return IdDict{Node,Expectations}(ch => copy(start.children[ch].expectations) for ch in parent.children)
+end
+
+# The largest absolute difference of any table entry of any child between two sets of tables.
+_table_change(a, b) = maximum(abs(a[ch][k] - b[ch][k]) for ch in keys(a) for k in keys(a[ch]); init=0.0)
+
+"""
+    self_consistent(parent, terms, θ, bare; start=nothing, tol=1e-11, maxiter=300, mixing=0.5, constant=0.0,
+                    state=1, weights=nothing, outside=nothing) -> MeanFieldSolution
+
+The self-consistent mean-field loop over the children of `parent`, with `bare` mapping each child to its `bare_child`.
+Each iteration solves every child with `mean_field_child` from the tables of the previous iteration, then computes the product energy from the new tables and bare energies.
+After the energy has risen (by more than `1e-12`) twice, every later iteration replaces the new tables and bare energies by `mixing` times the new plus `1 - mixing` times the previous ones.
+The run converges when `|E - E_prev| < tol * max(1, |E|)` and no table entry changed by `sqrt(tol)` or more.
+A run that reaches `maxiter` iterations is returned with `converged = false`.
+The solution holds the energy of the last iteration and each child's `MeanFieldChild` of its last solve, with the `expectations` and `bare_energy` that energy was computed from (under mixing, the mixed values).
+`start` is `nothing` (delocalized), a `Dict{Symbol,Float64}` of displacements (see `pinned_expectations`), or a `MeanFieldSolution` whose tables it continues from.
+`constant` is added to the product energy, and `state`, `weights` and `outside` are passed to `mean_field_child`.
+"""
+function self_consistent(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare::AbstractDict{Node,<:MaterializedNode};
+                         start=nothing, tol::Real=1e-11, maxiter::Int=300, mixing::Real=0.5, constant::Number=0.0,
+                         state::Int=1, weights::Union{Nothing,AbstractVector{<:Real}}=nothing,
+                         outside::Union{Nothing,Expectations}=nothing)
+    _check_node_children(parent)
+    maxiter >= 1 || throw(ArgumentError("maxiter must be at least 1, got $maxiter"))
+    0 < mixing <= 1 || throw(ArgumentError("mixing must lie in (0, 1], got $mixing"))
+    for ch in parent.children
+        haskey(bare, ch) || throw(ArgumentError("`bare` has no solve of the child on modes $(modes(ch))"))
+    end
+    tables = _initial_tables(parent, terms, start)
+    bare_energies = IdDict{Node,Float64}()
+    E_prev, rises, mixing_on = nothing, 0, false
+    for it in 1:maxiter
+        solved = IdDict{Node,MeanFieldChild}(ch => mean_field_child(parent, terms, θ, ch, bare[ch], tables; state, weights, outside)
+                                             for ch in parent.children)
+        new_tables = IdDict{Node,Expectations}(ch => c.expectations for (ch, c) in solved)
+        new_bare = IdDict{Node,Float64}(ch => c.bare_energy for (ch, c) in solved)
+        if mixing_on
+            new_tables = IdDict{Node,Expectations}(ch => Expectations(k => mixing * v + (1 - mixing) * tables[ch][k] for (k, v) in t)
+                                                   for (ch, t) in new_tables)
+            new_bare = IdDict{Node,Float64}(ch => mixing * e + (1 - mixing) * bare_energies[ch] for (ch, e) in new_bare)
+        end
+        E = product_energy(parent, terms, θ, new_bare, new_tables; constant)
+        E_prev !== nothing && E > E_prev + 1e-12 && (rises += 1)
+        converged = E_prev !== nothing && abs(E - E_prev) < tol * max(1, abs(E)) && _table_change(new_tables, tables) < sqrt(tol)
+        tables, bare_energies, E_prev = new_tables, new_bare, E
+        rises >= 2 && (mixing_on = true)                                     # from the next iteration on
+        if converged || it == maxiter
+            children = IdDict{Node,MeanFieldChild}(ch => MeanFieldChild(ch, c.solved, c.terms, bare_energies[ch], tables[ch])
+                                                   for (ch, c) in solved)
+            return MeanFieldSolution(E, children, it, converged, start)
+        end
+    end
+end
+
+"""
+    mean_field_solutions(parent, terms, θ; starts=default_starts(parent), distinct=1e-3, kwargs...) -> Vector{MeanFieldSolution}
+    mean_field_solutions(parent, spec::Spec, θ; kwargs...) -> Vector{MeanFieldSolution}
+
+Run `self_consistent` from every start in `starts`, with the bare solve of each child formed once and shared, and return the distinct solutions, lowest energy first.
+A solution is kept when, against every solution already kept, some table entry of some child differs by more than `distinct`.
+Ties in energy keep the order of `starts`, and runs that did not converge take part like any other.
+The remaining keywords are passed to `self_consistent`.
+The second form takes the terms from `circuit_terms(spec)` and `constant` from `constant_term(spec)` at `θ`.
+"""
+function mean_field_solutions(parent::Node, terms::Vector{Term}, θ::NamedTuple; starts=default_starts(parent),
+                              distinct::Real=1e-3, kwargs...)
+    isempty(starts) && throw(ArgumentError("`starts` is empty: give at least one start"))
+    _check_node_children(parent)
+    bare = IdDict{Node,MaterializedNode}(ch => bare_child(parent, terms, θ, ch) for ch in parent.children)
+    runs = MeanFieldSolution[self_consistent(parent, terms, θ, bare; start, kwargs...) for start in starts]
+    sort!(runs; by=s -> s.energy, alg=MergeSort)                             # stable: ties keep the order of `starts`
+    tables(s) = IdDict{Node,Expectations}(ch => c.expectations for (ch, c) in s.children)
+    kept = MeanFieldSolution[]
+    for s in runs
+        all(k -> _table_change(tables(s), tables(k)) > distinct, kept) && push!(kept, s)
+    end
+    return kept
+end
+
+function mean_field_solutions(parent::Node, spec::Spec, θ::NamedTuple; kwargs...)
+    c = constant_term(spec)(θ)
+    abs(imag(c)) <= 1e-12 || throw(ArgumentError("the constant of the spec at θ has imaginary part $(imag(c))"))
+    return mean_field_solutions(parent, circuit_terms(spec), θ; constant=real(c), kwargs...)
 end

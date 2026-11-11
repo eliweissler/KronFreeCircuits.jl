@@ -73,3 +73,57 @@ end
                         IdDict(S => ms.expectations, F => mf.expectations))
     @test Ep >= exact - 1e-9
 end
+
+@testset "self-consistent loop" begin
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params(); terms = circuit_terms(spec)
+    grid = PhaseGrid(-12π, 12π, 201; order=6)                             # the zero-pi grid of test_materialize.jl
+    A = Node([:theta => ChargeBasis(8)]; solver=Dense(), compute=4, keep=lowest(4))
+    B = Node([:phi => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
+    # the solves of the charge leaf note a phase-convention fallback for one of its kept states
+    sols = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any mean_field_solutions(root, spec, θ)
+    @test issorted([s.energy for s in sols]) && all(s.converged for s in sols)
+    exact = energies(materialize(Node([:theta => ChargeBasis(8), :phi => grid];
+                                      solver=Dense(), compute=1, keep=lowest(1)), spec, θ))[1]
+    @test sols[1].energy >= exact - 1e-9                                  # an upper bound
+    # a fixed point: one more solve of each child from the converged tables changes nothing
+    s = sols[1]; tables = IdDict{Node,Expectations}(n => c.expectations for (n, c) in s.children)
+    bare = @test_logs (:warn, r"no weight on the phase mask") IdDict(n => bare_child(root, terms, θ, n) for n in (A, B))
+    again = mean_field_child(root, terms, θ, A, bare[A], IdDict{Node,Expectations}(B => tables[B]))
+    @test maximum(abs(again.expectations[k] - tables[A][k]) for k in keys(tables[A])) < 1e-5
+    # a warm start from a solution converges at once to the same energy
+    w = self_consistent(root, terms, θ, bare; start=s, constant=real(KronFreeCircuits.constant_term(spec)(θ)))
+    @test w.energy ≈ s.energy atol=1e-9
+    @test w.iterations <= 3
+    # the iteration limit is reported, not hidden (Review Focus 3)
+    short = self_consistent(root, terms, θ, bare; start=Dict(:phi => π), maxiter=1)
+    @test !short.converged && short.iterations == 1
+    @test length(default_starts(root)) == 3^2 + 1
+    @test_throws "max_starts" default_starts(root; max_starts=4)
+end
+
+# With this coupling sign, a start with both modes in the same well flips between (+,+) and (−,−) under the together-update.
+# Whether mixing then switches on is decided by round-off in the rise count, so such a run may end at the symmetric saddle
+# or unconverged; only the opposite-well pair is asserted.
+@testset "two coupled fluxonia at half flux: one solution per pair of wells" begin
+    pair = numeric_spec(; modes=[:a => :e, :b => :e], E_C=[1.0 0.0; 0.0 1.0], E_L=[1.0 0.1; 0.1 1.0],
+                        flux_linear=[0.0, 0.0], n_g=[0.0, 0.0], cosines=[(4.0, [1.0, 0.0], π), (4.0, [0.0, 1.0], π)])
+    grid = PhaseGrid(-12.0, 12.0, 161)
+    A = Node([:a => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    B = Node([:b => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
+    exact = energies(materialize(Node([:a => grid, :b => grid]; solver=LOBPCG(), compute=2, keep=lowest(2)), pair, (;)))[1]
+    # (a) the opposite-well starts: a degenerate pair of distinct converged solutions, above the exact ground energy
+    opposite = mean_field_solutions(root, pair, (;); starts=[Dict(:a => 2.0, :b => -2.0), Dict(:a => -2.0, :b => 2.0)])
+    @test length(opposite) == 2 && all(s.converged for s in opposite)
+    @test opposite[1].energy ≈ opposite[2].energy atol=1e-8
+    @test all(s.energy >= exact - 1e-9 for s in opposite)
+    # (b) all four starts: the opposite-well pair is lowest, and every run reports its iterations honestly
+    starts = [Dict(:a => x, :b => y) for x in (2.0, -2.0), y in (2.0, -2.0)]
+    sols = mean_field_solutions(root, pair, (;); starts=vec(starts))
+    @test sols[1].converged && sols[2].converged
+    @test sols[1].energy ≈ opposite[1].energy atol=1e-8
+    @test sols[2].energy ≈ opposite[1].energy atol=1e-8
+    @test all(1 <= s.iterations <= 300 for s in sols)
+    @test all(s.iterations == 300 for s in sols if !s.converged)
+end
