@@ -28,7 +28,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
        MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
        BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented, mean_field_augment,
-       suggest_bases, edge_weight, differentiate
+       suggest_bases, edge_weight, differentiate, derivatives, Derivatives
 
 include("parameters.jl")
 include("spec.jl")

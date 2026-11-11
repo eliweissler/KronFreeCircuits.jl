@@ -102,3 +102,220 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
     ports, joint = _port_derivatives(mn, V1, dx)
     return NodeDerivative{T}(dE, V1, gauge, ports, joint, Matrix{T}(A1), dx)
 end
+
+# The pass through the whole tree, and the API.
+
+_pairkey(x::Symbol, λ::Symbol) = x <= λ ? (x, λ) : (λ, x)
+
+"""
+    Derivatives
+
+The derivatives of a materialized tree, returned by [`derivatives`](@ref) and read through [`energies`](@ref),
+[`eigenvectors`](@ref) and [`port`](@ref) with a parameter name.
+`sys` is the differentiated [`System`](@ref), `wrt` the parameters (in the order processed), `order` the order, and
+`mixed` the mixed pairs of second order.
+`first[x]` is the root's first-order derivative data along `x` (a `NodeDerivative`, the children's nested in it), or
+`nothing` when nothing in the tree depends on `x`.
+`second`, `blocks`, `boundary` and `linear_solves` hold second-order data, near-degenerate blocks, selection-boundary
+records and linear-solve records; this version of the pass leaves them empty.
+"""
+struct Derivatives
+    sys::System
+    wrt::Vector{Symbol}
+    order::Int
+    mixed::Vector{Tuple{Symbol,Symbol}}
+    first::Dict{Symbol,Any}
+    second::Dict{Tuple{Symbol,Symbol},Any}
+    blocks::Vector{Any}
+    boundary::Vector{Any}
+    linear_solves::Vector{Any}
+end
+
+"""
+    derivatives(sys::System; wrt, order=1, mixed=(), scale=(;), r=0.1, degenerate_tol=1e-9, lintol=1e-10,
+                linmaxiter=5000, given_independent=false) -> Derivatives
+
+The first derivatives, along each parameter of `wrt`, of every kept energy, kept vector, port and joint port of every
+node of the materialized tree `sys`, by perturbation theory carried upward through the tree.
+They are the derivatives of the calculation as performed: the selection of kept states, the bases, the solvers, the
+real or complex arithmetic of every node and its discrete phase choice (its peak indices, `peak_component`) are held
+fixed, and nothing is re-solved.
+Each node's `∂H/∂x` has three contributions: the derivatives of the coefficients of the terms routed to it (and, at the
+root, of the constant), its children's port and joint-port derivatives, and its children's energy derivatives.
+The element types are those of the stored quantities: `Float64` energies, and vectors and ports of the types
+[`materialized`](@ref) stores them in.
+A node whose subtree (and, at the root, the constant) does not depend on a parameter is not visited and reads as zeros.
+
+Keywords:
+- `wrt`: a parameter name or a collection of names, each a key of `sys.θ`; duplicates are removed.
+- `order`: the order of the derivatives; only `1` is available.
+- `mixed`: the pairs of parameters whose mixed second derivatives are wanted (second order); must be empty.
+- `scale`: a `NamedTuple` of typical displacements `δx` of parameters in `wrt`, positive and finite, for the
+  near-degeneracy test `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx > r |E_i − E_l|`.
+- `r`: the ratio of that test, positive.
+  This version validates `scale` and `r` but does not yet report near-degenerate blocks.
+- `degenerate_tol`: the detuning (GHz) at or below which two states are exactly degenerate; a kept state degenerate
+  with a state it couples to has `NaN` derivatives.
+- `lintol`, `linmaxiter`: the tolerance and iteration limit of the linear solve at a node without its complete
+  spectrum (an iterative node), which is not available yet: such a node is an `ArgumentError`.
+- `given_independent`: declares the `GivenSystem` children independent of the parameters; a tree with a
+  `GivenSystem` child is an `ArgumentError` in this version whatever its value, as is a tree with an augmented child.
+
+A node whose phases followed a previous solution (`phase = :follow` with `previous`) is an `ArgumentError`.
+"""
+function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple=(;), r::Real=0.1,
+                     degenerate_tol::Real=1e-9, lintol::Real=1e-10, linmaxiter::Int=5000,
+                     given_independent::Bool=false, _parts=(:coefficients, :ports, :energies))
+    params = _check_wrt(wrt, sys.θ)
+    order == 1 || throw(ArgumentError("order = $order is not available; only first derivatives (order = 1) are"))
+    isempty(mixed) || throw(ArgumentError("`mixed` pairs need order = 2, which is not available"))
+    for (k, v) in pairs(scale)
+        k in params || throw(ArgumentError("`scale` has an entry for :$k, which is not in `wrt` ($(join(":" .* string.(params), ", ")))"))
+        v isa Real && isfinite(v) && v > 0 ||
+            throw(ArgumentError("`scale` for :$k must be a positive finite number, got $v"))
+    end
+    r > 0 || throw(ArgumentError("`r` must be positive, got $r"))
+    _check_differentiable(sys)
+    routed = route(sys.root.node, sys.terms)
+    resolvents = IdDict{Any,Resolvent}()
+    first = Dict{Symbol,Any}()
+    for x in params
+        first[x] = _first_order_pass(sys, routed, x, resolvents; degenerate_tol, parts=_parts)
+    end
+    return Derivatives(sys, params, order, Tuple{Symbol,Symbol}[], first, Dict{Tuple{Symbol,Symbol},Any}(), Any[],
+                       Any[], Any[])
+end
+
+# `wrt` as a vector of distinct parameter names of `θ`, in order.
+function _check_wrt(wrt, θ::NamedTuple)
+    names = wrt isa Symbol ? Any[wrt] : (wrt isa Union{AbstractVector,Tuple,AbstractSet} ? collect(Any, wrt) :
+            throw(ArgumentError("`wrt` must be a parameter name or a collection of names, got $(repr(wrt))")))
+    isempty(names) && throw(ArgumentError("`wrt` names no parameter"))
+    for x in names
+        x isa Symbol || throw(ArgumentError("`wrt` must hold parameter names (Symbols), got $(repr(x))"))
+        x in keys(θ) || throw(ArgumentError("`wrt` names :$x, which is not a parameter of the system; its parameters " *
+                                            "are $(join(":" .* string.(keys(θ)), ", "))"))
+    end
+    return unique(Symbol[x for x in names])
+end
+
+# The tree may hold no node the pass cannot differentiate: a node whose phases followed a previous solution, a
+# `GivenSystem` child or an augmented child.
+function _check_differentiable(sys::System)
+    isempty(sys.augmented) ||
+        throw(ArgumentError("the node on modes $(modes(first(sys.augmented).node)) is an augmented child; derivatives " *
+                            "of a tree with an augmented child are not available yet"))
+    stack = MaterializedNode[sys.root]
+    while !isempty(stack)
+        mn = pop!(stack)
+        mn.node isa GivenSystem &&
+            throw(ArgumentError("the tree has the child GivenSystem :$(mn.node.mode); derivatives of a tree with a " *
+                                "GivenSystem child are not available yet"))
+        mn.retained.followed &&
+            throw(ArgumentError("the phases of the node on modes $(modes(mn.node)) followed a previous solution, " *
+                                "which cannot be differentiated; re-materialize at this point without `previous`"))
+        append!(stack, reverse!([c for c in mn.children if c isa MaterializedNode]))       # axis order
+    end
+    return nothing
+end
+
+# The first-order pass along `x`: every node whose subtree depends on `x`, children first; the root's `NodeDerivative`,
+# or `nothing`.  `resolvents` caches one `Resolvent` per node across parameters.
+function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{Any,Resolvent}; degenerate_tol, parts)
+    root = sys.root.node
+    depends = IdDict{Any,Bool}()
+    function dependent(mn::MaterializedNode)
+        haskey(depends, mn.node) && return depends[mn.node]
+        here = any(t -> x in t.coeff.deps, routed[mn.node]) || (mn.node === root && x in sys.constant.deps)
+        return depends[mn.node] = here || any(dependent(c) for c in mn.children if c isa MaterializedNode)
+    end
+    function visit(mn::MaterializedNode)
+        dependent(mn) || return nothing
+        dx = Any[c isa MaterializedNode ? visit(c) : nothing for c in mn.children]
+        constant = mn.node === root ? sys.constant : Coefficient(0)
+        H1 = _derivative_operator(mn, routed[mn.node], sys.θ, x, dx; constant, parts)
+        res = get!(() -> _node_resolvent(sys, mn; degenerate_tol), resolvents, mn.node)
+        return _node_first_order(mn, H1, res, dx)
+    end
+    return visit(sys.root)
+end
+
+# The resolvent of `mn`, with its forward operator rebuilt only when `_resolvent` needs it (a Dense node that did not
+# retain its computed pairs).
+function _node_resolvent(sys::System, mn::MaterializedNode; degenerate_tol)
+    needs_H = !mn.retained.complete && _resolve_node_solver(mn.node, mn.children) isa Dense
+    return _resolvent(mn, needs_H ? operator(sys, mn.node) : nothing; degenerate_tol)
+end
+
+"""
+    _node_derivative(root_data, sys, node) -> NodeDerivative or nothing
+
+The derivative data of `node` within the root's `root_data`, found by walking the materialized tree and the derivative
+tree together; `nothing` when `node` (or an ancestor) was not visited.
+"""
+function _node_derivative(root_data, sys::System, node::Node)
+    stack = Tuple{MaterializedNode,Any}[(sys.root, root_data)]
+    while !isempty(stack)
+        mn, d = pop!(stack)
+        mn.node === node && return d
+        for (a, c) in enumerate(mn.children)
+            c isa MaterializedNode && push!(stack, (c, d === nothing ? nothing : d.children[a]))
+        end
+    end
+    throw(ArgumentError("node is not part of this system's tree"))
+end
+
+function _first_data(d::Derivatives, x::Symbol)
+    haskey(d.first, x) ||
+        throw(ArgumentError("no first derivative along :$x was computed; available: $(join(":" .* string.(d.wrt), ", "))"))
+    return d.first[x]
+end
+
+"""
+    energies(d::Derivatives, x, node=root) -> Vector{Float64}
+
+The first derivatives along the parameter `x` of the kept energies of `node`, absolute (GHz per unit of `x`): the
+root's include the derivative of the constant, a child's do not.
+They are derivatives of the calculation as performed, with the selection, bases, solvers, arithmetic and peak indices
+held fixed (see [`derivatives`](@ref)).
+"""
+function energies(d::Derivatives, x::Symbol, node::Node=d.sys.root.node)
+    nd = _node_derivative(_first_data(d, x), d.sys, node)
+    return nd === nothing ? zeros(length(materialized(d.sys, node).energies)) : nd.energies
+end
+
+"""
+    eigenvectors(d::Derivatives, x, node=root) -> Matrix
+
+The first derivatives along `x` of the kept eigenvectors of `node` in its product basis, one column per kept state, in
+the element type of the stored vectors, with the selection, bases, solvers, arithmetic and peak indices held fixed
+(see [`derivatives`](@ref)); on a complex node they include the term that keeps the phase convention.
+"""
+function eigenvectors(d::Derivatives, x::Symbol, node::Node=d.sys.root.node)
+    nd = _node_derivative(_first_data(d, x), d.sys, node)
+    return nd === nothing ? zero(materialized(d.sys, node).vectors) : nd.vectors
+end
+
+"""
+    port(d::Derivatives, x, mode, p, node=root) -> Matrix
+    port(d::Derivatives, x, key::AbstractVector{Tuple{Symbol,Port}}, node=root) -> Matrix
+
+The first derivative along `x` of the port `p` of `mode`, or of the joint port of the factors `key`, in the kept
+eigenbasis of `node`, in the element type of the stored port, with the selection, bases, solvers, arithmetic and peak
+indices held fixed (see [`derivatives`](@ref)).
+A port or joint port the node did not form is an `ArgumentError`, as for [`port`](@ref) of a `System`.
+"""
+function port(d::Derivatives, x::Symbol, mode::Symbol, p::Port, node::Node=d.sys.root.node)
+    data = _first_data(d, x)
+    P = port(d.sys, mode, p, node)
+    nd = _node_derivative(data, d.sys, node)
+    return nd === nothing ? zero(P) : nd.ports[(mode, p)]
+end
+
+function port(d::Derivatives, x::Symbol, key::AbstractVector{Tuple{Symbol,Port}}, node::Node=d.sys.root.node)
+    length(key) == 1 && return port(d, x, only(key)..., node)
+    data = _first_data(d, x)
+    P = port(d.sys, key, node)
+    nd = _node_derivative(data, d.sys, node)
+    return nd === nothing ? zero(P) : nd.joint_ports[_sortkey!(collect(Tuple{Symbol,Port}, key))]
+end
