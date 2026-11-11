@@ -394,3 +394,13 @@ const abc_json = """
  "flux_linear": ["0", "0", "0"], "n_g": ["0", "0", "0"],
  "cosines": [{"energy": "E_J", "omega": [1, 1, 1], "offset": "0"}]}
 """
+
+# Runs `f()` and passes when every record it logs at Warn level or above is a warning matching `rx`, any number of them
+# (none included); returns its value. The number of such warnings can depend on the path the self-consistent loop takes.
+function only_warnings(rx, f)
+    logs, val = Test.collect_test_logs(f; min_level=Base.CoreLogging.Warn)
+    unexpected = [l.message for l in logs if !(l.level == Base.CoreLogging.Warn && occursin(rx, string(l.message)))]
+    @test isempty(unexpected)
+    isempty(unexpected) || foreach(m -> println(stderr, "unexpected log: ", first(string(m), 200)), unexpected)
+    return val
+end

@@ -89,6 +89,9 @@ end
     # a fixed point: one more solve of each child from the converged tables changes nothing
     s = sols[1]; tables = IdDict{Node,Expectations}(n => c.expectations for (n, c) in s.children)
     bare = @test_logs (:warn, r"no weight on the phase mask") IdDict(n => bare_child(root, terms, θ, n) for n in (A, B))
+    # bare solves given to mean_field_solutions must cover every child, each with a solve of that child
+    @test_throws "no solve of the child on modes [:phi]" mean_field_solutions(root, spec, θ; bare=IdDict(A => bare[A]))
+    @test_throws "not a solve of that child" mean_field_solutions(root, spec, θ; bare=IdDict(A => bare[A], B => bare[A]))
     again = mean_field_child(root, terms, θ, A, bare[A], IdDict{Node,Expectations}(B => tables[B]))
     @test maximum(abs(again.expectations[k] - tables[A][k]) for k in keys(tables[A])) < 1e-5
     # a warm start from a solution converges at once to the same energy
@@ -170,7 +173,7 @@ end
     ref = KronFreeCircuits.JSON3.read(read(fixture("kite/meanfield_reference.json"), String)).optimum
     spec = load_spec(fixture("kite/optimum.json"))
     leaves = [Node([m => b]; solver=Dense(), compute=3, keep=lowest(3), arithmetic=:complex)
-              for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)]
+              for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow)]
     root = Node(leaves; compute=4, keep=lowest(4))
     names = [m.name for m in spec.modes]
     starts = [Dict{Symbol,Float64}(zip(names, (0.0, 0.0, 0.0))), Dict{Symbol,Float64}(zip(names, (π, -π/2, π)))]
@@ -187,4 +190,37 @@ end
             @test s.children[leaf].solved.energies[1:3] ≈ Float64.(levels) atol=1e-6
         end
     end
+end
+
+# Design §6.3: the product energy does not depend on the frame. In a new frame φ_i = s_i φ'_i (n_i = n'_i / s_i), E_C[i,j]
+# becomes E_C[i,j] / (s_i s_j), E_L[i,j] becomes E_L[i,j] s_i s_j, flux_linear[i], n_g[i] and every cosine's omega[i] are
+# multiplied by s_i; s = -1 is a sign flip. Each frame takes its own bases from suggest_bases, and its starts are the same
+# physical displacements (φ⁰ / s_i). A sign flip maps the symmetric grid onto itself, so it agrees to round-off. A rescaled
+# frame's grid is not the image of the original's: its step scales with s, but the `4 E_C` term of the extent does not,
+# and the point count is rounded up; the two problems then differ by the grids' discretization and truncation error
+# (measured 3e-10 GHz at most here), hence the tolerance 1e-6.
+@testset "the product energy is invariant under a rescaling or a sign flip of a mode" begin
+    names = [:a, :b, :c]
+    E_C = [0.6 0.1 0.05; 0.1 1.0 0.2; 0.05 0.2 0.8]
+    E_L = [0.0 0.0 0.0; 0.0 0.8 0.15; 0.0 0.15 0.5]
+    fl, ng = [0.0, 0.3, -0.2], [0.2, 0.0, 0.0]
+    cosines = [(3.0, [1.0, 0.0, 0.0], 0.0), (4.0, [0.0, 1.0, 0.0], 2.0), (1.0, [1.0, 1.0, -1.0], 0.4)]
+    frame(s) = numeric_spec(; modes=[:a => :c, :b => :e, :c => :e], E_C=E_C ./ (s * s'), E_L=E_L .* (s * s'),
+                            flux_linear=fl .* s, n_g=ng .* s, cosines=[(E, ω .* s, off) for (E, ω, off) in cosines])
+    function lowest_product_energy(s)
+        spec = frame(s)
+        bases = suggest_bases(spec; charge_cutoff=8, max_points=1000, extent_scale=1.5, when_capped=:error)
+        leaves = [Node([m => b]; solver=Dense(), compute=3, keep=lowest(3)) for (m, b) in bases]
+        root = Node(leaves; compute=1, keep=lowest(1))
+        starts = Any[nothing; [Dict(n => d[i] / s[i] for (i, n) in enumerate(names))
+                               for d in Iterators.product((0.0, π), (0.0, π, -π), (0.0, π))]...]
+        sols = only_warnings(r"no weight on the phase mask", () -> mean_field_solutions(root, spec, (;); starts))
+        @test sols[1].converged
+        return sols[1].energy
+    end
+    E = lowest_product_energy([1.0, 1.0, 1.0])
+    @test lowest_product_energy([1.0, 1.37, 1.0]) ≈ E atol=1e-6                 # a noncompact mode rescaled
+    @test lowest_product_energy([1.0, 1.0, 0.6]) ≈ E atol=1e-6                  # the other noncompact mode rescaled
+    @test lowest_product_energy([-1.0, 1.0, 1.0]) ≈ E atol=1e-6                 # the compact mode flipped
+    @test lowest_product_energy([1.0, -1.0, 1.0]) ≈ E atol=1e-6                 # a noncompact mode flipped
 end

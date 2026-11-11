@@ -23,7 +23,7 @@ const KITE_PHASE_WARNING = (:warn, r"^fix_phases!: column 2 has no weight on the
 # The leaves and root of the comparison, on the bases the reference uses.
 function kite_tree(spec)
     leaves = [Node([m => b]; solver=Dense(), compute=3, keep=lowest(3), arithmetic=:complex)
-              for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)]
+              for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow)]
     return leaves, Node(leaves; compute=4, keep=lowest(4))
 end
 
@@ -78,7 +78,7 @@ end
     spec = load_spec(fixture("kite/$name.json"))
     leaves, root = kite_tree(spec)
     @test spec.modes[1].type === :c && all(m.type === :e for m in spec.modes[2:end])
-    grids = [b for (_, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5) if b isa PhaseGrid]
+    grids = [b for (_, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow) if b isa PhaseGrid]
     @test [g.N for g in grids] == collect(ref.grid.points)
     @test all(isapprox(g.b, e; rtol=1e-12) && g.a == -g.b for (g, e) in zip(grids, ref.grid.extents))
     @test only(b for (_, b) in suggest_bases(spec; charge_cutoff=16) if b isa ChargeBasis).ncut == ref.grid.charge_cutoff

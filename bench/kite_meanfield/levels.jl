@@ -121,7 +121,7 @@ failures = String[]
 # each keeping its KEEP lowest mean-field states, and a root over them.
 function kite_leaves(spec)
     return [Node([m => b]; solver=Dense(), compute=KEEP, keep=lowest(KEEP), arithmetic=:complex)
-            for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)]
+            for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow)]
 end
 
 # The root over `leaves`, solved for its NLEV lowest levels: densely up to 1000 product states, else by LOBPCG with a
@@ -382,7 +382,7 @@ function reference_solve()
     CONTEXT[] = "the reference solve"
     println("\n=== reference solve (KITE_MEANFIELD_REFSOLVE=1): published frame, suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0)")
     spec = load_spec(joinpath(FIXTURES, "published.json"))
-    bases = suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0)
+    bases = suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0, when_capped=:allow)
     for (m, b) in bases
         println("  ", m, ": ", b isa ChargeBasis ? "ChargeBasis($(b.ncut))" : @sprintf("PhaseGrid(%.6f, %.6f, %d)", b.a, b.b, b.N))
     end

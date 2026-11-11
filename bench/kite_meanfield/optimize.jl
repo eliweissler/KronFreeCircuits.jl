@@ -157,9 +157,9 @@ function frame_score(x)
         err isa ArgumentError || rethrow()
         return record!(x, nothing, NaN)
     end
-    bases = suggest_bases(spec; charge_cutoff=16, max_points=MAX_POINTS)
+    bases = suggest_bases(spec; charge_cutoff=16, max_points=MAX_POINTS, when_capped=:allow)   # capping detected below
     points(bs) = [b isa PhaseGrid ? b.N : 0 for (_, b) in bs]
-    points(bases) == points(suggest_bases(spec; charge_cutoff=16, max_points=UNCAPPED)) ||
+    points(bases) == points(suggest_bases(spec; charge_cutoff=16, max_points=UNCAPPED, when_capped=:allow)) ||
         return record!(x, nothing, NaN; capped=true)
     sol, growths, warm, bases = lowest_solution(spec, bases)
     return record!(x, sol, F_NM(S); growths, warm, bases)
@@ -267,7 +267,7 @@ end
 # The wells of a frame on the grids of levels.jl, from its 33 starts: the distinct solutions within WINDOW of the lowest.
 function wells(S)
     spec = Spec(QC, S)
-    root = tree(suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5))
+    root = tree(suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow))
     sols = mean_field_solutions(root, spec, (;); starts=kite_starts(spec))
     COUNT.runs[] += length(kite_starts(spec))
     return filter(s -> s.energy - sols[1].energy <= WINDOW, sols)

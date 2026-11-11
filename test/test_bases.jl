@@ -120,12 +120,24 @@ end
 @testset "suggest_bases" begin
     s = numeric_spec(; modes=[:a => :c, :b => :e], E_C=[0.072 0.072; 0.072 2.484170953858], E_L=[0.0 0.0; 0.0 2.54],
                      flux_linear=[0.0, 0.0], n_g=[0.0, 0.0], cosines=[(17.3349, [1, -1.0], 0.0), (16.3251, [1, -1.0], 0.0)])
-    b = Dict(suggest_bases(s; charge_cutoff=16, max_points=120, extent_scale=1.5))
+    b = Dict(suggest_bases(s; charge_cutoff=16, max_points=120, extent_scale=1.5, when_capped=:allow))
     @test b[:a] == ChargeBasis(16)
     zpf = (2 * 2.484170953858 / 2.54)^0.25; ω = sqrt(8 * 2.484170953858 * 2.54)
     ext = 1.5 * max(6zpf, sqrt(2 * (2 * (17.3349 + 16.3251) + 12ω + 4 * 2.484170953858) / 2.54))
     @test b[:b] == PhaseGrid(-ext, ext, 120)                       # capped: the formula asks for more than 120 points
     @test Dict(suggest_bases(s; max_points=10_000))[:b].N == ceil(Int, 2 * (ext / 1.5) / min(zpf / 6, π / 6)) + 1
+    # a binding cap (the KITE-like settings above): one warning naming the mode, the points the formula asks for and the
+    # cap by default, an error or silence on request, and the same bases in every case; no warning when it does not bind
+    kw = (charge_cutoff=16, max_points=120, extent_scale=1.5)
+    asks = ceil(Int, 2 * ext / min(zpf / 6, π / 6)) + 1
+    capped = @test_logs (:warn, Regex("mode :b \\(the formula asks for $asks points\\) at max_points = 120")) suggest_bases(s; kw...)
+    @test capped == suggest_bases(s; kw..., when_capped=:allow) == (@test_logs suggest_bases(s; kw..., when_capped=:allow))
+    @test Dict(capped)[:b].N == 120 < asks
+    @test_throws Regex("mode :b .*$asks points.*max_points = 120") suggest_bases(s; kw..., when_capped=:error)
+    @test_logs suggest_bases(s; kw..., max_points=10_000)
+    @test_logs suggest_bases(s; kw..., max_points=asks, when_capped=:error)      # a cap equal to the formula's count does not bind
+    @test_throws "when_capped" suggest_bases(s; kw..., when_capped=:ignore)
+    @test_throws "when_capped" suggest_bases(s; max_points=10_000, when_capped=:ignore)   # checked even when nothing is capped
     # the modes in the order of the spec, and the keywords passed on
     @test first.(suggest_bases(s)) == [:a, :b]
     @test Dict(suggest_bases(s; order=4))[:b].order == 4

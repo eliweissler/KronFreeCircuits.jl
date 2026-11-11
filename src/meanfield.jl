@@ -288,7 +288,7 @@ end
     MeanFieldSolution
 
 A self-consistent mean-field solution of the children of a node: each child solved in the mean field of the others.
-`energy` is the product energy, and `children` holds every child's `MeanFieldChild` of the last iteration.
+`energy` is the product energy of the last iteration, and `children` holds every child's `MeanFieldChild`: its states are those of the final solve at the final tables, and its tables and bare energy those of the last iteration (details below).
 `start` is where the run began: `nothing` (delocalized), a displacement `Dict`, or `:warm` when the run was started from another solution.
 A warm-started solution keeps no reference to the solution it came from.
 `converged` is `false` when the run stopped at its iteration limit, and `iterations` is the number of iterations run.
@@ -341,6 +341,16 @@ function _initial_tables(parent::Node, terms::Vector{Term}, start)
     return IdDict{Node,Expectations}(ch => copy(start.children[ch].expectations) for ch in parent.children)
 end
 
+# `bare` must map every child of `parent` to a solve of that child.
+function _check_bare(parent::Node, bare::AbstractDict)
+    for ch in parent.children
+        haskey(bare, ch) || throw(ArgumentError("`bare` has no solve of the child on modes $(modes(ch))"))
+        b = bare[ch]
+        b isa MaterializedNode && b.node === ch ||
+            throw(ArgumentError("the value of `bare` for the child on modes $(modes(ch)) is not a solve of that child"))
+    end
+end
+
 # The largest absolute difference of any table entry of any child between two sets of tables.
 _table_change(a, b) = maximum(abs(a[ch][k] - b[ch][k]) for ch in keys(a) for k in keys(a[ch]); init=0.0)
 
@@ -352,6 +362,7 @@ The self-consistent mean-field loop over the children of `parent`, with `bare` m
 Each iteration solves every child with `mean_field_child` from the tables of the previous iteration, then computes the product energy from the new tables and bare energies.
 After the energy has risen (by more than `1e-12`) twice, every later iteration replaces the new tables and bare energies by `mixing` times the new plus `1 - mixing` times the previous ones.
 The run converges when `|E - E_prev| < tol * max(1, |E|)` and no table entry changed by `sqrt(tol)` or more.
+The rise threshold `1e-12` is absolute and the energy test switches from absolute to relative at `|E| = 1`, so both assume energies of order one in the spec's unit (GHz); in another unit, scale `tol` with it.
 A run that reaches `maxiter` iterations is returned with `converged = false`.
 When the loop ends, converged or not, every child is solved once more with `mean_field_child` from the final tables, the ones the last energy was computed from; this solve is not counted in `iterations`.
 The solution holds the energy of the last iteration and, for each child, a `MeanFieldChild` whose `solved` and `terms` are those of that final solve, so `solved` holds the child's states in the mean field of the final expectation values.
@@ -401,20 +412,27 @@ function self_consistent(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare
 end
 
 """
-    mean_field_solutions(parent, terms, θ; starts=default_starts(parent), distinct=1e-3, kwargs...) -> Vector{MeanFieldSolution}
+    mean_field_solutions(parent, terms, θ; starts=default_starts(parent), distinct=1e-3, bare=nothing, kwargs...) -> Vector{MeanFieldSolution}
     mean_field_solutions(parent, spec::Spec, θ; kwargs...) -> Vector{MeanFieldSolution}
 
 Run `self_consistent` from every start in `starts`, with the bare solve of each child formed once and shared, and return the distinct solutions, lowest energy first.
 A solution is kept when, against every solution already kept, some table entry of some child differs by more than `distinct`.
 Ties in energy keep the order of `starts`, and runs that did not converge take part like any other.
+`bare`, when given, is a dictionary (an `IdDict` keyed by node) holding the bare solve (`bare_child(parent, terms, θ, child)`) of every child of `parent`, used instead of solving them here; a missing child, or a value that is not a solve of its child, is an `ArgumentError`.
+The solutions' states are coordinates on the children of these bare solves (for a branch child, on the kept states of its own children).
+A caller who goes on to `augment` should therefore form `bare` once, pass it here, and give `augment` the same bare solves: solving a child again can give its children other kept vectors (a randomly started solver, or another phase choice), and the solutions' states would then be read on another product basis.
 The remaining keywords are passed to `self_consistent`.
 The second form takes the terms from `circuit_terms(spec)` and `constant` from `constant_term(spec)` at `θ`.
 """
 function mean_field_solutions(parent::Node, terms::Vector{Term}, θ::NamedTuple; starts=default_starts(parent),
-                              distinct::Real=1e-3, kwargs...)
+                              distinct::Real=1e-3, bare::Union{Nothing,AbstractDict}=nothing, kwargs...)
     isempty(starts) && throw(ArgumentError("`starts` is empty: give at least one start"))
     _check_node_children(parent)
-    bare = IdDict{Node,MaterializedNode}(ch => bare_child(parent, terms, θ, ch) for ch in parent.children)
+    if bare === nothing
+        bare = IdDict{Node,MaterializedNode}(ch => bare_child(parent, terms, θ, ch) for ch in parent.children)
+    else
+        _check_bare(parent, bare)
+    end
     runs = MeanFieldSolution[self_consistent(parent, terms, θ, bare; start, kwargs...) for start in starts]
     sort!(runs; by=s -> s.energy, alg=MergeSort)                             # stable: ties keep the order of `starts`
     tables(s) = IdDict{Node,Expectations}(ch => c.expectations for (ch, c) in s.children)

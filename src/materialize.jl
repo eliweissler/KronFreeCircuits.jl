@@ -125,7 +125,8 @@ A term with two or more factors on one mode throws an `ArgumentError`.
 
 `augmented`, a vector of [`AugmentedChild`](@ref) (from [`augment`](@ref)), presents some nodes of the tree through a basis of their own: such a node is not solved, and its `solved` is used as that child, with any port or joint port the tree needs that it lacks formed from its kept vectors.
 The terms are routed as usual, so the terms inside an augmented node are not used, and its ancestors' operators are built exactly as on a solved child.
-An augmented child is used as built, at the terms and `θ` that `augment` was given: nothing checks them against this call's, and it is the caller's job to rebuild it when they change.
+An augmented child is used as built, at the terms and `θ` that `augment` was given; it is the caller's job to rebuild it when they change.
+A `θ` that differs from the augmented child's in a parameter its stored (bare) terms depend on is an `ArgumentError`; the terms themselves are not checked, nor the parameters of the terms inside a branch child.
 An augmented node, and every ancestor of it, runs in complex arithmetic.
 The `System` records the augmented children, which [`augmented`](@ref) returns.
 An augmented node that is not in the tree or is its root, a node given twice, an augmented node inside another one, `augmented` together with `previous`, and an augmented node or an ancestor of one with `arithmetic = :real` each throw an `ArgumentError`.
@@ -149,7 +150,7 @@ end
 # ancestors are marked complex after `classify` (`_augmented_nodes!`).
 function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, previous,
                             modetypes::Dict{Symbol,Symbol}; augmented::AbstractVector=AugmentedChild[])
-    parents = isempty(augmented) ? nothing : _check_augmented(root, augmented, previous)
+    parents = isempty(augmented) ? nothing : _check_augmented(root, augmented, previous, θ)
     routed, realnodes, needed, needed_joint = _plan(root, terms, θ, constant, modetypes)
     aug = parents === nothing ? nothing : _augmented_nodes!(realnodes, parents, augmented, needed, needed_joint)
     c = constant(θ)

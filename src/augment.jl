@@ -127,6 +127,7 @@ end
 A child presented to its parent through a basis of its own choosing, the union basis `U`, instead of its ordinary solve.
 `node` is the child, and `basis` is `U` on the child's own product space, one orthonormal column per vector.
 `terms` are the child's bare terms, those `route` places at the child itself, with no mean-field terms.
+`θ` is the parameter point given to `augment`, at which `solved` was formed; `materialize` refuses the child at a `θ` that differs from it in a parameter that `terms` depend on.
 `solved` holds the child's bare operator projected on `basis` and diagonalized: its vectors are `basis * W`, lowest energy first, all `size(basis, 2)` of them.
 `solved` forms the ports and joint ports that its parent's terms need inside the child, as `child_keys` lists them.
 `report` is the `UnionReport` of the merge that built `basis`.
@@ -137,6 +138,7 @@ struct AugmentedChild
     solved::MaterializedNode
     basis::Matrix{ComplexF64}
     terms::Vector{Term}
+    θ::NamedTuple
     report::UnionReport
 end
 
@@ -145,11 +147,13 @@ end
 
 The child `child` of `parent` presented through the orthonormal basis `U` on its own product space.
 `bare` is the child's bare solve (`bare_child`), whose children span the product space and are not solved again.
+It must be the solve on which the columns of `U` are expressed: for vectors from `mean_field_solutions`, the same object that was passed to it as `bare` (another solve of the child can have other kept vectors in its children, and `U` would then be read on another product basis without any error).
 The child's bare operator `H`, on its own terms only and in complex arithmetic, is projected to `U' * H * U` and diagonalized densely.
 Every column is kept, so the child presents `size(U, 2)` states, and its `compute` and `keep` settings do not apply.
 The kept vectors are `U * W` with `W` the eigenvectors of the projection, with the child's phase convention and the ports and joint ports of `child_keys(parent, terms, child)`.
-`report` is stored with the result, as is a copy of `U`.
-The result is used as built, at these `terms` and `θ`: `materialize` does not check them against its own, and it is the caller's job to rebuild it when they change.
+`report` is stored with the result, as are a copy of `U` and `θ`.
+The result is used as built, at these `terms` and `θ`.
+`materialize` refuses it at a `θ` that differs from this one in a parameter the child's bare terms depend on; it does not check the terms themselves, nor the parameters of the terms inside a branch child (those of its bare solve), and it is the caller's job to rebuild the child when they change.
 A union basis that is not made of eigenvectors of the child can trigger the parent's "heavy hybridization" phase warning, which reports on the phase convention and is not an error.
 An `ArgumentError` is thrown when `bare` is not a solve of `child`, when `U` does not have one row per state of the product space or has no column, and when `U' * U` differs from the identity by more than `1e-8`.
 """
@@ -174,13 +178,14 @@ function augment(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node,
     ports, joint_ports = _split_keys(keys)
     solved = _assemble_node(child, bare.children, Vector{Float64}(E), Matrix{ComplexF64}(basis * W);
                             ports, joint_ports, real=false)
-    return AugmentedChild(child, solved, basis, bare_terms, report)
+    return AugmentedChild(child, solved, basis, bare_terms, θ, report)
 end
 
 # The parent of every node under `root` except the root, after checking `augmented` against the tree: each entry an
 # `AugmentedChild` whose node is in the tree and is not the root, no node given twice, no augmented node inside another,
-# no `previous`, and neither an augmented node nor an ancestor of one with `arithmetic = :real`.
-function _check_augmented(root::Node, augmented::AbstractVector, previous)
+# no `previous`, neither an augmented node nor an ancestor of one with `arithmetic = :real`, and each built at the call's
+# `θ` in every parameter its stored terms depend on.
+function _check_augmented(root::Node, augmented::AbstractVector, previous, θ::NamedTuple)
     previous === nothing ||
         throw(ArgumentError("`augmented` cannot be combined with `previous`: an augmented child has no previous solution to follow"))
     parents = IdDict{Node,Node}()
@@ -196,6 +201,7 @@ function _check_augmented(root::Node, augmented::AbstractVector, previous)
         haskey(parents, n) || throw(ArgumentError("the augmented node on modes $(modes(n)) is not a node of this tree"))
         n in seen && throw(ArgumentError("the node on modes $(modes(n)) is augmented twice"))
         push!(seen, n)
+        _check_augmented_θ(a, θ)
         n.arithmetic === :real &&
             throw(ArgumentError("the augmented node on modes $(modes(n)) has arithmetic = :real, but an augmented node " *
                                 "runs in complex arithmetic"))
@@ -217,6 +223,18 @@ function _check_augmented(root::Node, augmented::AbstractVector, previous)
         end
     end
     return parents
+end
+
+# `a` must have been built at `θ` in every parameter its stored terms depend on (a parameter absent from either side differs).
+function _check_augmented_θ(a::AugmentedChild, θ::NamedTuple)
+    deps = unique!(reduce(vcat, (t.coeff.deps for t in a.terms); init=Symbol[]))
+    for p in deps
+        built = haskey(a.θ, p) ? repr(a.θ[p]) : "(absent)"
+        now = haskey(θ, p) ? repr(θ[p]) : "(absent)"
+        haskey(a.θ, p) && haskey(θ, p) && a.θ[p] == θ[p] && continue
+        throw(ArgumentError("the augmented child on modes $(modes(a.node)) was built at $p = $built, but this call has " *
+                            "$p = $now, and its terms depend on $p; rebuild the augmented child at the new θ"))
+    end
 end
 
 """
@@ -268,9 +286,11 @@ end
         -> (; children, solutions, used, energy, unconverged)
 
 The augmented children of every child of `parent`, built from its mean-field solutions: a convenience over the pieces that adds no behaviour of its own.
-It runs `mean_field_solutions(parent, spec, θ; starts, kwargs...)`, passing on every keyword not named here.
+It runs `mean_field_solutions(parent, spec, θ; starts, bare, kwargs...)`, with `bare` the bare solves below, passing on every keyword not named here.
 It uses the solutions whose energy is within `window` of the lowest (inclusive), in order, at most `max_solutions` of them.
-For each child of `parent`, in order, it forms the child's `bare_child` and one `BasisSource` per used solution, labelled `"solution <index>"`.
+`window` is an energy in the spec's unit, and its default `0.5` assumes energies of order one (GHz).
+It forms the `bare_child` of every child of `parent` once, before the loop, and passes them to `mean_field_solutions` as `bare`, so that the solutions' states, the union basis and `augment` share one product basis per child.
+For each child of `parent`, in order, it forms one `BasisSource` per used solution, labelled `"solution <index>"`.
 That source holds the child's kept mean-field states in the solution, at most its first `m`, with their mean-field energies, and is limited by `cap`.
 With `bare = true` a last source, labelled `"bare"`, holds the bare child's kept states with no limit.
 It merges the sources with `union_basis(sources; m, allow_fewer)` and presents the child through the result with `augment`.
@@ -289,7 +309,11 @@ function mean_field_augment(parent::Node, spec::Spec, θ::NamedTuple; m::Int, wi
     max_solutions >= 1 || throw(ArgumentError("`max_solutions` must be at least 1, got $max_solutions"))
     cap === nothing || cap >= 1 || throw(ArgumentError("`cap` must be at least 1 or `nothing`, got $cap"))
     terms = circuit_terms(spec)
-    solutions = mean_field_solutions(parent, spec, θ; starts, kwargs...)
+    _check_node_children(parent)
+    # the bare solves are formed once: the solutions' states are coordinates on their children, and `augment` and the
+    # "bare" source take the same objects
+    bares = IdDict{Node,MaterializedNode}(ch => bare_child(parent, terms, θ, ch) for ch in parent.children)
+    solutions = mean_field_solutions(parent, spec, θ; starts, bare=bares, kwargs...)
     used = first(Int[i for i in eachindex(solutions) if solutions[i].energy - solutions[1].energy <= window], max_solutions)
     unconverged = count(i -> !solutions[i].converged, used)
     need = cap === nothing ? m : min(m, cap)
@@ -300,7 +324,7 @@ function mean_field_augment(parent::Node, spec::Spec, θ::NamedTuple; m::Int, wi
     end
     children = AugmentedChild[]
     for ch in parent.children
-        b = bare_child(parent, terms, θ, ch)
+        b = bares[ch]
         sources = BasisSource[]
         for i in used
             s = solutions[i].children[ch].solved
