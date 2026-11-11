@@ -22,6 +22,7 @@ No `Manifest.toml` is committed (`Manifest*.toml` is ignored by git).
 For each frame (published coordinates, normal modes, the product-state optimum), with `θ = (;)`:
 
 1. It loads the frame's spec and builds one leaf per mode on the bases of `suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)`: `ChargeBasis(16)` (33 states) on the compact mode and a 120-point `PhaseGrid` on each extended mode.
+   The 120-point cap binds (the formula asks for more points), and it is the figure's own choice, so the script passes `when_capped = :allow`.
    Each leaf is a `Node` with `solver = Dense()`, `compute = 20`, `keep = lowest(20)` and `arithmetic = :complex`, so it keeps 20 mean-field states (`m` goes to 20).
 2. It runs `mean_field_solutions` once from the 33 starts of `test/test_meanfield_kite.jl`: the compact mode at `0` or `π`, each extended mode at `0`, `π/2`, `π` or `-π/2`, and the delocalized start.
    It passes `distinct = -Inf`, which keeps every run (lowest energy first, ties in the order of the starts), so that it can count the converged runs; it then keeps the distinct ones by `mean_field_solutions`' own rule at its default `1e-3`.
@@ -66,7 +67,7 @@ The largest difference between this run's eight levels and the reference calcula
 | optimum | 9.9e-14 | 7.2e-14 | 1.5e-13 | 1.2e-13 |
 
 In the normal-mode and optimum frames the reproduction is exact to round-off.
-In the published frame it is close at `m = 8` and `12` and departs by up to 2.9e-4 GHz at `m = 16` and `20`; the identified cause is under "The published frame" below.
+In the published frame it is close at `m = 8` and `12` and departs by up to 2.9e-4 GHz at `m = 16` and `20`; the inferred cause is under "The published frame" below.
 The largest residual of the four lowest levels of any root solve was 9.7e-11 GHz.
 
 ### The wells
@@ -111,7 +112,7 @@ The appendix's conclusion holds on this grid: at every `m` two wells give the sm
 
 ### The reference solve
 
-With `KITE_MEANFIELD_REFSOLVE=1` the script solves the published frame on the bases of `suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0)`, `ChargeBasis(24)` and 160-point grids over ±22.624245 and ±22.517312, the reference calculation's own grid, on a plain tree: `Dense` leaves keeping `K` states each (the compact leaf all of its 49 when `K > 49`), the root by `LOBPCG(tol = 1e-9)` for its four lowest levels.
+With `KITE_MEANFIELD_REFSOLVE=1` the script solves the published frame on the bases of `suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0, when_capped=:allow)`, `ChargeBasis(24)` and 160-point grids over ±22.624245 and ±22.517312, the reference calculation's own grid, on a plain tree: `Dense` leaves keeping `K` states each (the compact leaf all of its 49 when `K > 49`), the root by `LOBPCG(tol = 1e-9)` for its four lowest levels.
 
 | K | states | E₀ | E₁ | E₂ | E₃ | change from the previous K |
 |---|---|---|---|---|---|---|
@@ -144,13 +145,15 @@ Another job was running on this machine from the same checkout; the load average
 
 ## The published frame
 
-The published frame reproduces the reference's errors with ratios 0.9986 at `m = 16` and 0.9726 at `m = 20`, and its levels to 2.9e-04 GHz, against round-off in the other two frames; the target (a factor of two) is met, and this is the cause of the looser agreement.
-In this frame the two wells' mean-field states coincide on the mode `varphi_2` up to a few parts in a million: the replayed merge prints Gram–Schmidt remainders of the second well's states 1 to 12 of 3.9e-06, 4.9e-06, 2.2e-06, 3.5e-04, 2.3e-06, 2.2e-06, 1.7e-06, 8.3e-07, 7.5e-08, 3.6e-07, 1.1e-07 and 4.0e-07, against the drop threshold `1e-6`.
-So the union takes the second well's states 1 to 7 as normalized remainders of order 1e-6, which are dominated by the differences between the two wells' states at that level, and drops state 8 and beyond (one drop at `m = 16`, five at `m = 20`, the first well filling in).
-The test `test/test_meanfield_kite.jl` records that in this frame the reference calculation stops its loop one iteration later than this package, so the two codes' wells differ slightly, at the level of these remainders; the directions admitted, and which candidates fall on which side of `1e-6` (state 7 at 1.7e-06 and state 8 at 8.3e-07 are close to it), therefore depend on those differences and on round-off, and the two codes' unions on `varphi_2` need not be the same.
+The published frame reproduces the reference's errors with ratios 0.9986 at `m = 16` and 0.9726 at `m = 20`, and its levels to 2.9e-04 GHz, against round-off in the other two frames; the target (a factor of two) is met; the inferred cause of the looser agreement follows.
+In this frame the two wells' mean-field states coincide on the mode `varphi_2` up to the loop's convergence residue: the replayed merge prints Gram–Schmidt remainders of the second well's states 1 to 12 of 3.9e-06, 4.9e-06, 2.2e-06, 3.5e-04, 2.3e-06, 2.2e-06, 1.7e-06, 8.3e-07, 7.5e-08, 3.6e-07, 1.1e-07 and 4.0e-07, against the drop threshold `1e-6`.
+So the union takes the second well's states 1 to 7 as normalized remainders of order 1e-6 and drops state 8 and beyond (one drop at `m = 16`, five at `m = 20`, the first well filling in).
+Those remainders are the loop's convergence residue, not differences between the wells' states, as measured in the final review with a separate script that is not in the repository: tightening the loop's `tol` from 1e-11 to 1e-13 lowers the distance of the second well's states 1 to 8 from the span of the first well's twelve on `varphi_2` tenfold (1.2e-8 to 1.8e-6 becomes 1.1e-9 to 1.7e-7), and leaves the other modes unchanged.
+So the two wells have the same states on that mode, and what the union admits there at `drop = 1e-6` is residue of the loop, whose tables converge only to about `sqrt(tol)` ≈ 3e-6.
+The test `test/test_meanfield_kite.jl` records that in this frame the prototype (circuit-quantization's `product_state.py`, whose wells are the test's fixtures) stops its loop one iteration later than this package, so the two codes' residues differ; the directions admitted, and which candidates fall on which side of `1e-6` (state 7 at 1.7e-06 and state 8 at 8.3e-07 are close to it), therefore depend on where each loop stopped and on round-off, and the two codes' unions on `varphi_2` need not be the same.
 At `m = 8` and `12` the second well offers its states 1 to 4 and 1 to 6, whose remainders (2.2e-06 to 3.5e-04) are all at least twice the threshold, and the levels agree with the reference to 2.3e-06 and 5.6e-07 GHz; the departure appears at `m = 16` and beyond, where states 7 and 8, the ones nearest the threshold, are offered.
 In the normal-mode and optimum frames no union dropped a vector, and the levels agree with the reference to 1.5e-13 GHz.
-Which candidates the reference calculation admitted on `varphi_2` is not recorded in its result files, so this reading is inferred from the remainders printed here, not checked against the reference's own union.
+Which candidates the reference calculation admitted on `varphi_2` is not recorded in its result files, so this reading is inferred from the remainders printed here and the review's measurement, not checked against the reference's own union.
 
 # The frame optimization: `optimize.jl`
 
@@ -170,6 +173,7 @@ JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=benc
 Instantiate the project with the same two variables set, so that precompiling PythonCall does not install its own Python.
 `levels.jl` runs from the same project without them, since only `optimize.jl` loads PythonCall.
 The script runs single-threaded on the CPU and writes only to `bench/kite_meanfield/results/`, which git ignores (`KITE_OPTIMIZE_OUT` changes the directory).
+Copies of the recorded run's `iterations.csv`, `optimum_S.txt` and `optimum_record.json` (the 150-iteration run of 2026-11-10) are tracked in `bench/kite_meanfield/recorded/`; the numbers quoted below come from them, and its `cost_history.csv` (596 kB) is not tracked.
 `KITE_MEANFIELD_MAXITER` sets the optimizer's iteration limit (default 150), for a short run that shows the script works end to end; a run with another limit must also set `KITE_OPTIMIZE_OUT` to another directory, or the script stops at start-up without touching the default results.
 There it writes four files:
 
@@ -193,7 +197,7 @@ That gives six parameters, and `x = 0` is the identity.
 `frame_score(x)` composes these pieces:
 
 - `S` from the parameterization, then `Spec(qc, S)`; a frame that circuit-quantization rejects (an `ArgumentError`) scores `Inf`.
-- The bases are `suggest_bases(spec; charge_cutoff = 16, max_points = 400)`.
+- The bases are `suggest_bases(spec; charge_cutoff = 16, max_points = 400, when_capped = :allow)`.
   A frame for which `suggest_bases` had to cap a grid scores `Inf`.
   The script detects that by calling `suggest_bases` again with `max_points = 10^9` and comparing the point counts.
 - The tree is one leaf per mode (`Dense()`, 4 kept states, `arithmetic = :complex`) under a root.
@@ -233,7 +237,7 @@ After the optimization:
 
 - The script rescales the noncompact columns of the final `S` so that `(Sᵀ C S)_jj = 1`, with `C` the inverse of the base frame's `E_C`, and prints `S`.
 - It recomputes the final frame's lowest product energy on the score's grids with twice the points over the same extents; a difference above `1e-5` GHz is printed as a warning.
-- It solves the final frame on the bases of `levels.jl`, `suggest_bases(spec; charge_cutoff = 16, max_points = 120, extent_scale = 1.5)`, from the 33 starts of `starts.jl`, and prints every distinct solution within `0.5` GHz of the lowest.
+- It solves the final frame on the bases of `levels.jl`, `suggest_bases(spec; charge_cutoff = 16, max_points = 120, extent_scale = 1.5, when_capped = :allow)`, from the 33 starts of `starts.jl`, and prints every distinct solution within `0.5` GHz of the lowest.
   Beside them it prints the paper's optimum on the same bases, read from `test/fixtures/kite/meanfield_reference.json`.
 - It checks the invariances (below).
 
@@ -269,7 +273,7 @@ The final frame, with its noncompact columns scaled to `(Sᵀ C S)_jj = 1`:
     0.000000  -0.571896   0.629087
 ```
 
-It agrees with the paper's `S_OPT` (`[1 0.2354 0.2306; 0 0.6962 0.7339; 0 -0.5719 0.629]`) to the four printed decimals of `S_OPT`, although nothing compares the two.
+It is close to the paper's `S_OPT` (`[1 0.2354 0.2306; 0 0.6962 0.7339; 0 -0.5719 0.629]`) but does not agree with it to the four printed decimals: the largest entry difference is 1.03e-4 (0.696303 against 0.6962), and 1.02e-4 (0.734002 against 0.7339) and 8.7e-5 (0.629087 against 0.629) follow; nothing in the script compares the two.
 On the score's grids (113 and 112 points) the final frame's product energy is -9.429465189128 GHz; on twice the points it is -9.429464723969, a difference of 4.7e-07 GHz.
 
 On the figure's bases, from the 33 starts, the final frame has two wells:
@@ -312,7 +316,7 @@ Gradients of 1e-2 to 8e-2 are far above that floor and are not explained by it; 
 
 The wander is the line search together with the cost's flat directions.
 HagerZhang's approximate-Wolfe rule accepts an increase of the cost of up to `1e-6 |f|`, about 9.4e-6 GHz, per iteration.
-In `iterations.csv`, 85 of the 150 iterations raised the cost, and the largest single rise was 9.42e-6 GHz.
+In `recorded/iterations.csv`, 85 of the 150 iterations raised the cost, and the largest single rise was 9.42e-6 GHz.
 The parameters drifted along the nearly flat directions of the noncompact columns' scale, to `|x|` of about 30, which also ill-conditions BFGS.
 The rise per iteration is measured; that the line-search rule and the drift cause the wander is an inference.
 For the same reason the cost-change test (`1e-9` GHz) was never met.
