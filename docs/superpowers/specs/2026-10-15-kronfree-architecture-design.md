@@ -922,6 +922,140 @@ The Python tier, `test/python/` with its own environment, is never included by `
 It runs as `JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=<python> julia --project=test/python test/python/runtests.jl`.
 It covers the module import and its error messages, the error for a circuit-quantization without the zero-tolerance keywords, `Spec(res)` against every committed generated fixture, the symbolic and loop routes and their agreement (including the nonzero offset charge), the offset-charge convention with a two-by-two compact block, inadmissible frames on both routes, and run records written and read back (with two compact modes, with zero tolerances, and once in a fresh Julia session).
 
+### 20k. Mean-field basis augmentation (2026-11-11)
+
+A child of a node can now be solved in the mean field of its siblings, and the mean-field states of several self-consistent solutions can become the basis through which the child is presented to its parent.
+The parent's operator is never changed: only the basis the parent sees changes, so nothing is approximated beyond the truncation to that basis.
+This is the optimized-coordinate vibrational self-consistent field method of the circuit-quantization paper (its Appendix C), whose prototype is circuit-quantization's `product_state.py`.
+The design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md` and the plan `docs/superpowers/plans/2026-11-10-mean-field-augmentation.md`; the work is on the branch `mean-field` (commits `35a87b5` to `6853aaf`, off `main` at `ab842ef`).
+
+**The pieces.**
+They are exported, so that the self-consistent loop and the basis construction are a few readable lines (README, "Mean-field bases").
+
+- *Mean-field terms* (`src/meanfield.jl`).
+  `straddling_terms(parent, terms)` are the terms `route` places at `parent`; `child_keys(parent, terms, child)` lists the factor keys those terms need inside `child`, one key per group of factors that sit in the child, so two factors in one child form a joint key whose value is the child's joint expectation, not a product of single ones.
+  An `Expectations` table maps each key to a complex number: `expectations(solved, keys; state, weights)` takes it in one kept state of a solved child or averages over the kept states, and `pinned_expectations(keys, displacement)` and `delocalized_expectations(keys)` make starting tables that correspond to no solved state.
+  `mean_field_terms(parent, terms, θ, child, others; outside)` reduces each straddling term to the child's own factors, with a constant complex coefficient equal to the term's coefficient at `θ` times the other children's expectations of their keys; terms that reach outside `parent` enter only when `outside` supplies their outside expectation.
+- *A mean-field child.*
+  `bare_child(parent, terms, θ, child)` solves the child on its own terms, as the root of its own tree, in complex arithmetic, with the ports of `child_keys`.
+  `mean_field_child(parent, terms, θ, child, bare, others; ...)` solves the child's own node again, on its bare terms plus the mean-field terms, reusing the children of `bare`, and returns a `MeanFieldChild` (`node`, `solved`, `terms`, `bare_energy`, `expectations`), whose energies are labelled mean-field energies.
+  `product_energy(parent, terms, θ, bare_energies, tables; constant)` is the expectation of the parent's operator in the product state, with no double counting.
+- *The self-consistent loop.*
+  `self_consistent(parent, terms, θ, bare; start, tol=1e-11, maxiter=300, mixing=0.5, ...)` updates all children together from the previous iteration's tables, damps with `mixing` after the energy has risen twice, and converges when the relative energy change is below `tol` and no table entry changed by `sqrt(tol)` or more.
+  It returns a `MeanFieldSolution` (`energy`, `children`, `iterations`, `converged`, `start`); a run that reaches `maxiter` is returned with `converged = false`.
+  `mean_field_solutions(parent, terms_or_spec, θ; starts=default_starts(parent), distinct=1e-3, ...)` runs the loop from every start, with the bare solves formed once, and returns the distinct solutions, lowest product energy first.
+  `default_starts(parent)` is the delocalized start (`nothing`) and every combination of `0`, `π` and `-π` over the modes under `parent` (28 for three modes), refused above `max_starts = 81`.
+- *The union basis* (`src/augment.jl`).
+  A `BasisSource(label, vectors, energies; cap, window)` is one source of vectors on the child's own product space; `union_basis(sources; m, drop=1e-6, allow_fewer=false)` merges them level by level by classical Gram–Schmidt applied twice, drops a candidate whose remainder is at most `drop`, stops at `m`, and returns the basis with a `UnionReport` of the vectors taken and dropped per source.
+  Ending with fewer than `m` vectors is an `ArgumentError` that prints the report unless `allow_fewer = true`.
+- *The augmented child.*
+  `augment(parent, terms, θ, child, bare, U, report)` projects the child's bare operator on `U`, diagonalizes the projection densely, keeps every column, and returns an `AugmentedChild` (`node`, `solved`, `basis`, `terms`, `report`).
+- *The wrapper.*
+  `mean_field_augment(parent, spec, θ; m, window=0.5, max_solutions=4, bare=false, cap=nothing, starts, allow_fewer, ...)` runs `mean_field_solutions`, uses the solutions within `window` of the lowest (at most `max_solutions`), builds one source per used solution for each child (plus the bare ladder with `bare = true`), and returns `(; children, solutions, used, energy, unconverged)`; it adds no behaviour of its own.
+- *Grids per frame* (`src/suggest.jl`).
+  `suggest_bases(spec, θ; charge_cutoff=16, max_points=120, extent_scale=1.0, order=8)` gives `ChargeBasis(charge_cutoff)` on a compact mode and a symmetric `PhaseGrid` sized from the zero-point width and the junction energies on any other mode, by the formula of the prototype's `default_bases`.
+  `edge_weight(solved)` is the PhaseGrid edge warning's measure for the lowest kept state of a solved grid leaf.
+  Growing a grid when a state reaches its edge, which the design's §4.6 puts in the loop, is done by the frame-optimization script (`bench/kite_meanfield/optimize.jl`), not by the package.
+
+**One level deep.**
+Mean field acts among the children of one node.
+A child that is itself a branch is solved as a whole, with the mean-field terms routed into its subtree as ordinary terms and its own children solved once by `bare_child` and reused; self-consistency nested inside a child is not provided.
+Every child of the mean-field node must be a `Node`: a bare `mode => basis` or `GivenSystem` child has no kept states to take an expectation in, and is an `ArgumentError`.
+
+**What an augmented child stores, and why.**
+An `AugmentedChild` keeps its union basis `U` on the child's own product space and the child's bare terms (those `route` places at the child, with no mean-field terms), beside the projected solve.
+The perturbative-derivatives design (`docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`) differentiates such a child as the bare operator projected on a fixed stored basis, which needs both; a child reduced to numeric energies and port matrices would report zero derivatives.
+The `solved` node's kept vectors are `U W`, with `W` the eigenvectors of the projection, and it carries the ports and joint ports of `child_keys`.
+
+**`materialize(...; augmented)`.**
+Both forms of `materialize` take `augmented`, a vector of `AugmentedChild`.
+Such a node is not solved; its `solved` is used as that child of its parent, and a port or joint port the tree needs that it lacks is formed from its kept vectors.
+The terms are routed as usual, so the terms inside an augmented node are not used.
+An augmented child is used as built, at the terms and `θ` that `augment` was given; nothing checks them against the call's.
+The `System` records its augmented children, which `augmented(sys)` returns.
+Refused with an `ArgumentError`: an augmented node that is not in the tree or is the root, a node given twice, an augmented node inside another augmented node (Ruling 7 of the plan's ledger), `augmented` together with `previous`, and an augmented node or an ancestor of one with `arithmetic = :real`.
+`KronFreeCircuits.operator(sys, node)` (not exported) throws for an augmented node (Ruling 7): its stored states diagonalize its bare operator projected on its union basis, which is not an operator on the node's product space; an ancestor's operator is built on the augmented child's states as usual.
+
+**Complex arithmetic.**
+The mean-field coefficients are complex in general (the outside expectations `⟨e^{i k φ}⟩`), so `bare_child`, `mean_field_child` and `augment` run complex, and an augmented node and every ancestor of it are complex in `materialize`, whatever the classification of Section 20f says.
+Real arithmetic for mean-field children is a non-goal of the design.
+
+**Measured: the KITE (design §6.1).**
+The reference is the owner's script that produced the figure (`mean_field_ref_dont_commit/kite_reference/`, untracked); its numbers are hard-coded in the tests and benches with comments naming their source.
+
+- *Intermediate numbers (steps 1 and 2).*
+  `test/python/generate_kite_fixtures.jl` runs the prototype and writes `test/fixtures/kite/{published,normal,optimum,meanfield_reference}.json`.
+  `suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)` equals the prototype's grids exactly in all three frames.
+  Against the reference's wells, the product energies agree to 3.4e-13 (normal modes), 1.7e-13 (optimum) and 1.1e-11 GHz (published), and the three lowest mean-field levels of each mode to 5.9e-13, 5.9e-13 and 2.50e-6 GHz.
+  Fed the reference's own expectation values, `mean_field_child` reproduces the reference's levels to 5e-13 in every frame (asserted to 1e-9 in `test/test_meanfield_kite.jl`).
+- *The reference ground energy (step 3).*
+  On the reference calculation's grid (`ChargeBasis(24)` and 160-point grids, `suggest_bases(spec; charge_cutoff=24, max_points=160, extent_scale=2.0)`) with 56 states kept per leaf, the published frame's four lowest levels are −9.5239953, −9.5105249, −8.4537903 and −8.3378621 GHz, within 3.2e-7 of the paper's `REF`; raising the kept count from 48 to 56 moved them by at most 6.5e-9 GHz.
+- *Figure 8(b) (step 4), `bench/kite_meanfield/levels.jl`.*
+  Two-well mean-field leaves keeping 20 states, no bare ladder, the root over the three augmented leaves; the error is `max(levels[1:4] - REF)` in GHz, with the ratio to the reference calculation's error:
+
+  | frame | m = 8 | m = 12 | m = 16 | m = 20 |
+  |---|---|---|---|---|
+  | published | 6.9179e-01 (1.0000) | 2.2134e-01 (1.0000) | 3.7649e-02 (0.9986) | 6.5900e-04 (0.9726) |
+  | normal modes | 6.2176e-01 (1.0000) | 1.9890e-01 (1.0000) | 3.6005e-02 (1.0000) | 8.0124e-04 (1.0000) |
+  | optimum | 3.6677e-02 (1.0000) | 2.2679e-03 (1.0000) | 2.6093e-04 (1.0000) | 2.0717e-05 (1.0000) |
+
+  Both targets hold: every error is within a factor of two of the reference's, and the ordering of the frames is the reference's at every `m`.
+  In the normal-mode and optimum frames the eight lowest levels agree with the reference calculation's to 1.5e-13 GHz; in the published frame to 2.3e-6 and 5.6e-7 at `m = 8` and `12`, and 2.9e-4 and 6.5e-5 at `m = 16` and `20`.
+  The run, its wells, union reports, Appendix C.4 variants and warnings are in `bench/kite_meanfield/README.md`.
+- *The frame optimization (step 5), `bench/kite_meanfield/optimize.jl`.*
+  From the identity, BFGS on `E_prod + 1e-4 F_NM` over circuit-quantization's six-parameter admissible family, with forward-difference gradients.
+  The recorded run ended on its 150-iteration cap, not by converging (3290 cost evaluations, 149 min on one thread).
+  Its final frame, with the noncompact columns scaled to `(Sᵀ C S)_jj = 1`, agrees with the paper's `S_OPT` to the four printed decimals of `S_OPT`.
+  On the figure's bases from the 33 starts it has two wells at −9.429473654505 and −9.429473654501 GHz, against −9.429473599561 and −9.429473599557 for the paper's optimum frame on the same bases, so the pass criterion (two converged wells within 2e-3 GHz of −9.4295) holds.
+  On the score's grids, doubling the points changed the final frame's product energy by 4.7e-7 GHz; scaling the noncompact columns by (1.3, 0.8) changed it by −1.3e-7 GHz and flipping the sign of column 2 by −2.3e-13 GHz.
+
+**Where the build departed from the design, and why.**
+The rulings are those of the plan's ledger (`.superpowers/sdd/2026-11-10-mean-field-augmentation/progress.md`).
+
+1. *The figure's grids and starts.*
+   The design's §6.1 assumed the derivation notebook's grids (33 charge states, about 117 and 116 grid points) and its 27 displacement starts plus the delocalized start.
+   The script that produced the figure, which the owner supplied before the plan was written, uses `default_bases(charge_cutoff=16, max_points=120, extent_scale=1.5)`, that is 33 charge states and 120 points on each extended mode in every frame, and 33 starts (the compact mode at `0` or `π`, each extended mode at `0`, `π/2`, `π` or `−π/2`, and the delocalized start).
+   The tests and benches use those, through `suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)`, because they are what reproduces the published figure.
+   The package's `default_starts` keeps the design's rule (`0`, `π`, `−π` on every mode and the delocalized start).
+2. *The published frame.*
+   The design's target for the mean-field levels was 1e-6 GHz; in the published frame the third level of mode 3 differs from the reference's by 2.50e-6, and that one comparison is made to 1e-5 in `test/test_meanfield_kite.jl`, with the cause in a comment (Ruling 10).
+   The cause was traced: the reference's convergence test also includes ⟨φ⟩ and ⟨n⟩ of every mode, while this loop tests only its tables, the quantities the mean field depends on; in the published frame ⟨φ⟩ is not among them, so this loop stops at iteration 220 and the reference at 221.
+   It is a different stopping point, not a different fixed point: at equal inputs the two codes' mean-field operators agree to 5e-13.
+   The convergence test was kept on the tables, as the general rule for multi-mode children.
+   The Figure 8(b) ratios 0.9986 and 0.9726 at `m = 16` and `20` in the published frame have an inferred cause, not a proven one: on `varphi_2` the two wells' mean-field states coincide to a few parts in a million, the second well's Gram–Schmidt remainders (7.5e-8 to 4.9e-6, one at 3.5e-4) straddle the `1e-6` drop threshold, and which directions are admitted then depends on round-off and on the small difference between the two codes' wells; the reference's own union is not recorded in its result files, so this was not checked against it.
+3. *A solution's stored states (Ruling 9).*
+   The loop ends with one more solve of every child at the final tables, and that solve is what a solution's `solved` holds; its `expectations` and `bare_energy` remain those the energy was computed from.
+   The plan's own detail kept the last iteration's solve, which is one iteration older than the tables (up to 6.8e-5 GHz off in the KITE's levels), while the reference builds its levels from the operator at the converged expectation values.
+   This costs one extra solve per child per run.
+4. *The loop's tests and records.*
+   The plan's two-fluxonium test assumed four fixed points; with a positive φφ coupling the same-well configurations are not fixed points of the together-update, so the test asserts the opposite-well pair and returns every run with its converged flag and iteration count, without asserting what the same-well starts end as, which round-off in the rise count decides (Ruling 4).
+   The same round-off can make mirror-image starts end differently in symmetric problems, as in the prototype.
+   A warm-started solution stores `start = :warm`, not the solution it came from, so that a frame sweep does not keep the whole chain of earlier solutions alive (Ruling 5).
+   `operator(sys, node)` throws for an augmented node, and nested and `:real` augmented nodes are errors (Ruling 7, above).
+5. *The frame optimization (Rulings 12 to 15).*
+   The plan scored frames on `suggest_bases(spec; charge_cutoff=16, max_points=76)`, the prototype example's cap.
+   On those grids the score is not variational in stretched frames: the optimizer reached the paper's well, then descended by under-resolving a stretched mode (−9.43001 GHz on 76 points against −9.42815 on 400 for one frame) and finally below the true ground level of −9.524 GHz (−13.16 GHz).
+   The score now uses `max_points = 400`, circuit-quantization's own default, and a frame whose formula asks for more than 400 points on a mode scores `Inf` (Ruling 12).
+   The optimizer stops at the first of a gradient norm below 1e-6, a cost change below 1e-9 GHz, a failed line search, or 150 iterations (Ruling 13).
+   The warm start stays in the score although it makes the score history-dependent: the same `x` scores differently by about 3e-10 GHz depending on the evaluation before it, a floor of about 3e-4 on the forward-difference gradient, so the 1e-6 tolerance was out of reach and the run ended on the cap (Ruling 14).
+   The recorded run predates a later fix to the gradient next to a non-finite score; it is not rerun because that case never occurred in it (its seven non-finite evaluations were one whole stencil), and the other changes were logging and wording (Ruling 15).
+6. *The Harmonium benchmark* (design §6.2) was not built.
+   It is exploratory, depends on what the KITE work measured, and needs choices about sizes and the GPU; it is deferred to its own plan.
+   Multi-mode children, caps and supplied starts, which it would exercise, are built and unit-tested.
+7. *Derivatives* through the mean-field bases are not provided, as the design's non-goals say; the augmented child keeps its basis and bare terms for the perturbative-derivatives project, which holds the basis fixed.
+
+**Known limitations.**
+
+- `operator(sys, node)` throws for an augmented node; `augmented(sys)` gives its basis and bare terms.
+- A warm start must be a solution of the same parent with the same table keys: a solution whose tables lack a key (same nodes, different terms, as in a frame change, where the keys `expiphi(k)` move with `S`) fails with a bare `KeyError` once mixing is on; `optimize.jl` rebuilds the tables by mode name for this reason.
+- Passing `constant` to the spec form of `mean_field_solutions` fails with Julia's duplicate-keyword error, since that form sets it from the spec.
+- An augmented child is not checked against the terms and `θ` of the `materialize` call that uses it.
+- The grid growth in `optimize.jl` (up to three times by 1.5) can take a grid past the 400-point cap that the score otherwise enforces.
+- A leaf that keeps many states prints `fix_phases!` notes (the second state of each degenerate charge pair of a compact leaf solved with no cosine expectation) and PhaseGrid edge warnings for its highest states; `bench/kite_meanfield/README.md` shows that none of them concerns a state that a union reaches in the figure.
+
+**Tests.**
+`test/test_meanfield.jl` (fast tier: the mean-field terms against hand-built tables, the child and product energy, the loop on zero-pi, two coupled fluxonia, the final-tables solve, and the KITE's optimum frame from two starts), `test/test_augment.jl` (fast tier: the union basis, augmented leaf and branch children, `mean_field_augment` and `edge_weight`), a `suggest_bases` testset in `test/test_bases.jl` (fast tier), and `test/test_meanfield_kite.jl` (slow tier: all three KITE frames from the 33 starts against the fixtures).
+
 ## 21. Builder check
 
 A fresh reviewer read the document as a builder on 2026-10-15.

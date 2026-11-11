@@ -47,6 +47,43 @@ JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$HOME/anaconda3/envs/cq-z4/bin/
 JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$HOME/anaconda3/envs/cq-z4/bin/python $HOME/.juliaup/bin/julia --project=test/python test/python/runtests.jl
 ```
 
+## Mean-field basis augmentation (project 2, 2026-11-11)
+
+A child of a node can be solved in the mean field of its siblings, and the mean-field states of several self-consistent solutions become the basis through which it is presented to its parent, whose operator is unchanged (design `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, plan `docs/superpowers/plans/2026-11-10-mean-field-augmentation.md`, architecture §20k, README "Mean-field bases").
+The work is on the local branch `mean-field`, off `main` at `ab842ef`; it is not pushed.
+The ledger with every ruling is `.superpowers/sdd/2026-11-10-mean-field-augmentation/progress.md`.
+
+Done:
+- Mean-field terms from expectation tables, the mean-field child and the product energy, the self-consistent loop with several starts and warm starts, and the distinct solutions (`src/meanfield.jl`).
+- The union basis, the augmented child (which keeps its basis and bare terms for the perturbative-derivatives project), `materialize(...; augmented)`, `augmented(sys)`, and the wrapper `mean_field_augment` (`src/augment.jl`).
+- `suggest_bases` and `edge_weight` (`src/suggest.jl`).
+- The KITE fixtures from circuit-quantization's prototype (`test/python/generate_kite_fixtures.jl`, `test/fixtures/kite/`) and their comparison in all three frames (`test/test_meanfield_kite.jl`, slow tier).
+- `bench/kite_meanfield`: Figure 8(b) (`levels.jl`) and the frame optimization (`optimize.jl`), both described in its README.
+
+Measured (details in architecture §20k and `bench/kite_meanfield/README.md`):
+- Against the prototype's wells, product energies agree to 1.1e-11 GHz or better in every frame, and mean-field levels to 5.9e-13 GHz in the normal-mode and optimum frames and 2.50e-6 GHz in the published frame.
+- The reference ground energy is reproduced: on the reference calculation's grid the published frame's four lowest levels lie within 3.2e-7 GHz of the paper's, with the tree converged to 6.5e-9 GHz.
+- Figure 8(b): all twelve errors are within a factor of two of the reference calculation's, with the same ordering of the frames at every `m`; the ratios are 1.0000 except in the published frame at `m = 16` and `20` (0.9986 and 0.9726).
+- The frame optimization from the identity ends at a frame whose two wells are at −9.429473654505 GHz against −9.429473599561 for the paper's optimum on the same bases, and whose scaled `S` matches the paper's `S_OPT` to its four printed decimals.
+
+Missed, and why:
+- The published frame's mean-field levels miss the design's 1e-6 GHz target on one mode (2.50e-6; compared to 1e-5 in the test): this loop's convergence test uses its tables, the reference's also ⟨φ⟩ and ⟨n⟩ of every mode, so the two stop one iteration apart (traced; the operators agree to 5e-13 at equal inputs; Ruling 10).
+- The published frame's Figure 8(b) ratios 0.9986 and 0.9726: inferred, not proven, to come from Gram–Schmidt remainders on `varphi_2` that straddle the `1e-6` drop threshold, so the union depends on round-off; the reference's own union is not recorded.
+- The frame optimization did not converge: it ended on its 150-iteration cap.
+  The warm start makes the score history-dependent at about 3e-10 GHz, a floor of about 3e-4 on the forward-difference gradient, so the gradient tolerance of 1e-6 cannot be met (Ruling 14).
+  The plan's 76-point grid cap made the score non-variational in stretched frames (it went below the true ground level), so the score uses 400 points and scores `Inf` above that (Ruling 12).
+  The recorded run predates a gradient fix for a case that never occurred in it (Ruling 15).
+
+Departures from the design (each with its reason in architecture §20k): the figure's grids and starts are those of the script that produced it (33 charge states and 120 points per extended mode from `suggest_bases(charge_cutoff=16, max_points=120, extent_scale=1.5)`, and 33 starts), not the notebook's; a solution's stored states are solved at its final tables, one extra solve per child (Ruling 9); the two-fluxonium test asserts only what is physics, not four fixed points (Ruling 4); a warm start is recorded as `:warm` (Ruling 5); `operator(sys, node)` throws for an augmented node, and nested and `:real` augmented nodes are errors (Ruling 7); the optimizer's stopping rules (Ruling 13).
+Not done: the Harmonium benchmark (design §6.2) is deferred to its own plan, the next one for this feature; derivatives through the mean-field bases are not provided (the perturbative-derivatives project holds them fixed).
+
+Known limitations a user can trip on: `operator` on an augmented node throws; a warm start whose tables lack a key fails with a `KeyError` once mixing is on (keys move with the frame, so `optimize.jl` rebuilds tables by mode name); `constant` passed to the spec form of `mean_field_solutions` is a duplicate keyword; an augmented child is not checked against the terms and `θ` it is used with; grid growth in `optimize.jl` can exceed its 400-point cap.
+
+Test status, 2026-11-11, on `6853aaf` plus documents only (ewdesktop, Julia 1.13.2, under load from another job):
+- Default tier: passed, 1158 tests, no warnings, 3m22s.
+- Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 17213 tests, 20m32s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints.
+- Python tier: passed, 336 of 336 tests, no warnings, 2m39s, against circuit-quantization at `c8c8714`.
+
 ## Where things stand
 
 Plans 1, 1b, 2, 2b, 3 and 4 are done.

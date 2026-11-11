@@ -310,6 +310,72 @@ save_spec("zero_pi_reduced.json", F.spec; metadata=F.metadata)              # a 
 Promotion is a spec-to-spec transformation; a charge coupling between slow and fast modes is rejected, and only the single lowest surface is used (no derivative couplings).
 The reproduction (`bench/born_oppenheimer/zero_pi.jl`, results in `bench/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
 
+## Mean-field bases
+
+In a frame that mixes modes, a Josephson cosine straddles several children, so a bare leaf never sees a junction and its eigenstates are a poor basis for the parent.
+A child can instead be solved in the mean field of its siblings, and the mean-field states of several self-consistent solutions (one per well) can become the basis through which the child is presented to its parent.
+The parent's operator is unchanged: it is projected on the new basis, so only the truncation changes.
+This is the self-consistent product-state method of the circuit-quantization paper's Appendix C.
+
+The pieces are exported, and the loop is a few lines.
+The KITE in the paper's optimum frame (`test/fixtures/kite/optimum.json`, a spec of constants), with one leaf per mode keeping 20 states and two wells feeding each leaf's basis:
+
+```julia
+using KronFreeCircuits
+
+spec = load_spec("test/fixtures/kite/optimum.json")
+θ = (;)
+terms = circuit_terms(spec)
+leaves = [Node([m => b]; solver=Dense(), compute=20, keep=lowest(20), arithmetic=:complex)
+          for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)]
+root = Node(leaves; solver=LOBPCG(tol=1e-10), compute=8, keep=lowest(8))
+
+# the self-consistent loop from each start; the distinct solutions, lowest product energy first
+names = [m.name for m in spec.modes]
+starts = [Dict(zip(names, (0.0, 0.0, 0.0))), Dict(zip(names, (π, -π/2, π))), nothing]   # nothing: delocalized
+sols = mean_field_solutions(root, spec, θ; starts)
+wells = filter(s -> s.energy - sols[1].energy <= 0.5, sols)                               # two, at -9.4294736 GHz
+
+# each leaf's basis: the wells' m lowest mean-field states, merged level by level; its bare operator projected on it
+m = 12
+aug = map(leaves) do leaf
+    sources = [BasisSource("well $i", s.children[leaf].solved.vectors[:, 1:m], s.children[leaf].solved.energies[1:m])
+               for (i, s) in enumerate(wells)]
+    U, report = union_basis(sources; m)                                                     # report: taken and dropped
+    augment(root, terms, θ, leaf, bare_child(root, terms, θ, leaf), U, report)
+end
+sys = materialize(root, spec, θ; augmented=aug)
+energies(sys)
+```
+
+The wrapper does the same in one call (the solutions within `window = 0.5` GHz of the lowest, at most four, each child's first `m` mean-field states per solution; `bare = true` adds the bare ladder and `cap` limits each solution's share):
+
+```julia
+r = mean_field_augment(root, spec, θ; m=12, starts)    # (; children, solutions, used, energy, unconverged)
+sys = materialize(root, spec, θ; augmented=r.children)
+```
+
+Both give a largest error of the four lowest levels of 2.2679e-3 GHz against the paper's reference levels, the value of the table below (run on 2026-11-11).
+The solves print `fix_phases!` notes for the compact leaf's degenerate charge pairs and PhaseGrid edge warnings for kept states 18 to 20, which no union of 12 states reaches.
+
+The other pieces: `self_consistent` (one run of the loop, also from a previous solution as a warm start), `default_starts`, `mean_field_child`, `bare_child`, `mean_field_terms`, `product_energy`, `expectations`, `pinned_expectations` and `delocalized_expectations`, and `edge_weight` for a grid leaf's edge support.
+An augmented child (`AugmentedChild`) keeps its union basis and its bare terms, and `augmented(sys)` returns those a system was built with.
+Mean field acts one level deep, among the children of one node, and mean-field and augmented nodes run in complex arithmetic.
+`KronFreeCircuits.operator(sys, node)` throws for an augmented node, and derivatives through the mean-field bases are not provided.
+
+Figure 8(b) of the paper, reproduced by `bench/kite_meanfield/levels.jl`: the largest error of the four lowest levels, in GHz, with two-well leaves, against the reference calculation's (ratio in brackets):
+
+| frame | m = 8 | m = 12 | m = 16 | m = 20 |
+|---|---|---|---|---|
+| published | 6.9179e-01 (1.0000) | 2.2134e-01 (1.0000) | 3.7649e-02 (0.9986) | 6.5900e-04 (0.9726) |
+| normal modes | 6.2176e-01 (1.0000) | 1.9890e-01 (1.0000) | 3.6005e-02 (1.0000) | 8.0124e-04 (1.0000) |
+| optimum | 3.6677e-02 (1.0000) | 2.2679e-03 (1.0000) | 2.6093e-04 (1.0000) | 2.0717e-05 (1.0000) |
+
+In the normal-mode and optimum frames the levels match the reference calculation's to 1.5e-13 GHz.
+In the published frame the two wells' states nearly coincide on one mode, Gram–Schmidt remainders straddle the `1e-6` drop threshold, and the union depends on round-off; that is the inferred cause of the ratios 0.9986 and 0.9726.
+`bench/kite_meanfield/optimize.jl` optimizes the frame from the identity on the product energy and ends at a frame as good as the paper's optimum (two wells at −9.429473654505 GHz against −9.429473599561 on the same bases), after 150 iterations, the cap, without meeting its gradient tolerance.
+Both scripts, their runs and the measured details are in `bench/kite_meanfield/README.md`; the design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, and spec §20k records the build and where it departed from the design.
+
 ## Tests
 
 ```bash
@@ -377,6 +443,7 @@ Plan 3 (real arithmetic by port character: `Float64` nodes, native output types,
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
 The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
 The circuit-quantization interface (2026-11-10: a PythonCall extension with the symbolic and loop routes to a spec in a new frame, `numeric_spec`, constant coefficients that never compile, and run records; spec §20j) is built and not yet merged into `main`; what is done and what is open is in `docs/superpowers/STATUS.md`.
+Mean-field basis augmentation (2026-11-11: mean-field children, the self-consistent loop, union bases and augmented children; spec §20k) is built on the branch `mean-field`; its Harmonium benchmark (design §6.2) is deferred to its own plan.
 The next plan (5) is automatic differentiation rules.
 Later plans:
 
