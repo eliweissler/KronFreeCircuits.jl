@@ -4,12 +4,13 @@
 #
 #   JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=bench/kite_meanfield bench/kite_meanfield/optimize.jl
 #
-# KITE_OPTIMIZE_OUT   directory of the results (default: results/ beside this script; not committed)
+# KITE_OPTIMIZE_OUT       directory of the results (default: results/ beside this script; not committed)
+# KITE_MEANFIELD_MAXITER  the optimizer's iteration limit (default 150)
 #
 # Every cost evaluation solves on suggest_bases(spec; charge_cutoff=16, max_points=400); a frame for which the formula of
 # suggest_bases asks for more than 400 points on some mode scores Inf, so no score comes from a capped (under-resolved) grid.
 # The optimizer stops at the gradient tolerance 1e-6, a cost change below 1e-9 GHz between iterations, a failed line
-# search, or 150 iterations.
+# search, or KITE_MEANFIELD_MAXITER (default 150) iterations.
 #
 # Exits nonzero unless the final frame, on the grids of levels.jl with its 33 starts, has exactly two distinct solutions
 # within 0.5 GHz of the lowest, both within 2e-3 GHz of -9.4295 GHz, or if the lowest product energy at the final frame
@@ -52,7 +53,11 @@ const STEP = 1e-6               # forward-difference step of the gradient, per p
 const MAX_POINTS = 400          # the score's grid cap (circuit-quantization's default); a frame that needs more scores Inf
 const UNCAPPED = 10^9           # max_points of the uncapped call that tells whether the cap bound
 const RESOLUTION_WARN = 1e-5    # GHz, printed as a warning when the final frame moves by more on doubled grids
-const TARGET = -9.4295          # GHz, the product energy of both wells at the paper's optimum
+const MAXITER = parse(Int, get(ENV, "KITE_MEANFIELD_MAXITER", "150"))
+# GHz, the product energy of both wells at the paper's optimum frame: the committed fixture
+# test/fixtures/kite/meanfield_reference.json ("optimum", -9.429473599561 and -9.429473599557 on the figure's bases),
+# rounded to four decimals.
+const TARGET = -9.4295
 const TARGET_TOL = 2e-3         # GHz
 const WINDOW = 0.5              # GHz, the wells: distinct solutions within this of the lowest
 const INVARIANCE_TOL = 1e-6     # GHz
@@ -158,29 +163,40 @@ end
 
 # --- The optimization -----------------------------------------------------------------------------------------------------
 # BFGS from x = 0 with this script's forward differences (step STEP in each parameter); the value at x is the one already
-# computed when Optim asks for the gradient there. A non-finite cost gives a non-finite gradient, on which Optim's
-# line search (HagerZhang) backs off.
+# computed when Optim asks for the gradient there.
+# A non-finite cost at x gives a gradient of NaN, with no neighbour evaluated, and Optim's line search (HagerZhang) backs
+# off. A component whose forward neighbour scores non-finite takes the backward difference instead; if that neighbour is
+# non-finite too, the frame is boxed in and the run stops with an error.
 const LAST = Ref{Any}(nothing)
-function cost(x)
-    LAST[] !== nothing && LAST[][1] == x && return LAST[][2]
-    f = frame_score(x)
-    LAST[] = (copy(x), f)
+function cost(x; score=frame_score)
+    LAST[] !== nothing && LAST[][1] === score && LAST[][2] == x && return LAST[][3]
+    f = score(x)
+    LAST[] = (score, copy(x), f)
     return f
 end
-function gradient!(G, x)
-    f0 = cost(x)
+function difference(score, x, i, f0)
+    xi = copy(x)
+    xi[i] = x[i] + STEP
+    f = score(xi)
+    isfinite(f) && return (f - f0) / STEP
+    xi[i] = x[i] - STEP
+    b = score(xi)
+    isfinite(b) && return (f0 - b) / STEP
+    error("gradient component $i: the frame is boxed in by non-finite scores on both sides (x[$i] ± $STEP)")
+end
+function gradient!(G, x; score=frame_score)
+    f0 = cost(x; score)
+    isfinite(f0) || return fill!(G, NaN)
     for i in eachindex(x)
-        xi = copy(x)
-        xi[i] += STEP
-        G[i] = (frame_score(xi) - f0) / STEP
+        G[i] = difference(score, x, i, f0)
     end
-    isfinite(f0) || fill!(G, NaN)
     return G
 end
 
 ITERATIONS = NamedTuple[]
 mkpath(OUT)
-const ITERLOG = joinpath(OUT, "iterations.csv")      # rewritten at every iteration, so a run that ends badly can be examined
+# Emptied at start-up and appended at every iteration, so a run that ends badly can be examined.
+const ITERLOG = joinpath(OUT, "iterations.csv")
 function report(state)
     h = HISTORY[findlast(r -> r.x == state.x, HISTORY)]
     gnorm = norm(state.g_x, Inf)
@@ -202,7 +218,7 @@ println("parameters: $NPAR; starts per evaluation: $(length(STARTS)) and the pre
 rm(ITERLOG; force=true)
 # successive_f_tol = 0: one iteration with a cost change of at most 1e-9 GHz ends the run.
 result = optimize(cost, gradient!, zeros(NPAR), BFGS(),
-                  Optim.Options(g_abstol=1e-6, f_abstol=1e-9, successive_f_tol=0, iterations=150, callback=report))
+                  Optim.Options(g_abstol=1e-6, f_abstol=1e-9, successive_f_tol=0, iterations=MAXITER, callback=report))
 println()
 println(result)
 stop = result.stopped_by
@@ -210,7 +226,7 @@ println("the optimizer stopped by: ",
         stop.g_converged ? "the gradient tolerance 1e-6" :
         stop.f_converged ? "a cost change below 1e-9 GHz between iterations" :
         stop.ls_failed ? "a failed line search" :
-        stop.iterations ? "the limit of 150 iterations" : "another reason: $(Optim.termination_code(result))")
+        stop.iterations ? "the limit of $MAXITER iterations" : "another reason: $(Optim.termination_code(result))")
 x_opt = Optim.minimizer(result)
 T_OPT = time() - T0
 RUNS_OPT = COUNT.runs[]
@@ -265,6 +281,7 @@ length(final) == 2 || push!(failures, "the final frame has $(length(final)) solu
 for (i, s) in enumerate(final)
     abs(s.energy - TARGET) <= TARGET_TOL ||
         push!(failures, @sprintf("well %d: E_prod %.6f is not within %.0e GHz of %.4f", i, s.energy, TARGET_TOL, TARGET))
+    s.converged || push!(failures, "well $i: the self-consistent loop did not converge")
 end
 
 # --- Invariances ----------------------------------------------------------------------------------------------------------
@@ -293,9 +310,12 @@ open(joinpath(OUT, "optimum_S.txt"), "w") do io
     end
 end
 open(joinpath(OUT, "cost_history.csv"), "w") do io
-    println(io, "evaluation,", join(("x$i" for i in 1:NPAR), ","), ",cost,E_prod,F_NM,growths,warm")
+    # points: each mode's basis size (2 ncut + 1 on a ChargeBasis) in the evaluation's final grids, empty for Inf
+    size_of(b) = b isa PhaseGrid ? b.N : 2 * b.ncut + 1
+    println(io, "evaluation,", join(("x$i" for i in 1:NPAR), ","), ",cost,E_prod,F_NM,growths,warm,points")
     for (k, h) in enumerate(HISTORY)
-        println(io, k, ",", join((repr(v) for v in h.x), ","), ",", h.cost, ",", h.E, ",", h.F, ",", h.growths, ",", h.warm)
+        pts = h.bases === nothing ? "" : join((size_of(b) for (_, b) in h.bases), "/")
+        println(io, k, ",", join((repr(v) for v in h.x), ","), ",", h.cost, ",", h.E, ",", h.F, ",", h.growths, ",", h.warm, ",", pts)
     end
 end
 save_record(joinpath(OUT, "optimum_record.json"), Spec(QC, S); circuit=RES, frame=S, values=θ,

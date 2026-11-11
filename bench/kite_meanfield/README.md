@@ -157,6 +157,7 @@ Which candidates the reference calculation admitted on `varphi_2` is not recorde
 `optimize.jl` optimizes the KITE's coordinate frame `S` (`φ = S φ′`) on the product energy, starting from the identity, as in §5 of the design.
 It runs in one Julia session that reaches circuit-quantization through this package's PythonCall extension.
 It checks that the result is a frame as good as the paper's optimum, judged on product energy alone, because `S` is defined only up to the scale and sign of its columns.
+The score is invariant under scaling of the noncompact columns, so neither the parameters `x` nor the unscaled `S` they give are meaningful individually; only `S` with its noncompact columns rescaled to `(Sᵀ C S)_jj = 1` is compared with the paper.
 
 ## Command
 
@@ -169,11 +170,12 @@ JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=benc
 Instantiate the project with the same two variables set, so that precompiling PythonCall does not install its own Python.
 `levels.jl` runs from the same project without them, since only `optimize.jl` loads PythonCall.
 The script runs single-threaded on the CPU and writes only to `bench/kite_meanfield/results/`, which git ignores (`KITE_OPTIMIZE_OUT` changes the directory).
+`KITE_MEANFIELD_MAXITER` sets the optimizer's iteration limit (default 150), for a short run that shows the script works end to end.
 There it writes four files:
 
 - `optimum_S.txt`: the final `S`;
-- `cost_history.csv`: every cost evaluation;
-- `iterations.csv`: the optimizer's iterations, with their parameter vectors, rewritten at every iteration;
+- `cost_history.csv`: every cost evaluation, with each mode's basis size in the grids it was scored on (for example `33/113/112`);
+- `iterations.csv`: the optimizer's iterations, with their parameter vectors, emptied at start-up and appended at every iteration;
 - `optimum_record.json`: a `save_record` of the final frame, with `circuit = res`, `frame = S` and `values = θ`.
 
 ## The loop
@@ -216,13 +218,14 @@ A warm start is skipped only when the previous evaluation produced no solution.
 
 The optimizer is Optim's `BFGS()` started at `x = 0`.
 The gradient is the script's own forward differences, with step `1e-6` in each parameter.
-A non-finite cost gives a non-finite gradient, and Optim's line search (HagerZhang) then backs off.
+When the cost at `x` is not finite, the gradient is `NaN`, no neighbour is evaluated, and Optim's line search (HagerZhang) backs off.
+When a component's forward neighbour scores non-finite, that component takes the backward difference `(f(x) - f(x - 1e-6 eᵢ)) / 1e-6`; when the backward neighbour is non-finite too, the frame is boxed in and the script stops with an error naming the component.
 The run ends at the first of four conditions:
 
 - a gradient norm below `1e-6`;
 - a cost change below `1e-9` GHz between successive iterations;
 - a failed line search;
-- 150 iterations.
+- 150 iterations (`KITE_MEANFIELD_MAXITER`).
 
 The script prints which of these ended it.
 
@@ -234,11 +237,13 @@ After the optimization:
   Beside them it prints the paper's optimum on the same bases, read from `test/fixtures/kite/meanfield_reference.json`.
 - It checks the invariances (below).
 
-It exits nonzero unless there are exactly two such solutions, both within `2e-3` GHz of `-9.4295`, or if an invariance fails.
+It exits nonzero unless there are exactly two such solutions, both converged and both within `2e-3` GHz of `-9.4295` (the fixture's optimum energies rounded to four decimals), or if an invariance fails.
 
 ## Result
 
-All numbers below are from one run on 2026-11-10, which ended with `all checks passed` and exit status 0.
+All numbers below are from one run on 2026-11-10, of the script as committed in 69684cc, which ended with `all checks passed` and exit status 0.
+The script was changed afterwards: the gradient's handling of non-finite neighbours (above) replaced plain forward differences, which put a non-finite score into the gradient as it came, the pass check now also requires both wells to be converged (they were), and `cost_history.csv` gained the point counts.
+In the recorded run no evaluation had a finite cost with a non-finite neighbour: its seven non-finite evaluations, numbers 43 to 49, were one whole stencil (a centre and its six forward neighbours), so the change would not have altered the run, except that the six neighbours would not have been evaluated.
 
 The first and last lines of the iteration log:
 
@@ -252,7 +257,7 @@ By then it had made 3290 cost evaluations and 19780 self-consistent runs (19884 
 14 evaluations grew a grid.
 2 ran without a warm start: the first evaluation, and evaluation 50, which followed the rejected ones.
 No frame was rejected by circuit-quantization, and 7 evaluations were rejected as needing more than 400 points.
-Those 7 are evaluations 43 to 49: one line-search trial point and its six forward-difference neighbours, which the gradient evaluates even when the cost at the point is `Inf`.
+Those 7 are evaluations 43 to 49: one line-search trial point and its six forward-difference neighbours, which the gradient of that version evaluated even when the cost at the point was `Inf`.
 The whole run took 8947.6 s (149 min) on one thread.
 The load average (1, 5, 15 min) was 0.88 0.99 1.13 at the start and 1.07 1.05 1.17 at the end, with another job running on the machine.
 
@@ -291,11 +296,32 @@ The scaled frame differs at all because the `4 E_C` term of `suggest_bases`' ext
 
 The cost reached -9.4293955 by iteration 21 (294 evaluations), with `|g|_inf` 6.2e-04.
 For the remaining 129 iterations it wandered above that, by up to 6.5e-05 GHz (iteration 72), and came back, ending at -9.429395819027, its lowest value, only 1.5e-07 GHz below iteration 22.
-After iteration 20 the gradient norm printed lies between 6e-04 and 8e-02, far above the tolerance `1e-6`, so the gradient test cannot end the run.
-With a forward-difference step of `1e-6`, a gradient of 1e-02 corresponds to a change of 1e-08 GHz in the cost per step, which is the level of the self-consistent loop's convergence and of the grids, whose extents move continuously with `S`.
+After iteration 20 the gradient norm printed lies between 6e-04 and 8e-02, far above the tolerance `1e-6`.
+
+The score depends on the history of evaluations through the warm start, because the warm start carries over from every evaluation, the forward-difference neighbours included.
+This was measured after the run, at iteration 150's `x`, with the script's own pieces:
+
+- from cold starts only, -9.429395818817 GHz;
+- warm-started from the same `x`, -9.429395818973;
+- after each of the six forward-difference neighbours, -9.4293958191;
+- after a distant point, back to the cold value.
+
+The same `x` therefore scores differently by about 3e-10 GHz depending on the evaluation before it.
+Over the step `1e-6`, that is a floor of about 3e-4 on the forward-difference gradient, which is why the tolerance `1e-6` was out of reach and the run ended on the iteration cap.
+Gradients of 1e-2 to 8e-2 are far above that floor and are not explained by it; that they are real slopes of the cost is an inference, not a measurement.
+
+The wander is the line search together with the cost's flat directions.
+HagerZhang's approximate-Wolfe rule accepts an increase of the cost of up to `1e-6 |f|`, about 9.4e-6 GHz, per iteration.
+In `iterations.csv`, 85 of the 150 iterations raised the cost, and the largest single rise was 9.42e-6 GHz.
+The parameters drifted along the nearly flat directions of the noncompact columns' scale, to `|x|` of about 30, which also ill-conditions BFGS.
+The rise per iteration is measured; that the line-search rule and the drift cause the wander is an inference.
+For the same reason the cost-change test (`1e-9` GHz) was never met.
+
 No forward-difference step after iteration 19 changed a grid's point count.
-The parameters drifted along the flat directions of the cost (the noncompact columns' scale), to `|x|` of about 30, which also ill-conditions BFGS.
-The approximate-Wolfe line search accepts small increases of the cost, so the cost-change test (`1e-9` GHz) was never met either.
+That was checked after the run with a separate script, which is not in the repository; `cost_history.csv` now records each evaluation's point counts.
+
+The warm start stays in the score by design: it is how the prototype scores frames, and it makes each evaluation cheaper.
+A score from cold starts only would not depend on the history, and is the one to use when a converged gradient is wanted.
 
 ### What had to change: capped grids
 
@@ -304,6 +330,7 @@ In that run, BFGS reached the paper's well by iteration 28 (E_prod -9.4294765 wi
 It then kept descending into frames that stretch the last mode, where the 76-point cap makes the grid step larger than half the zero-point width, so the finite-difference kinetic energy is too low.
 At iteration 130 its product energy was -9.43001 GHz on 76 points, against -9.42815 GHz for the same frame on 400 points.
 At iteration 132 it reached -13.16 GHz, below the true ground level of -9.524 GHz, and the line search failed.
+That level, -9.523995 GHz, is the first of the paper's reference levels `REF` in `levels.jl`, where its source is given.
 The edge-weight growth cannot see this, because it is a resolution failure, not an edge failure.
 So the score now uses circuit-quantization's own cap of 400 points and scores `Inf` for a frame that would need more.
 That makes each evaluation about twice as slow: 3290 evaluations in 149 min, against 2513 in 58 min before.
