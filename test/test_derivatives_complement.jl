@@ -14,6 +14,9 @@ using KronFreeCircuits: _complement_solve, _full_diagonal, with_block_capacity, 
     @test norm(Φ' * X) < 1e-10 && maximum(residuals) <= 1e-11 && iterations < 5000           # 10 · tol
     @test all(iszero, _complement_solve(H, _full_diagonal(H), Φ, Φ[:, 1:4], s; tol=1e-10, maxiter=10)[1])   # Q B = 0: x = 0
     @test_throws "did not converge" _complement_solve(H, _full_diagonal(H), Φ, B, s; tol=1e-10, maxiter=2)
+    # a known set that skips a lower state: H − E_3 is not positive on the complement, which holds state 2
+    @test_throws "a state below or degenerate with the kept state was not computed (or was not retained)" _complement_solve(
+        H, _full_diagonal(H), F.vectors[:, [1, 3, 4]], B[:, 1:3], F.values[[1, 3, 4]]; tol=1e-10, maxiter=5000)
 end
 
 @testset "weak coupling: a child-internal parameter's right-hand side lies almost inside the known states" begin
