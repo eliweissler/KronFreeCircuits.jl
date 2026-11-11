@@ -23,7 +23,9 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm,
        PortCharacter, character, arithmetic,
-       circuit_quantization, QuantizedCircuit, record_json, save_record, load_record
+       circuit_quantization, QuantizedCircuit, record_json, save_record, load_record,
+       Expectations, straddling_terms, child_keys, expectations, pinned_expectations, delocalized_expectations,
+       mean_field_terms
 
 include("parameters.jl")
 include("spec.jl")
@@ -43,6 +45,7 @@ include("chebyshev.jl")
 include("selection.jl")
 include("phase.jl")
 include("materialize.jl")
+include("meanfield.jl")
 include("bo.jl")
 include("dressed.jl")
 include("pyinterface.jl")
