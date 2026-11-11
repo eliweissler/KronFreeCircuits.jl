@@ -92,10 +92,12 @@ Open design points from the final review, for the owner (not fixed):
 - `mean_field_solutions` keeps every run's vectors until the distinct filter (design §7's memory point is open).
 - In `optimize.jl`, a tighter loop `tol`, or freezing the warm start across a gradient stencil, would lower the gradient floor more cheaply than cold starts.
 
-Test status, 2026-11-11, on `6853aaf` plus documents only (ewdesktop, Julia 1.13.2, under load from another job):
-- Default tier: passed, 1158 tests, no warnings, 3m22s.
-- Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 17213 tests, 20m32s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints.
-- Python tier: passed, 336 of 336 tests, no warnings, 2m39s, against circuit-quantization at `c8c8714`.
+Test status, 2026-11-11, on the final code of this feature, after the final review's fixes (ewdesktop, Julia 1.13.2, under heavy load from another job, load average 8 to 12):
+- Default tier: passed, 1221 tests, no warnings, 4m15s.
+- Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 17283 tests, 21m58s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints.
+- Python tier: passed, 336 of 336 tests, no warnings, 2m36s, against circuit-quantization at `c8c8714`.
+- `bench/kite_meanfield/levels.jl`: all its checks passed, with the twelve Figure 8(b) errors and ratios unchanged, 4m32s.
+- `bench/kite_meanfield/optimize.jl` with `KITE_MEANFIELD_MAXITER=1` (and `KITE_OPTIMIZE_OUT` elsewhere): ran end to end and exited with status 1, as a one-iteration run must (its wells are not at the optimum); its iterations 0 and 1 equal the recorded run's bitwise.
 
 ## Where things stand
 
