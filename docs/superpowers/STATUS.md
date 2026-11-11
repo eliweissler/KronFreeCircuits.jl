@@ -183,8 +183,12 @@ Test status, 2026-11-11, on the code after the final review's fixes and before t
 
 Test status of the complement solve's stopping-rule fix (2026-11-11, after the re-review; branch `derivatives-cg-floor`, ewdesktop, one Julia process at a time while the owner benchmarked): only these were run after the change, all passing: `test_derivatives_complement.jl`, `test_retention.jl`, `test_meanfield.jl`, `test_derivatives_iterative.jl`, `test_derivatives_kite.jl`, `test_derivatives_node.jl`, `test_derivatives_tree.jl`, `test_derivatives_second.jl`, `test_derivatives_second_tree.jl`, `test_derivatives_blocks.jl`, `test_derivatives_stored.jl` and `test_spectrum.jl` by name, and the final review's scripts for weak coupling, the conjugate-gradient floor, the default solvers and the per-column accuracy.
 After the follow-up commit (the floor's accuracy bound documented, the solve checks of the tests extended to floor columns, a fast per-column case at `g = 0.3`, the floor error message), `test_derivatives_complement.jl`, `test_derivatives_tree.jl` and `test_derivatives_iterative.jl` were run by name, all passing.
-The whole tiers (default, slow, Python, rules, device) were NOT rerun after this change; the rules tier was not run because its environment has no Manifest in the worktree.
-The fix's verifier recommends rerunning, when the machine is free: the default tier, the slow tier, the rules tier and the device derivative test (`test/cuda/test_derivatives_device.jl`).
+Every tier was then rerun once on the code with this change, 2026-11-11, on a quiet machine (load average below 1), one at a time.
+The default tier passed with no warnings in 3m35s.
+The slow tier passed in 13m11s; its only warnings are the 20 `fix_phases!` ones, and its two notices are the iteration counts that `test_derivatives_iterative.jl` and `test_derivatives_kite.jl` print on purpose.
+The Python tier passed 336 of 336 in 1m30s.
+The rules tier passed (9, 9 and 12 tests in its three testsets) in 52 s.
+The device tier gave 313 passed and 13 errored: the 13 errors are the known complex-`LOBPCG` testsets of `test/cuda/test_device.jl` (lines 61, 252, 258, 280, 313, 394, 435 to 437, 522 and 524 to 526), and `test/cuda/test_derivatives_device.jl` passed 12 of 12.
 
 ## Where things stand
 
