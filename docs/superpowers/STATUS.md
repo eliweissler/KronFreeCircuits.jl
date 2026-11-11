@@ -171,6 +171,16 @@ Baseline test status, 2026-11-11, on the code before the final review's fixes, w
 - `bench/derivative_design/design.jl`: all four checks passed, with the recorded run's numbers to every printed digit except timings, 1m13s.
 - `bench/retention_cost.jl`: ran; the sizes equal the recorded ones, and the times were 0.035 → 0.087 s (transmon), 0.076 → 0.152 s (fluxonium) and 0.0055 → 0.0102 s (KITE) for `retain = :never` → `:auto`.
 
+Test status, 2026-11-11, on the final code of this project, after the final review's fixes (ewdesktop, Julia 1.13.2, load average 1 to 6.6 from another job):
+- Default tier: passed, 28 files, no warnings, 5m50s.
+- Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 15m03s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints; its notices are the `F2 n_g = 1/2` note of `test/test_catalogue.jl` and the largest linear-solve iteration counts of `test/test_derivatives_iterative.jl` (188) and `test/test_derivatives_kite.jl` (60).
+- Python tier: passed, 336 of 336 tests, no warnings, 1m42s, against circuit-quantization at `c8c8714`.
+- Rules tier (`test/chainrules`): passed, 30 tests in its three testsets (9 + 9 + 12) and the extension check, no warnings, 52s.
+- Device tier (`test/cuda`, the GPU otherwise idle before and after): 313 passed and 13 errored, the 13 expected from the cuBLAS fault above, at the same lines of `test/cuda/test_device.jl`; the derivative test 12 of 12, including its new check that the root runs on `CuArray`.
+- `bench/derivative_design/design.jl`: all four checks passed (gradient at the start 1.936e-9 relative, final loss 3.8e-23), 34s.
+- `bench/retention_cost.jl`: ran; the sizes equal the recorded ones, and the times were 0.0185 → 0.0508 s (transmon), 0.0515 → 0.0986 s (fluxonium) and 0.0032 → 0.0060 s (KITE) for `retain = :never` → `:auto`.
+- The final review's scripts, rerun: the weak-coupling comparison (all 32 cases finish, state derivatives within 2.1e-8 of the dense route), the conjugate-gradient floor check (no column stagnates, at `lintol` down to 1e-11, in four fresh solves; before, one stagnated in each) and the `NaN` check (a `Dense` and an `LOBPCG` parent report `NaN` at both orders, with the child's block, and nothing throws).
+
 ## Where things stand
 
 Plans 1, 1b, 2, 2b, 3 and 4 are done.
