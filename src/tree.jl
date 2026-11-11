@@ -366,14 +366,14 @@ lowest(k::Int) = Lowest(k)
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 
 """
-    Node(children; solver=Auto(), compute=0, keep=lowest(0), phase, ports=[], arithmetic=:auto)
+    Node(children; solver=Auto(), compute=0, keep=lowest(0), phase, ports=[], arithmetic=:auto, retain=:auto)
 
 A hierarchical unit.
 Each child is a `mode => basis` pair, another `Node`, or a [`GivenSystem`](@ref) (a pre-diagonalized
 subsystem); a node's product basis has one axis per child.
 
 - `solver`: `Auto()` (the default), `Dense()`, `Lanczos()`, `LOBPCG()`, `ShiftInvert()` (a leaf on the CPU) or `ChebyshevFilter()`.
-  [`Auto`](@ref) resolves at materialization: `Dense()` up to 2 500 product states; above that,
+  [`Auto`](@ref) resolves at materialization: `Dense()` up to 1000 product states (its `dense_cutoff`); above that,
   `ShiftInvert()` at a leaf on `Array` storage, `ChebyshevFilter(on=on)` at a leaf on device storage,
   and `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` at a branch. An `LOBPCG` node starts from the previous
   solution's kept vectors when `materialize` is given `previous` (see [`materialize`](@ref)).
@@ -397,6 +397,9 @@ subsystem); a node's product basis has one axis per child.
   `:real` asserts the node test: `materialize` throws an `ArgumentError` naming the first term whose
   conjugate image is missing when it fails.
   [`arithmetic`](@ref) reports the arithmetic a node was materialized in.
+- `retain`: whether the node keeps the eigenvectors of the states its solver computed but `keep` did not select (the `retained` field of [`MaterializedNode`](@ref)).
+  `:always` retains them, `:never` stores only the computed energies, and `:auto` (the default) retains them except at a `Dense` node above 1000 product states.
+  A `Dense` node that retains computes its full eigendecomposition whatever `compute` is, and still hands only the lowest `compute` pairs to `keep`.
 """
 mutable struct Node
     children::Vector{Any}
@@ -406,10 +409,11 @@ mutable struct Node
     phase::Symbol
     ports::Vector{Tuple{Symbol,Port}}
     arithmetic::Symbol
+    retain::Symbol
 
     function Node(children::AbstractVector; solver::Solver=Auto(), compute::Int=0,
                   keep::SelectionRule=lowest(0), phase::Union{Nothing,Symbol}=nothing,
-                  ports=Tuple{Symbol,Port}[], arithmetic::Symbol=:auto)
+                  ports=Tuple{Symbol,Port}[], arithmetic::Symbol=:auto, retain::Symbol=:auto)
         isempty(children) && throw(ArgumentError("a Node needs at least one child"))
         for ch in children
             ok = ch isa Node || ch isa GivenSystem || (ch isa Pair && ch.first isa Symbol && ch.second isa Basis)
@@ -421,11 +425,13 @@ mutable struct Node
         compute >= 0 || throw(ArgumentError("compute must be nonnegative"))
         arithmetic in (:auto, :complex, :real) ||
             throw(ArgumentError("arithmetic must be :auto, :complex or :real, got :$arithmetic"))
+        retain in (:auto, :always, :never) ||
+            throw(ArgumentError("retain must be :auto, :always or :never, got :$retain"))
         # Auto() is checked at materialization, once it has resolved (see `_resolve_node_solver`).
         compute == 0 && !(solver isa Dense || solver isa Auto) &&
             throw(ArgumentError("compute == 0 (all eigenpairs) requires the Dense solver"))
         node = new(Any[ch for ch in children], solver, compute, keep, phase,
-                   Tuple{Symbol,Port}[(m, p) for (m, p) in ports], arithmetic)
+                   Tuple{Symbol,Port}[(m, p) for (m, p) in ports], arithmetic, retain)
         ms = modes(node)
         for (i, m) in enumerate(ms)
             m in view(ms, 1:i-1) && throw(ArgumentError("mode :$m appears more than once in the tree"))

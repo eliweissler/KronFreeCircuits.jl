@@ -2,6 +2,35 @@
 # the kept states and form the ports its ancestors need, children first.
 
 """
+    Retained{T}
+
+What a node's solve computed beyond its kept vectors (the `retained` field of [`MaterializedNode`](@ref)).
+`energies` are every computed eigenvalue, in the solver's ascending order; the node's `kept` indexes them.
+`unkept` are the increasing indices among them that were not kept.
+`vectors` are the unkept eigenvectors, one column per entry of `unkept`, as the solver returned them (no phase fixed), or `nothing` when the node does not retain them (its `retain` option, see [`Node`](@ref)).
+`complete` is true when `vectors` are stored and the kept and unkept states together are the whole spectrum of the node's product space.
+`followed` is true when the kept vectors' phases were fixed by following a previous solution (`phase = :follow` with `previous`).
+"""
+struct Retained{T<:Union{Float64,ComplexF64}}
+    energies::Vector{Float64}
+    unkept::Vector{Int}
+    vectors::Union{Nothing,Matrix{T}}
+    complete::Bool
+    followed::Bool
+end
+
+# Whether `node`, solved by the resolved `solver` on a product space of dimension `N`, retains its unkept vectors.
+const _RETAIN_DENSE_MAX = 1000
+_retains(node::Node, solver::Solver, N::Int) =
+    node.retain === :always || (node.retain === :auto && !(solver isa Dense && N > _RETAIN_DENSE_MAX))
+
+# The `Retained` of a node that stores only its kept states: their `energies`, no unkept state, complete when the kept
+# `vectors` span the product space of dimensions `dims`.
+_kept_only(::Type{T}, energies, vectors::AbstractMatrix, dims, followed::Bool) where {T} =
+    Retained{T}(collect(Float64, energies), Int[], Matrix{T}(undef, size(vectors, 1), 0), size(vectors, 2) == prod(dims),
+                followed)
+
+"""
     MaterializedNode{T}
 
 A diagonalized node, stored in its arithmetic: `T = Float64` for a node classified real (see [`classify`](@ref)),
@@ -30,6 +59,9 @@ axes), whose physical point is resolved recursively through the children's `peak
 basis child's index is its own point).
 `peak_amplitudes[p, j]` is the exact full-space amplitude of kept state `j` at the peak point of
 kept state `p`; a leaf's is `vectors[peak_component, :]`.
+
+`retained` (a [`Retained`](@ref)) holds every computed energy and, when the node retains them, the eigenvectors its solver computed but did not keep.
+A node built by hand without it, a given system and an augmented child store their kept states only.
 """
 struct MaterializedNode{T<:Union{Float64,ComplexF64}}
     node::Union{Node,GivenSystem}
@@ -42,7 +74,14 @@ struct MaterializedNode{T<:Union{Float64,ComplexF64}}
     children::Vector{Any}
     peak_component::Vector{Int}
     peak_amplitudes::Matrix{T}
+    retained::Retained{T}
 end
+
+# Without `retained`: the kept states only (`_kept_only`).
+MaterializedNode{T}(node, dims, energies, vectors, kept, ports, joint_ports, children, peak_component,
+                    peak_amplitudes) where {T} =
+    MaterializedNode{T}(node, dims, energies, vectors, kept, ports, joint_ports, children, peak_component,
+                        peak_amplitudes, _kept_only(T, energies, vectors, dims, false))
 
 # From any matrices: `vectors` and `peak_amplitudes` in their promoted element type, the ports as stored, no joint ports
 # unless given.
@@ -97,9 +136,9 @@ initial block.
 That block is the previous kept vectors (their raw coefficients in the node's product basis),
 padded on the right with random columns to `compute` or truncated to it; a node whose `dims`
 changed starts cold.
-Only the kept vectors survive in a `MaterializedNode`, so when `compute > keep` the remaining
-columns start random and the block is only partially warm (retaining the whole computed block is
-future work).
+Only the kept vectors seed it, so when `compute > keep` the remaining columns start random and the
+block is only partially warm.
+A node that retains (its `retain` option, see [`Node`](@ref)) also stores the vectors its solver computed but did not keep, and every node stores all its computed energies (the `retained` field of [`MaterializedNode`](@ref)); a retaining `Dense` node computes its full decomposition and stores the whole spectrum.
 The `follow` rule and the `:follow` phase compare physical overlaps: the previous kept vectors are
 first transported into the current product basis through the overlaps of the previous and current
 child kept states, computed recursively (the identity on basis axes).
@@ -668,8 +707,12 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
               (all(c -> c isa Basis, children) ?
                    "this is a leaf: ShiftInvert() on the CPU or ChebyshevFilter(on=CuArray) on a GPU (or Auto()) is advised; see README" :
                    "this is a branch: LOBPCG (or Auto()) is advised"), _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
+    # A retaining Dense node computes its whole spectrum, and its selection sees the lowest `m` pairs as before.
     m = _compute_count(node, dims)
-    E, V = _solve(solver, H, m, prev, dims)
+    N = prod(dims)
+    retain = _retains(node, solver, N)
+    Eall, Vall = retain && solver isa Dense && m < N ? solve(Dense(), H, 0) : _solve(solver, H, m, prev, dims)
+    E, V = size(Vall, 2) == m ? (Eall, Vall) : (Eall[1:m], Vall[:, 1:m])
 
     # (5)-(7) Ports the selection rule inspects, on all computed vectors; select; slice.
     # Selection rules see only moduli (port elements, overlaps), so phases are fixed on the kept
@@ -682,8 +725,11 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     end
     idx = validate_selection(select(node.keep, SelectionContext(E, V, selports, prev, reference)), size(V, 2), node.keep)
     formed = Dict{Tuple{Symbol,Port},NodeMatrix}(k => P[idx, idx] for (k, P) in selports)
+    unkept = setdiff(1:length(Eall), idx)                     # increasing
+    retained = (; energies=Eall, unkept, vectors=retain ? Vall[:, unkept] : nothing,
+                complete=retain && length(Eall) == N)
     return _assemble_node(node, children, E[idx], view(V, :, idx); ports, joint_ports, real, reference,
-                          kept=collect(Int, idx), formed)
+                          kept=collect(Int, idx), formed, retained)
 end
 
 # A `MaterializedNode` for the kept `vectors` (columns on the node's product basis over its materialized `children`,
@@ -693,12 +739,14 @@ end
 # `reference` (the transported previous kept vectors, by default from `prev`) drives the :follow phase; `kept` are the
 # columns' indices among the computed eigenpairs (default: every given column); `formed` are ports already formed on
 # the unphased columns (the selection ports of `_solve_node`), rotated to the fixed phases.
+# `retained` is `(; energies, unkept, vectors, complete)` of `Retained` (the vectors in any element type, or `nothing`),
+# or `nothing` to store the kept states only (`_kept_only`).
 function _assemble_node(node::Node, children::Vector{Any}, energies::Vector{Float64}, vectors::AbstractMatrix;
                         ports::Vector{Tuple{Symbol,Port}}=Tuple{Symbol,Port}[], joint_ports::Vector{_FactorKey}=_FactorKey[],
                         real::Bool=false, prev=nothing,
                         reference=_previous_reference(node, prev, children, Int[_childdim(c) for c in children]),
                         kept::Vector{Int}=collect(1:size(vectors, 2)),
-                        formed::AbstractDict=Dict{Tuple{Symbol,Port},NodeMatrix}())
+                        formed::AbstractDict=Dict{Tuple{Symbol,Port},NodeMatrix}(), retained=nothing)
     dims = Int[_childdim(c) for c in children]
     size(vectors, 1) == prod(dims) && size(vectors, 2) == length(energies) == length(kept) ||
         throw(ArgumentError("node on modes $(modes(node)): $(size(vectors, 1)) × $(size(vectors, 2)) vectors, " *
@@ -721,7 +769,8 @@ function _assemble_node(node::Node, children::Vector{Any}, energies::Vector{Floa
     sector = findall(mask)
     peaks = [_sector_peak(view(V0, :, j), sector) for j in axes(V0, 2)]
     peak = Int[first(pk) for pk in peaks]
-    if node.phase === :follow && reference !== nothing
+    followed = node.phase === :follow && reference !== nothing
+    if followed
         size(reference) == size(V) ||
             throw(ArgumentError("phase :follow: the previous solution keeps $(size(reference, 2)) states, this one $(size(V, 2))"))
         fix_phases!(V, :follow, mask, reference)
@@ -779,7 +828,11 @@ function _assemble_node(node::Node, children::Vector{Any}, energies::Vector{Floa
     end
 
     T = _check_eltype(node, real, V, peak_amps, nodeports, nodejoint, leaves)
-    return MaterializedNode{T}(node, dims, copy(energies), V, kept, nodeports, nodejoint, children, peak, peak_amps)
+    ret = retained === nothing ? _kept_only(T, energies, V, dims, followed) :
+          Retained{T}(collect(Float64, retained.energies), collect(Int, retained.unkept),
+                      retained.vectors === nothing ? nothing : convert(Matrix{T}, retained.vectors), retained.complete,
+                      followed)
+    return MaterializedNode{T}(node, dims, copy(energies), V, kept, nodeports, nodejoint, children, peak, peak_amps, ret)
 end
 
 # `node` as the root of its own tree, solved on the terms of `terms` whose modes all lie inside it (a term with no

@@ -277,7 +277,8 @@ function _augmented_node(a::AugmentedChild, ports::Vector{Tuple{Symbol,Port}}, j
     for K in missing_joint
         J[K] = _joint_port(s.node, leaves, s.children, s.dims, s.vectors, K)
     end
-    return typeof(s)(s.node, s.dims, s.energies, s.vectors, s.kept, P, J, s.children, s.peak_component, s.peak_amplitudes)
+    return typeof(s)(s.node, s.dims, s.energies, s.vectors, s.kept, P, J, s.children, s.peak_component, s.peak_amplitudes,
+                     s.retained)
 end
 
 """
