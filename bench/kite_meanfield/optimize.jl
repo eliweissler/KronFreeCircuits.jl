@@ -54,6 +54,10 @@ const MAX_POINTS = 400          # the score's grid cap (circuit-quantization's d
 const UNCAPPED = 10^9           # max_points of the uncapped call that tells whether the cap bound
 const RESOLUTION_WARN = 1e-5    # GHz, printed as a warning when the final frame moves by more on doubled grids
 const MAXITER = parse(Int, get(ENV, "KITE_MEANFIELD_MAXITER", "150"))
+# A capped run must not overwrite the recorded results of the full run in the default directory.
+MAXITER != 150 && normpath(abspath(OUT)) == normpath(joinpath(@__DIR__, "results")) &&
+    error("KITE_MEANFIELD_MAXITER = $MAXITER differs from the default 150: a capped run must set KITE_OPTIMIZE_OUT to " *
+          "another directory than $OUT, so that it does not overwrite the recorded results")
 # GHz, the product energy of both wells at the paper's optimum frame: the committed fixture
 # test/fixtures/kite/meanfield_reference.json ("optimum", -9.429473599561 and -9.429473599557 on the figure's bases),
 # rounded to four decimals.

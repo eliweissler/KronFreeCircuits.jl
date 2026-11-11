@@ -170,7 +170,7 @@ JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=benc
 Instantiate the project with the same two variables set, so that precompiling PythonCall does not install its own Python.
 `levels.jl` runs from the same project without them, since only `optimize.jl` loads PythonCall.
 The script runs single-threaded on the CPU and writes only to `bench/kite_meanfield/results/`, which git ignores (`KITE_OPTIMIZE_OUT` changes the directory).
-`KITE_MEANFIELD_MAXITER` sets the optimizer's iteration limit (default 150), for a short run that shows the script works end to end.
+`KITE_MEANFIELD_MAXITER` sets the optimizer's iteration limit (default 150), for a short run that shows the script works end to end; a run with another limit must also set `KITE_OPTIMIZE_OUT` to another directory, or the script stops at start-up without touching the default results.
 There it writes four files:
 
 - `optimum_S.txt`: the final `S`;
