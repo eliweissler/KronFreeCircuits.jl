@@ -17,6 +17,8 @@
 # differ by more than 1e-3 from every solution kept before it; the wells are the distinct solutions below the lowest
 # plus 0.5 GHz, at most four.
 # The levels of a mode in a well are the three lowest eigenvalues of `_mode_hamiltonian` at the well's expectations.
+# Each well also records those expectations, `ex` of `_scf`: ⟨n⟩ and ⟨φ⟩ of every mode, and for each cosine the
+# expectation `X` of its factor exp(i omega[j] φ_j) on every mode j, as real and imaginary parts (1 where omega[j] = 0).
 using KronFreeCircuits, PythonCall, LinearAlgebra
 const JSON3 = KronFreeCircuits.JSON3
 include("kite.jl")
@@ -62,7 +64,8 @@ function reference(ps, h0, S)
                   points=[pyconvert(Int, b.points) for b in extended]),
             starts=length(runs), converged=count(r -> r.converged, runs), distinct=length(distinct),
             solutions=[(energy=r.energy, iterations=r.iterations, converged=r.converged, start=r.start, levels=levels(r),
-                        phi=r.phi) for r in wells])
+                        phi=r.phi, expectations=(n=pyconvert(Vector{Float64}, r.ex["n"]), phi=r.phi,
+                                                 X=[(re=real.(x), im=imag.(x)) for x in r.X])) for r in wells])
 end
 
 function main()

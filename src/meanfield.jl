@@ -292,7 +292,8 @@ A self-consistent mean-field solution of the children of a node: each child solv
 `start` is where the run began: `nothing` (delocalized), a displacement `Dict`, or `:warm` when the run was started from another solution.
 A warm-started solution keeps no reference to the solution it came from.
 `converged` is `false` when the run stopped at its iteration limit, and `iterations` is the number of iterations run.
-Under mixing, the `expectations` and `bare_energy` of each child are the mixed values that `energy` was computed from, while `solved` holds the unmixed states of the last solve.
+The `solved` and `terms` of each child are those of a final solve in the mean field of the final expectation values, made after the last iteration and not counted in `iterations`.
+The `expectations` and `bare_energy` of each child are the values `energy` was computed from: those of the last iteration's solve, the one before the final solve (under mixing, the mixed values).
 """
 struct MeanFieldSolution
     energy::Float64
@@ -352,7 +353,9 @@ Each iteration solves every child with `mean_field_child` from the tables of the
 After the energy has risen (by more than `1e-12`) twice, every later iteration replaces the new tables and bare energies by `mixing` times the new plus `1 - mixing` times the previous ones.
 The run converges when `|E - E_prev| < tol * max(1, |E|)` and no table entry changed by `sqrt(tol)` or more.
 A run that reaches `maxiter` iterations is returned with `converged = false`.
-The solution holds the energy of the last iteration and each child's `MeanFieldChild` of its last solve, with the `expectations` and `bare_energy` that energy was computed from (under mixing, the mixed values).
+When the loop ends, converged or not, every child is solved once more with `mean_field_child` from the final tables, the ones the last energy was computed from; this solve is not counted in `iterations`.
+The solution holds the energy of the last iteration and, for each child, a `MeanFieldChild` whose `solved` and `terms` are those of that final solve, so `solved` holds the child's states in the mean field of the final expectation values.
+Its `expectations` and `bare_energy` are the ones the energy was computed from: those of the last iteration's solve (under mixing, the mixed values), so `product_energy` of them reproduces `energy`.
 `start` is `nothing` (delocalized), a `Dict{Symbol,Float64}` of displacements (see `pinned_expectations`), or a `MeanFieldSolution` whose tables it continues from.
 A displacement that names a mode not under `parent` is an `ArgumentError`, and a mode it leaves out has displacement zero.
 The returned solution's `start` is the given start, except that a warm start is recorded as `:warm`, so that no chain of earlier solutions is kept alive.
@@ -387,8 +390,11 @@ function self_consistent(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare
         tables, bare_energies, E_prev = new_tables, new_bare, E
         rises >= 2 && (mixing_on = true)                                     # from the next iteration on
         if converged || it == maxiter
+            # one more solve of every child, in the mean field of the final tables (not counted as an iteration)
+            final = IdDict{Node,MeanFieldChild}(ch => mean_field_child(parent, terms, θ, ch, bare[ch], tables; state, weights, outside)
+                                                for ch in parent.children)
             children = IdDict{Node,MeanFieldChild}(ch => MeanFieldChild(ch, c.solved, c.terms, bare_energies[ch], tables[ch])
-                                                   for (ch, c) in solved)
+                                                   for (ch, c) in final)
             return MeanFieldSolution(E, children, it, converged, start isa MeanFieldSolution ? :warm : start)
         end
     end

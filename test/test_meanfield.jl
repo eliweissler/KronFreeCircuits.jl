@@ -137,12 +137,32 @@ end
     @test E ≈ same.energy rtol=1e-12
 end
 
+# The states a solution holds are solved in the mean field of its final tables, the ones its energy was computed from:
+# one more solve from those tables gives the same levels, and a warm start from the solution is already converged.
+@testset "a solution's states are solved at its final tables" begin
+    pair = numeric_spec(; modes=[:a => :e, :b => :e], E_C=[1.0 0.0; 0.0 1.0], E_L=[1.0 0.1; 0.1 1.0],
+                        flux_linear=[0.0, 0.0], n_g=[0.0, 0.0], cosines=[(4.0, [1.0, 0.0], π), (4.0, [0.0, 1.0], π)])
+    grid = PhaseGrid(-12.0, 12.0, 161)
+    A = Node([:a => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    B = Node([:b => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
+    terms = circuit_terms(pair)
+    bare = IdDict(n => bare_child(root, terms, (;), n) for n in (A, B))
+    s = self_consistent(root, terms, (;), bare; start=Dict(:a => 2.0, :b => -2.0))
+    @test s.converged
+    tables = IdDict{Node,Expectations}(n => c.expectations for (n, c) in s.children)
+    for n in (A, B)
+        @test s.children[n].solved.energies ≈ mean_field_child(root, terms, (;), n, bare[n], tables).solved.energies atol=1e-12
+    end
+    w = self_consistent(root, terms, (;), bare; start=s)
+    @test w.converged && w.iterations <= 3
+    @test w.energy ≈ s.energy atol=1e-9
+end
+
 # The KITE in the optimum frame, against the reference calculation's fixture (test/python/generate_kite_fixtures.jl): the
 # two wells from one start in each, with the product energies and the three lowest mean-field levels of every mode to
 # 1e-6 GHz.
 # The two wells are degenerate to 1e-11, so each solution is compared with the reference well nearest in ⟨φ⟩.
-# The levels are those of `mean_field_child` at the solution's tables, as the reference's are; `solved.energies` are one
-# iteration older and differ from them by up to 1.4e-5 GHz here.
 # The bare solve of the compact leaf warns once: its second kept state is the charge state |-1>, which has no weight on
 # the positive-charge phase mask.
 # The full comparison, three frames and 33 starts, is in the slow file test_meanfield_kite.jl.
@@ -156,7 +176,6 @@ end
     starts = [Dict{Symbol,Float64}(zip(names, (0.0, 0.0, 0.0))), Dict{Symbol,Float64}(zip(names, (π, -π/2, π)))]
     phase_warning = (:warn, r"^fix_phases!: column 2 has no weight on the phase mask")
     sols = @test_logs phase_warning mean_field_solutions(root, spec, (;); starts)
-    bare = @test_logs phase_warning IdDict(ch => bare_child(root, circuit_terms(spec), (;), ch) for ch in leaves)
     @test length(sols) == 2 && all(s.converged for s in sols)
     phi(s, i) = real(expectations(s.children[leaves[i]].solved, [[(names[i], phiport())]])[[(names[i], phiport())]])
     nearest(s) = argmin(j -> maximum(abs(phi(s, i) - ref.solutions[j].phi[i]) for i in 2:3), eachindex(ref.solutions))
@@ -164,10 +183,8 @@ end
     for s in sols
         r = ref.solutions[nearest(s)]
         @test s.energy ≈ r.energy atol=1e-6
-        tables = IdDict{Node,Expectations}(ch => c.expectations for (ch, c) in s.children)
         for (leaf, levels) in zip(leaves, r.levels)
-            mf = mean_field_child(root, circuit_terms(spec), (;), leaf, bare[leaf], tables)
-            @test mf.solved.energies[1:3] ≈ Float64.(levels) atol=1e-6
+            @test s.children[leaf].solved.energies[1:3] ≈ Float64.(levels) atol=1e-6
         end
     end
 end
