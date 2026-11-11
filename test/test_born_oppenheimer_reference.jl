@@ -1,6 +1,6 @@
 # Gated (KRONFREE_SLOW_TESTS=1): the zero-pi Born–Oppenheimer reproduction of Di Paolo et al., arXiv:1811.07921v1, Appendix B
-# (design §7 of docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md; bench/born_oppenheimer/results.md).
-# The settings and inputs come from the reference fixture written by bench/born_oppenheimer/zero_pi.jl
+# (design §7 of docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md; bench_archive/born_oppenheimer/results.md).
+# The settings and inputs come from the reference fixture written by bench_archive/born_oppenheimer/zero_pi.jl
 # (producer `independent BO numerics`); the published coefficients are compared against, never stored as results.
 
 @testset "zero-pi BO: Di Paolo E_alpha and E_gamma (gated)" begin
