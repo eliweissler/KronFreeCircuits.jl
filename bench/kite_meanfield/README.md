@@ -151,3 +151,165 @@ The test `test/test_meanfield_kite.jl` records that in this frame the reference 
 At `m = 8` and `12` the second well offers its states 1 to 4 and 1 to 6, whose remainders (2.2e-06 to 3.5e-04) are all at least twice the threshold, and the levels agree with the reference to 2.3e-06 and 5.6e-07 GHz; the departure appears at `m = 16` and beyond, where states 7 and 8, the ones nearest the threshold, are offered.
 In the normal-mode and optimum frames no union dropped a vector, and the levels agree with the reference to 1.5e-13 GHz.
 Which candidates the reference calculation admitted on `varphi_2` is not recorded in its result files, so this reading is inferred from the remainders printed here, not checked against the reference's own union.
+
+# The frame optimization: `optimize.jl`
+
+`optimize.jl` optimizes the KITE's coordinate frame `S` (`φ = S φ′`) on the product energy, starting from the identity, as in §5 of the design.
+It runs in one Julia session that reaches circuit-quantization through this package's PythonCall extension.
+It checks that the result is a frame as good as the paper's optimum, judged on product energy alone, because `S` is defined only up to the scale and sign of its columns.
+
+## Command
+
+From the repository root, with `CQ_PYTHON` a Python that has circuit-quantization installed (commit c8c8714 or later):
+
+```
+JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=$CQ_PYTHON julia --project=bench/kite_meanfield bench/kite_meanfield/optimize.jl
+```
+
+Instantiate the project with the same two variables set, so that precompiling PythonCall does not install its own Python.
+`levels.jl` runs from the same project without them, since only `optimize.jl` loads PythonCall.
+The script runs single-threaded on the CPU and writes only to `bench/kite_meanfield/results/`, which git ignores (`KITE_OPTIMIZE_OUT` changes the directory).
+There it writes four files:
+
+- `optimum_S.txt`: the final `S`;
+- `cost_history.csv`: every cost evaluation;
+- `iterations.csv`: the optimizer's iterations, with their parameter vectors, rewritten at every iteration;
+- `optimum_record.json`: a `save_record` of the final frame, with `circuit = res`, `frame = S` and `values = θ`.
+
+## The loop
+
+The circuit is `kite()` of `test/python/kite.jl`, evaluated once at its parameter values with `QuantizedCircuit(res; values = θ)`.
+The frames are circuit-quantization's `numerical.parameterization(types, relaxed=True)` of the base-frame numeric Hamiltonian:
+
+- the compact block is fixed at the identity;
+- the compact–noncompact shear is free;
+- the noncompact block is in polar form `expm(A) expm(B)`.
+
+That gives six parameters, and `x = 0` is the identity.
+`F_NM` is `numerical.cost_normal_modes(inv(E_C), E_L, types)` of the same Hamiltonian, the scale-free normal-mode cost that the prototype's `cost_product_state` uses.
+
+`frame_score(x)` composes these pieces:
+
+- `S` from the parameterization, then `Spec(qc, S)`; a frame that circuit-quantization rejects (an `ArgumentError`) scores `Inf`.
+- The bases are `suggest_bases(spec; charge_cutoff = 16, max_points = 400)`.
+  A frame for which `suggest_bases` had to cap a grid scores `Inf`.
+  The script detects that by calling `suggest_bases` again with `max_points = 10^9` and comparing the point counts.
+- The tree is one leaf per mode (`Dense()`, 4 kept states, `arithmetic = :complex`) under a root.
+- The score runs `mean_field_solutions` from the five starts below plus a warm start, and keeps the lowest solution.
+- It then checks each leaf with `edge_weight` (an amplitude).
+  If `edge_weight(child.solved)^2 > 1e-8` on an extended leaf of the lowest solution, that grid grows by 1.5 in extent and in points and the evaluation is repeated, at most three times.
+  The prototype compares the squared amplitude at the two end points alone with `1e-8`, while `edge_weight` takes the 2-norm over the first and last four points, so the trigger differs slightly.
+- The cost is `E_prod + 1e-4 F_NM(S)`.
+
+The five starts are:
+
+- all modes at zero;
+- the compact mode at `π`;
+- the last extended mode at `π`;
+- both of those at `π`;
+- the delocalized start.
+
+The warm start is the previous evaluation's lowest solution.
+A warm start must be a solution of the current root, and its tables cannot be reused as they are: the keys are `exp(i k φ)` ports whose `k`, the cosines' coefficients in the new coordinates, moves with `S`.
+So the script rebuilds each new leaf's table by mode name, as `expectations` of the previous solution's state of that mode on the new keys, and passes the tables in a `MeanFieldSolution` built for the new root.
+A warm start is skipped only when the previous evaluation produced no solution.
+
+The optimizer is Optim's `BFGS()` started at `x = 0`.
+The gradient is the script's own forward differences, with step `1e-6` in each parameter.
+A non-finite cost gives a non-finite gradient, and Optim's line search (HagerZhang) then backs off.
+The run ends at the first of four conditions:
+
+- a gradient norm below `1e-6`;
+- a cost change below `1e-9` GHz between successive iterations;
+- a failed line search;
+- 150 iterations.
+
+The script prints which of these ended it.
+
+After the optimization:
+
+- The script rescales the noncompact columns of the final `S` so that `(Sᵀ C S)_jj = 1`, with `C` the inverse of the base frame's `E_C`, and prints `S`.
+- It recomputes the final frame's lowest product energy on the score's grids with twice the points over the same extents; a difference above `1e-5` GHz is printed as a warning.
+- It solves the final frame on the bases of `levels.jl`, `suggest_bases(spec; charge_cutoff = 16, max_points = 120, extent_scale = 1.5)`, from the 33 starts of `starts.jl`, and prints every distinct solution within `0.5` GHz of the lowest.
+  Beside them it prints the paper's optimum on the same bases, read from `test/fixtures/kite/meanfield_reference.json`.
+- It checks the invariances (below).
+
+It exits nonzero unless there are exactly two such solutions, both within `2e-3` GHz of `-9.4295`, or if an invariance fails.
+
+## Result
+
+All numbers below are from one run on 2026-11-10, which ended with `all checks passed` and exit status 0.
+
+The first and last lines of the iteration log:
+
+```
+iter   0  cost -8.083171759529  E_prod -8.083174745272  F_NM 2.985743e-02  |g|_inf 1.101e+01  evaluations     7  [37 s]
+iter 150  cost -9.429395819027  E_prod -9.429465189128  F_NM 6.937010e-01  |g|_inf 7.021e-04  evaluations  3290  [8875 s]
+```
+
+The optimizer stopped at the limit of 150 iterations.
+By then it had made 3290 cost evaluations and 19780 self-consistent runs (19884 in the whole script).
+14 evaluations grew a grid.
+2 ran without a warm start: the first evaluation, and evaluation 50, which followed the rejected ones.
+No frame was rejected by circuit-quantization, and 7 evaluations were rejected as needing more than 400 points.
+Those 7 are evaluations 43 to 49: one line-search trial point and its six forward-difference neighbours, which the gradient evaluates even when the cost at the point is `Inf`.
+The whole run took 8947.6 s (149 min) on one thread.
+The load average (1, 5, 15 min) was 0.88 0.99 1.13 at the start and 1.07 1.05 1.17 at the end, with another job running on the machine.
+
+The final frame, with its noncompact columns scaled to `(Sᵀ C S)_jj = 1`:
+
+```
+    1.000000   0.235392   0.230593
+    0.000000   0.696303   0.734002
+    0.000000  -0.571896   0.629087
+```
+
+It agrees with the paper's `S_OPT` (`[1 0.2354 0.2306; 0 0.6962 0.7339; 0 -0.5719 0.629]`) to the four printed decimals of `S_OPT`, although nothing compares the two.
+On the score's grids (113 and 112 points) the final frame's product energy is -9.429465189128 GHz; on twice the points it is -9.429464723969, a difference of 4.7e-07 GHz.
+
+On the figure's bases, from the 33 starts, the final frame has two wells:
+
+| | well 1 (GHz) | well 2 (GHz) |
+|---|---|---|
+| this run's final frame | -9.429473654505 | -9.429473654501 |
+| the paper's optimum frame | -9.429473599561 | -9.429473599557 |
+
+The pass criterion holds: there are exactly two wells, both within `2e-3` GHz of `-9.4295`, and each is 5.5e-08 GHz below the paper's optimum.
+
+### Invariances
+
+On bases resized by `suggest_bases` with the final check's settings, the lowest product energy is:
+
+- -9.429473654505 GHz in the final frame;
+- -9.429473788370 GHz with the noncompact columns scaled by `(1.3, 0.8)`, a difference of -1.3e-07;
+- -9.429473654506 GHz with the sign of column 2 flipped, a difference of -2.3e-13.
+
+Both differences are within `1e-6` GHz.
+The scaled frame differs at all because the `4 E_C` term of `suggest_bases`' extent does not scale with the column, so the scaled frame's grid is not the image of the original's.
+
+### The optimizer's path and the gradient noise
+
+The cost reached -9.4293955 by iteration 21 (294 evaluations), with `|g|_inf` 6.2e-04.
+For the remaining 129 iterations it wandered above that, by up to 6.5e-05 GHz (iteration 72), and came back, ending at -9.429395819027, its lowest value, only 1.5e-07 GHz below iteration 22.
+After iteration 20 the gradient norm printed lies between 6e-04 and 8e-02, far above the tolerance `1e-6`, so the gradient test cannot end the run.
+With a forward-difference step of `1e-6`, a gradient of 1e-02 corresponds to a change of 1e-08 GHz in the cost per step, which is the level of the self-consistent loop's convergence and of the grids, whose extents move continuously with `S`.
+No forward-difference step after iteration 19 changed a grid's point count.
+The parameters drifted along the flat directions of the cost (the noncompact columns' scale), to `|x|` of about 30, which also ill-conditions BFGS.
+The approximate-Wolfe line search accepts small increases of the cost, so the cost-change test (`1e-9` GHz) was never met either.
+
+### What had to change: capped grids
+
+The plan first scored frames on `suggest_bases(spec; charge_cutoff = 16, max_points = 76)`.
+In that run, BFGS reached the paper's well by iteration 28 (E_prod -9.4294765 with `|g|_inf` 8.7e-06).
+It then kept descending into frames that stretch the last mode, where the 76-point cap makes the grid step larger than half the zero-point width, so the finite-difference kinetic energy is too low.
+At iteration 130 its product energy was -9.43001 GHz on 76 points, against -9.42815 GHz for the same frame on 400 points.
+At iteration 132 it reached -13.16 GHz, below the true ground level of -9.524 GHz, and the line search failed.
+The edge-weight growth cannot see this, because it is a resolution failure, not an edge failure.
+So the score now uses circuit-quantization's own cap of 400 points and scores `Inf` for a frame that would need more.
+That makes each evaluation about twice as slow: 3290 evaluations in 149 min, against 2513 in 58 min before.
+
+### Known differences between sources
+
+1. Update order: the paper's text says the modes are updated in turn, while the prototype and this package update them together; this script uses the package's loop, so all modes are updated together.
+2. Starts: the paper's text says all `3^N` starts, the figure's data used 33, and the prototype's own frame optimization used five; this script uses five plus a warm start for the optimization and the 33 for the final check.
+3. `F_NM`: the paper's formula sums squared raw entries, while the derivation notebook normalizes columns first and uses the capacitance matrix; this script uses circuit-quantization's `cost_normal_modes`, which is scale-free.

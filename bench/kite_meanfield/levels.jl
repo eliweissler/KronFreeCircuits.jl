@@ -128,13 +128,8 @@ end
 # tolerance below RES_TOL (the residual is checked independently in `solve_root`).
 root_over(leaves, N) = Node(leaves; solver=N <= 1000 ? Dense() : LOBPCG(tol=1e-10), compute=NLEV, keep=lowest(NLEV))
 
-# The starts of test/test_meanfield_kite.jl: the compact mode at 0 or π, each extended mode at 0, π/2, π or -π/2, and the
-# delocalized start, 33 in all.
-function kite_starts(spec)
-    names = [m.name for m in spec.modes]
-    ext = (0.0, π / 2, π, -π / 2)
-    return Any[[Dict{Symbol,Float64}(zip(names, (a, b, c))) for a in (0.0, π) for b in ext for c in ext]; nothing]
-end
+# The 33 starts of test/test_meanfield_kite.jl (`kite_starts`).
+include(joinpath(@__DIR__, "starts.jl"))
 
 # The largest change of any table entry between two solutions: mean_field_solutions' own distinctness measure.
 table_change(a, b) = maximum(abs(a.children[ch].expectations[k] - b.children[ch].expectations[k])

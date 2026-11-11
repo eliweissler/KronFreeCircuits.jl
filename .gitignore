@@ -36,3 +36,6 @@ JuliaLocalPreferences.toml
 
 # Run records written by bench/kite_frames/run.jl
 bench/kite_frames/results/
+
+# Results written by bench/kite_meanfield/optimize.jl
+bench/kite_meanfield/results/
