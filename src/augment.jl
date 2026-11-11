@@ -120,3 +120,122 @@ function union_basis(sources::Vector{BasisSource}; m::Integer, drop::Real = 1e-6
     end
     return U, report
 end
+
+"""
+    AugmentedChild
+
+A child presented to its parent through a basis of its own choosing, the union basis `U`, instead of its ordinary solve.
+`node` is the child, and `basis` is `U` on the child's own product space, one orthonormal column per vector.
+`terms` are the child's bare terms, those `route` places at the child itself, with no mean-field terms.
+`solved` holds the child's bare operator projected on `basis` and diagonalized: its vectors are `basis * W`, lowest energy first, all `size(basis, 2)` of them.
+`solved` forms the ports and joint ports that its parent's terms need inside the child, as `child_keys` lists them.
+`report` is the `UnionReport` of the merge that built `basis`.
+Pass it to `materialize` with `augmented` to use it in place of the child's ordinary solve.
+"""
+struct AugmentedChild
+    node::Node
+    solved::MaterializedNode
+    basis::Matrix{ComplexF64}
+    terms::Vector{Term}
+    report::UnionReport
+end
+
+"""
+    augment(parent, terms, θ, child, bare, U, report) -> AugmentedChild
+
+The child `child` of `parent` presented through the orthonormal basis `U` on its own product space.
+`bare` is the child's bare solve (`bare_child`), whose children span the product space and are not solved again.
+The child's bare operator `H`, on its own terms only and in complex arithmetic, is projected to `U' * H * U` and diagonalized densely.
+Every column is kept, so the child presents `size(U, 2)` states, and its `compute` and `keep` settings do not apply.
+The kept vectors are `U * W` with `W` the eigenvectors of the projection, with the child's phase convention and the ports and joint ports of `child_keys(parent, terms, child)`.
+`report` is stored with the result, as is a copy of `U`.
+An `ArgumentError` is thrown when `bare` is not a solve of `child`, when `U` does not have one row per state of the product space or has no column, and when `U' * U` differs from the identity by more than `1e-8`.
+"""
+function augment(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node, bare::MaterializedNode,
+                 U::AbstractMatrix, report::UnionReport)
+    bare.node === child || throw(ArgumentError("`bare` is not a solution of `child` (on modes $(modes(child)))"))
+    keys = child_keys(parent, terms, child)
+    n = prod(bare.dims)
+    size(U, 1) == n ||
+        throw(ArgumentError("the union basis of the child on modes $(modes(child)) has $(size(U, 1)) rows, " *
+                            "but the child's product space has dimension $n"))
+    size(U, 2) >= 1 || throw(ArgumentError("the union basis of the child on modes $(modes(child)) has no column"))
+    basis = Matrix{ComplexF64}(U)                                      # a new array, also when `U` is one already
+    dev = maximum(abs, basis' * basis - I)
+    dev <= 1e-8 ||
+        throw(ArgumentError("the union basis of the child on modes $(modes(child)) is not orthonormal: " *
+                            "U' * U differs from the identity by up to $dev (largest deviation), above 1e-8"))
+    bare_terms = _terms_at(child, terms)
+    H = _node_operator(child, Dense(), bare.children, bare_terms, θ, 0.0; real=false)
+    Hp = basis' * (H * basis)
+    E, W = eigen(Hermitian((Hp + Hp') / 2))
+    ports, joint_ports = _split_keys(keys)
+    solved = _assemble_node(child, bare.children, Vector{Float64}(E), Matrix{ComplexF64}(basis * W);
+                            ports, joint_ports, real=false)
+    return AugmentedChild(child, solved, basis, bare_terms, report)
+end
+
+# The parent of every node under `root` except the root, after checking `augmented` against the tree: each entry an
+# `AugmentedChild` whose node is in the tree and is not the root, no node given twice, no `previous`, and no ancestor of
+# an augmented node with `arithmetic = :real`.
+function _check_augmented(root::Node, augmented::AbstractVector, previous)
+    previous === nothing ||
+        throw(ArgumentError("`augmented` cannot be combined with `previous`: an augmented child has no previous solution to follow"))
+    parents = IdDict{Node,Node}()
+    for node in _all_nodes(root), ch in _subnodes(node)
+        parents[ch] = node
+    end
+    seen = Base.IdSet{Node}()
+    for a in augmented
+        a isa AugmentedChild ||
+            throw(ArgumentError("`augmented` must hold `AugmentedChild` entries (from `augment`), got a $(typeof(a))"))
+        n = a.node
+        n === root && throw(ArgumentError("the root (on modes $(modes(root))) cannot be augmented: an augmented node needs a parent"))
+        haskey(parents, n) || throw(ArgumentError("the augmented node on modes $(modes(n)) is not a node of this tree"))
+        n in seen && throw(ArgumentError("the node on modes $(modes(n)) is augmented twice"))
+        push!(seen, n)
+        p = n
+        while haskey(parents, p)
+            p = parents[p]
+            p.arithmetic === :real &&
+                throw(ArgumentError("the node on modes $(modes(p)) has arithmetic = :real, but it is an ancestor of the " *
+                                    "augmented node on modes $(modes(n)), which runs in complex arithmetic"))
+        end
+    end
+    return parents
+end
+
+# The augmented children of a tree by node, each with the ports and joint ports the tree needs of it
+# (`_augmented_node`); every augmented node and every ancestor of one is marked complex in `realnodes`.
+function _augmented_nodes!(realnodes::IdDict, parents::IdDict{Node,Node}, augmented::AbstractVector, needed, needed_joint)
+    out = IdDict{Node,MaterializedNode}()
+    for a in augmented
+        out[a.node] = _augmented_node(a, needed[a.node], needed_joint[a.node])
+        n = a.node
+        realnodes[n] = false
+        while haskey(parents, n)
+            n = parents[n]
+            realnodes[n] = false
+        end
+    end
+    return out
+end
+
+# The solved node of `a` with the ports and joint ports `ports` and `joint_ports` that the tree needs of it: `a.solved`
+# itself when it has them all, else a copy with the missing ones formed from its kept vectors (`a` is not modified).
+function _augmented_node(a::AugmentedChild, ports::Vector{Tuple{Symbol,Port}}, joint_ports::Vector{_FactorKey})
+    s = a.solved
+    missing_ports = [k for k in ports if !haskey(s.ports, k)]
+    missing_joint = [K for K in joint_ports if !haskey(s.joint_ports, K)]
+    isempty(missing_ports) && isempty(missing_joint) && return s
+    leaves = _mode_leaves(s.node)
+    P = copy(s.ports)
+    J = copy(s.joint_ports)
+    for (mode, p) in missing_ports
+        P[(mode, p)] = _node_port(s.node, leaves, s.children, s.dims, s.vectors, mode, p)
+    end
+    for K in missing_joint
+        J[K] = _joint_port(s.node, leaves, s.children, s.dims, s.vectors, K)
+    end
+    return typeof(s)(s.node, s.dims, s.energies, s.vectors, s.kept, P, J, s.children, s.peak_component, s.peak_amplitudes)
+end

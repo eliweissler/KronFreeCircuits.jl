@@ -27,7 +27,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        Expectations, straddling_terms, child_keys, expectations, pinned_expectations, delocalized_expectations,
        mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
        MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
-       BasisSource, UnionReport, union_basis
+       BasisSource, UnionReport, union_basis, AugmentedChild, augment
 
 include("parameters.jl")
 include("spec.jl")

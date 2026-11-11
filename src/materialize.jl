@@ -73,8 +73,8 @@ const _EDGE_TOL = 1e-6
 const _HYBRID_RATIO = 0.5
 
 """
-    materialize(root, spec, θ; previous=nothing, extra_terms=Term[]) -> System
-    materialize(root, terms, θ; constant=Coefficient(0), previous=nothing, modetypes=Dict()) -> System
+    materialize(root, spec, θ; previous=nothing, extra_terms=Term[], augmented=AugmentedChild[]) -> System
+    materialize(root, terms, θ; constant=Coefficient(0), previous=nothing, modetypes=Dict(), augmented=AugmentedChild[]) -> System
 
 Diagonalize every node of the tree under `root` at parameters `θ`, children first.
 The first form expands `spec` with [`circuit_terms`](@ref) and [`constant_term`](@ref), appends
@@ -117,26 +117,37 @@ A term routed to a branch node with two or more factors inside the same child is
 port (`joint_ports` of [`MaterializedNode`](@ref)): the operator `V† (⊗ₐ Oₐ) V` of those factors, formed in the child's
 product basis before its projection onto the kept states, never a product of separately projected single ports.
 A term with two or more factors on one mode throws an `ArgumentError`.
+
+`augmented`, a vector of [`AugmentedChild`](@ref) (from [`augment`](@ref)), presents some nodes of the tree through a basis of their own: such a node is not solved, and its `solved` is used as that child, with any port or joint port the tree needs that it lacks formed from its kept vectors.
+The terms are routed as usual, so the terms inside an augmented node are not used, and its ancestors' operators are built exactly as on a solved child.
+An augmented node, and every ancestor of it, runs in complex arithmetic.
+An augmented node that is not in the tree or is its root, a node given twice, `augmented` together with `previous`, and an ancestor of an augmented node with `arithmetic = :real` each throw an `ArgumentError`.
 """
 materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficient=Coefficient(0),
-            previous::Union{Nothing,System}=nothing, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}()) =
-    _materialize_terms(root, terms, θ, constant, previous, modetypes)
+            previous::Union{Nothing,System}=nothing, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}(),
+            augmented::AbstractVector=AugmentedChild[]) =
+    _materialize_terms(root, terms, θ, constant, previous, modetypes; augmented)
 
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
-                     extra_terms::Vector{Term}=Term[])
+                     extra_terms::Vector{Term}=Term[], augmented::AbstractVector=AugmentedChild[])
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     _check_bases(root, modetypes)
-    sys = _materialize_terms(root, vcat(circuit_terms(spec), extra_terms), θ, constant_term(spec), previous, modetypes)
+    sys = _materialize_terms(root, vcat(circuit_terms(spec), extra_terms), θ, constant_term(spec), previous, modetypes;
+                             augmented)
     return System(sys.root, spec, sys.terms, sys.θ, sys.constant)
 end
 
 # The term-list form: the spec form delegates here with the spec's terms and constant.
+# The `augmented` children (`AugmentedChild`) reach `_materialize` as their solved nodes by node, and they and their
+# ancestors are marked complex after `classify` (`_augmented_nodes!`).
 function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, previous,
-                            modetypes::Dict{Symbol,Symbol})
+                            modetypes::Dict{Symbol,Symbol}; augmented::AbstractVector=AugmentedChild[])
+    parents = isempty(augmented) ? nothing : _check_augmented(root, augmented, previous)
     routed, realnodes, needed, needed_joint = _plan(root, terms, θ, constant, modetypes)
+    aug = parents === nothing ? nothing : _augmented_nodes!(realnodes, parents, augmented, needed, needed_joint)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
-    mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes)
+    mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes; augmented=aug)
     return System(mroot, nothing, terms, θ, constant)
 end
 
@@ -592,10 +603,14 @@ _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dim
 
 # The recursion: each child materialized first (a node child on its routed terms, its ports and joint ports, no
 # constant, and its previous solution at the same tree position), then this node on them (`_solve_node`).
-function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, constant, prev, realnodes)
+# A node child found in `augmented` (node => solved node, from `_augmented_nodes!`) is taken from there, not solved.
+function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, constant, prev, realnodes;
+                      augmented::Union{Nothing,IdDict{Node,MaterializedNode}}=nothing)
     children = Any[]
     for (i, ch) in enumerate(node.children)
-        push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes) :
+        push!(children, ch isa Node ? (augmented !== nothing && haskey(augmented, ch) ? augmented[ch] :
+                                       _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes;
+                                                    augmented)) :
                         ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
     return _solve_node(node, children, routed[node], θ; constant, ports=needed[node], joint_ports=needed_joint[node],

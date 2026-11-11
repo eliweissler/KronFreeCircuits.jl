@@ -47,3 +47,91 @@ using Test, LinearAlgebra, KronFreeCircuits
     @test_throws ArgumentError union_basis([a]; m=1, drop=-1.0)
     @test_throws ArgumentError union_basis([src("big", [2 * e(1)])]; m=1)
 end
+
+@testset "augmented child" begin
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params(); terms = circuit_terms(spec)
+    grid = PhaseGrid(-12π, 12π, 201; order=6)                             # the zero-pi grid of test_materialize.jl
+    mk() = (local A = Node([:theta => ChargeBasis(8)]; solver=Dense(), compute=17, keep=lowest(17));
+            local B = Node([:phi => grid]; solver=Dense(), compute=6, keep=lowest(6));
+            (A, B, Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))))
+    # every solve of A, which keeps all 17 states of its charge basis, notes a phase-convention fallback for 8 of them
+    w8 = ntuple(_ -> (:warn, r"no weight on the phase mask"), 8)
+    A, B, root = mk()
+    plain = energies(@test_logs w8... materialize(root, spec, θ))
+    bareA, bareB = (@test_logs w8... bare_child(root, terms, θ, A)), bare_child(root, terms, θ, B)
+    # the bare vectors as the union basis reproduce the bare child exactly
+    rep(n) = UnionReport(["bare"], [n], [0])
+    augB = augment(root, terms, θ, B, bareB, Matrix{ComplexF64}(bareB.vectors), rep(6))
+    @test augB.solved.energies ≈ bareB.energies rtol=1e-10
+    sysB = @test_logs w8... materialize(root, spec, θ; augmented=[augB])
+    @test energies(sysB) ≈ plain rtol=1e-9
+    # a rotated basis of the same span gives the same parent spectrum
+    Q = Matrix(qr(randn(ComplexF64, 6, 6)).Q)
+    augQ = augment(root, terms, θ, B, bareB, bareB.vectors * Q, rep(6))
+    @test energies(@test_logs w8... materialize(root, spec, θ; augmented=[augQ])) ≈ plain rtol=1e-9
+    # the whole space of A: the parent no longer depends on A's truncation
+    full = @test_logs w8... augment(root, terms, θ, A, bareA, Matrix{ComplexF64}(I, 17, 17), rep(17))
+    @test energies(materialize(root, spec, θ; augmented=[full])) ≈ plain rtol=1e-9
+    @test augB.basis ≈ bareB.vectors && augB.terms == KronFreeCircuits._terms_at(B, terms)
+    @test arithmetic(sysB, root) == :complex
+    # the parent takes the augmented child as it is, not solving it again
+    @test materialized(sysB, B).vectors == augB.solved.vectors
+    # the term-list form takes the keyword too
+    @test energies(@test_logs w8... materialize(root, terms, θ; constant=constant_term(spec), augmented=[augB])) ≈ plain rtol=1e-9
+    # a port the tree needs that the augmented child lacks is formed from its vectors, on a copy
+    s = augB.solved
+    bareonly = AugmentedChild(B, typeof(s)(s.node, s.dims, s.energies, s.vectors, s.kept, empty(s.ports), empty(s.joint_ports),
+                                           s.children, s.peak_component, s.peak_amplitudes), augB.basis, augB.terms, augB.report)
+    @test energies(@test_logs w8... materialize(root, spec, θ; augmented=[bareonly])) ≈ plain rtol=1e-9
+    @test isempty(bareonly.solved.ports)
+    # Review Focus 5 (`mk` declares its nodes `local`, so a second tree does not rebind A and B)
+    A2, B2, root2 = mk()
+    @test_throws ArgumentError materialize(root2, spec, θ; augmented=[augB])              # node of another tree
+    @test_throws ArgumentError materialize(root, spec, θ; augmented=[augB, augB])
+    @test_throws ArgumentError materialize(root, spec, θ; augmented=[augB], previous=sysB)
+    Ar = Node([:theta => ChargeBasis(8)]; solver=Dense(), compute=4, keep=lowest(4))
+    Br = Node([:phi => grid]; solver=Dense(), compute=4, keep=lowest(4))
+    rootr = Node([Ar, Br]; solver=Dense(), compute=4, keep=lowest(4), arithmetic=:real)
+    bBr = bare_child(rootr, terms, θ, Br)
+    augr = augment(rootr, terms, θ, Br, bBr, Matrix{ComplexF64}(bBr.vectors), rep(4))
+    @test_throws "real" materialize(rootr, spec, θ; augmented=[augr])
+    # augment's own checks
+    @test_throws ArgumentError augment(root, terms, θ, A, bareB, Matrix{ComplexF64}(bareB.vectors), rep(6))   # `bare` of another node
+    @test_throws ArgumentError augment(root, terms, θ, B, bareB, Matrix{ComplexF64}(bareB.vectors[1:end-1, :]), rep(6))
+    @test_throws ArgumentError augment(root, terms, θ, B, bareB, zeros(ComplexF64, size(bareB.vectors, 1), 0), rep(0))
+    @test_throws "deviation" augment(root, terms, θ, B, bareB, 2 * bareB.vectors, rep(6))
+end
+
+@testset "augmented branch child, and an augmented child below a non-root parent" begin
+    spec = load_spec(fixture("three_transmons.json")); θ = three_transmons_params(g=0.4); terms = circuit_terms(spec)
+    mk() = (local T1 = Node([:varphi_1 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6));
+            local T2 = Node([:varphi_2 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6));
+            local T3 = Node([:varphi_3 => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6));
+            local C = Node([T1, T2]; solver=Dense(), compute=10, keep=lowest(10));
+            (T1, T2, T3, C, Node([C, T3]; solver=Dense(), compute=5, keep=lowest(5))))
+    T1, T2, T3, C, root = mk()
+    plain = energies(materialize(root, spec, θ))
+    rep(n) = UnionReport(["bare"], [n], [0])
+    # a branch child (two leaves under it) built from its bare vectors
+    bC = bare_child(root, terms, θ, C)
+    augC = augment(root, terms, θ, C, bC, bC.vectors, rep(10))
+    @test augC.solved.energies ≈ bC.energies rtol=1e-10
+    @test size(augC.basis) == (36, 10)
+    sysC = materialize(root, spec, θ; augmented=[augC])
+    @test energies(sysC) ≈ plain rtol=1e-9
+    @test arithmetic(sysC, root) == :complex
+    # an augmented child one level below the root, its parent the branch C
+    b1 = bare_child(C, terms, θ, T1)
+    aug1 = augment(C, terms, θ, T1, b1, b1.vectors * Matrix(qr(randn(ComplexF64, 6, 6)).Q), rep(6))
+    sys1 = materialize(root, spec, θ; augmented=[aug1])
+    @test energies(sys1) ≈ plain rtol=1e-9
+    @test arithmetic(sys1, C) == :complex && arithmetic(sys1, root) == :complex && arithmetic(sys1, T2) == :real
+    # the root itself may not be augmented, and a real ancestor below the root is named
+    broot = bare_child(Node([root]), terms, θ, root)
+    @test_throws "root" materialize(root, spec, θ; augmented=[augment(Node([root]), terms, θ, root, broot, broot.vectors, rep(5))])
+    T1r, T2r, T3r, _, _ = mk()
+    Cr = Node([T1r, T2r]; solver=Dense(), compute=10, keep=lowest(10), arithmetic=:real)
+    rootr = Node([Cr, T3r]; solver=Dense(), compute=5, keep=lowest(5))
+    b1r = bare_child(Cr, terms, θ, T1r)
+    @test_throws "varphi_2" materialize(rootr, spec, θ; augmented=[augment(Cr, terms, θ, T1r, b1r, b1r.vectors, rep(6))])
+end
