@@ -281,32 +281,59 @@ function _unit_power(α::Number, a::Int)
     return (ComplexF64(1), ComplexF64(0, s), ComplexF64(-1), ComplexF64(0, -s))[mod(a, 4)+1]
 end
 
+# log(2) - Float64(log(2)): with it, `k log(2)` is subtracted from an exponent to well below one ulp.
+const _LOG2_LO = 2.3190468138462996e-17
+
 """
     displacement(N, α) -> Matrix{ComplexF64}
 
 Closed-form matrix elements of `D(α) = exp(α a† - α* a)` on the first `N` Fock levels
-(exact elements of the infinite operator, not the exponential of a truncated generator).
+(exact elements of the infinite operator, not the exponential of a truncated generator, so the block is not unitary).
+
+For `n = m + a ≥ m` the element is `⟨n|D(α)|m⟩ = √(m!/n!) e^{-|α|²/2} α^a L_m^{(a)}(|α|²)`, and `⟨m|D(α)|n⟩ = conj(⟨n|D(-α)|m⟩)`,
+so `D(-α) = D(α)'`. The factors leave the `Float64` range long before the element does (for `|α| ≳ 37.7` the Laguerre
+polynomial overflows and `e^{-|α|²/2}` underflows, and the polynomial also overflows for `N ≳ 1030` at any `α`), so the magnitudes
+`f_m = √(m!/(m+a)!) |α|^a e^{-|α|²/2} L_m^{(a)}(|α|²)` are computed as a whole, as `f · 2^e` with the binary exponent `e`
+carried apart from the `Float64` `f`:
+
+- the seed `f_0 = |α|^a e^{-|α|²/2} / √(a!)` follows from that of `a - 1` by the factor `|α| / √a`, renormalized at every step;
+- `f_m = ((2m - 1 + a - |α|²) f_{m-1} - √((m-1)(m-1+a)) f_{m-2}) / √(m(m+a))`, the recurrence of the Laguerre polynomial in its
+  degree with the normalization absorbed, in which `f_{m-1}` and `f_{m-2}` share one exponent and are rescaled together.
+
+The recurrence runs from the region where the elements are exponentially small into the one where they oscillate, the
+direction in which it is stable, and an element below the `Float64` range comes out as zero. A finite `|α| ≥ 2^20` gives
+the zero matrix (every element is below the range for any `N` that fits in memory) and a non-finite `α` gives NaN.
 """
 function displacement(N::Int, α::Number)
     D = zeros(ComplexF64, N, N)
-    x = abs2(α)
     if iszero(α)
         for i in 1:N; D[i, i] = 1; end
         return D
     end
-    lf = cumsum([0.0; log.(1:N-1)])                         # lf[j+1] = log(j!)
-    logr, θ = log(abs(α)), angle(α)
+    r, x, θ = abs(α), abs2(α), angle(α)
+    isfinite(r) || return fill!(D, complex(NaN, NaN))
+    r < 0x1p20 || return D
     exact = iszero(imag(α)) || iszero(real(α))
+    k = round(-x / 2 / log(2.0))                             # e^{-x/2} = g · 2^e with g = e^{-x/2 - k log 2} in [1/√2, √2]
+    g, e = exp(fma(-k, log(2.0), -x / 2) - k * _LOG2_LO), Int(k)
+    rm, re = frexp(r)                                        # r = rm · 2^re, so that a subnormal r keeps its digits
     for a in 0:N-1                                           # a = n - m >= 0
-        Lprev, L = 0.0, 1.0                                  # L_{-1}, L_0 of L^{(a)}
+        if a > 0                                             # g · 2^e = r^a e^{-x/2} / √(a!)
+            g, de = frexp(g * (rm / sqrt(a)))
+            e += re + de
+        end
+        fprev, f, s, ef = 0.0, g, 0.0, e                     # f_{m-1}, f_m on the scale 2^ef; s = √(m(m+a))
         for m in 0:N-1-a
-            if m == 1
-                Lprev, L = L, 1 + a - x
-            elseif m > 1
-                Lprev, L = L, ((2(m - 1) + 1 + a - x) * L - (m - 1 + a) * Lprev) / m
+            if m > 0
+                snew = sqrt(m * (m + a))
+                fprev, f = f, ((2m - 1 + a - x) * f - s * fprev) / snew
+                s = snew
+                if abs(f) > 0x1p256                          # |f_m 2^ef| <= 1: f grows only while ef is far below zero
+                    fprev *= 0x1p-256; f *= 0x1p-256; ef += 256
+                end
             end
             n = m + a
-            mag = exp(0.5 * (lf[m+1] - lf[n+1]) + a * logr - x / 2) * L
+            mag = ldexp(f, ef)
             D[n+1, m+1] = mag * (exact ? _unit_power(α, a) : cis(a * θ))                 # ⟨n|D(α)|m⟩
             a > 0 && (D[m+1, n+1] = mag * (exact ? conj(_unit_power(-α, a)) : cis(-a * (θ + π))))  # conj(⟨n|D(-α)|m⟩)
         end
