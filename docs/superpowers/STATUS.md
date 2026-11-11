@@ -117,7 +117,7 @@ Done:
 - `spectrum(root, spec, θ; ports)` and its `rrule` and `frule` in the extension `KronFreeCircuitsChainRulesCoreExt` (weak dependency `ChainRulesCore`), tested directly and through Zygote in `test/chainrules`.
 - A symbolic KITE fixture (`test/fixtures/kite/optimum_symbolic.json`, generator `test/python/generate_kite_symbolic.jl`) and its acceptance tests, slow tier.
 - `bench/derivative_design`: a three-parameter design problem solved with BFGS on the Zygote gradient; `bench/retention_cost.jl` and `bench/derivative_sums.jl`.
-- A device test of the derivative pass at an `LOBPCG(on = CuArray)` node.
+- Device tests of the derivative pass at `LOBPCG(on = CuArray)` nodes (`test/cuda/test_derivatives_device.jl`): a real and a complex two-transmon root, mixed pairs on both, weak coupling at the complex root, and the KITE doublet's block at the KITE root (the last four added on 2026-11-11).
 
 Measured (details in architecture §20l):
 - Finite differences: the reviewers' independent checks at untested parameter values agree to 2.4e-10 to 1e-7 at first order and to 2.8e-9 to 4e-7 at second order for energies and ports (3.5e-6 for the second derivatives of the vectors of a complex two-level tree), on leaves, two- and three-level trees, joint ports and augmented children.
@@ -125,6 +125,12 @@ Measured (details in architecture §20l):
 - The effective Hamiltonian's error on the `cos 2φ` doublet falls as δ⁴ (1.155e-7, 4.24e-9, 2.87e-10, 1.85e-11 GHz at δ = 0.05, 0.02, 0.01, 0.005).
 - The linear solve: at most 190 iterations in the tests, 49 to 60 at the KITE root; at the default `LOBPCG` tolerance the derivatives still match the dense route to 4.3e-12 at `g = 0.3`.
   At couplings 0.03 to 3e-4 it threw at the default settings until the final review's fix, and after that fix it was inaccurate for small columns (2.8e-6 of a column's own norm at `g = 3e-4`); with the stopping rule of the re-review's fix, all 32 cases of the reviewer's comparison finish in 3 to 7 iterations, and every kept state's derivative is within 4.4e-10 of its own norm from the dense route at couplings 0.03 to 3e-4 and within 4.4e-11 at 0.3, at first and second order (measured per column); the default solvers stay within 5.1e-11 of it at `g = 0.3`.
+- On the device (2026-11-11, RTX A4500, `test/cuda/test_derivatives_device.jl`), every comparison with the host's `Dense` twin is measured.
+  At a complex `LOBPCG` root of two transmons (periodic grids), along `E_J2`, `g` and `n_g1`: first-order energies within 2.0e-13, vectors 7.2e-13 (4.6e-12 per column), ports 2.0e-12 (the off-diagonal elements of `expiphi` 6.5e-13); second order (x, x) energies 3.0e-14, vectors 3.0e-12 (8.0e-12 per column), ports 2.2e-12 (`expiphi` off-diagonal 1.0e-12); all relative.
+  Mixed pairs `(g, n_g1)` and `(E_J2, g)` on the real and the complex tree: energies 5.1e-13, vectors 3.0e-12 (5.8e-12 per column), ports 2.4e-12.
+  Weak coupling at the complex root, along `E_J2`: 4.3e-11 per column at `g = 0.03` and 3.7e-10 at `g = 3e-4`.
+  At the KITE's `LOBPCG` root (1728 states, complex): the doublet's block on states [1, 2] has the same detuning (0.0135992 GHz, 6.3e-12 relative) and coupling (1.73193, 6.8e-13) as the `Dense` route; `block_levels` at δ = ±0.01 and 0.005 agree to 9.9e-14 GHz; point derivatives in `delta` agree to 3.6e-12 (first) and 7.6e-12 (second) for energies and 7.4e-12 and 1.7e-11 per column for vectors.
+  Every linear solve converged to a residual of at most 9.8e-11, none at the floor, in at most 7 iterations on the two-transmon trees and 59 at the KITE root.
 - The final review's cross-feature experiments against finite differences (three-level complex trees with an iterative interior node, augmented children under an iterative root, `indices` and `within` selections, flux offsets on periodic grids, `retain = :never` leaves, Zygote through an iterative root) agree with them to within about 1.5 times the finite differences' own error; its comparison of the default solvers with the dense route (not with finite differences) agrees to 5.1e-11 (architecture §20l has the table).
 - The optimization demonstration: BFGS converged on its gradient tolerance in 13 iterations (1.6 s), reaching the planted design to about 1e-11; the gradient agreed with finite differences to 1.9e-9 relative at the start.
 - The cost of retention at a `Dense` leaf with `compute = 10`: forward time ×4.8 and memory 73 KB → 5.2 MB at 801 states (transmon), ×1.9 and 83 KB → 6.5 MB at 901 (fluxonium); 0.0064 → 0.0111 s and 30 KB → 0.51 MB on the KITE tree.
@@ -135,7 +141,7 @@ Missed, and why:
   Diagnosed as a fault on this machine, not this project and not the dependency versions: cuBLAS's complex-double triangular solve (`cublasZtrsm_v2_64`) fails on every call with `CUBLAS_STATUS_EXECUTION_FAILED`, even on a 2×2 matrix, and LOBPCGEigensolver reports it as a failure to orthonormalize; it fails the same way on `origin/main`, with the older environment, and in a copy of the environment that passed on 2026-10-18.
   Why it passed on 2026-10-18 is not established, nor whether the CUDA runtime artifact is damaged (its tree hash does not match its name).
   Ruling 11: recorded as a machine fault, not worked around.
-  So a complex iterative node's derivative pass, mixed pairs and blocks are untested on the device.
+  Since 2026-11-11 a complex iterative node's derivative pass, mixed pairs and a near-degenerate block are tested on the device as well (measured above, test status below).
 - Iterative-node tests tighten the eigensolver tolerance (Decision 11), and second-order finite-difference tests use `rtol = 1e-5` (the design's target is `1e-6`) because second differences are themselves good only to `1e-8` to `8e-6` on the test circuits; the reviewers' checks above give the actual agreement.
 - The second-order state, normalization and gauge formulas were derived for this project, because Eli's notes (`tight_binding.tex`) are not on this machine; they were checked on random Hermitian families (1e-11 and 1e-8), re-derived by a reviewer and confirmed by finite differences, but not compared with the notes (Ruling 4).
 - Found by the final review and fixed in its fix wave: the linear solve failed at default settings for a parameter internal to a weakly coupled child under an iterative parent (its convergence was measured against the small part of the right-hand side outside the computed states, below round-off); a `NaN` child under an iterative parent threw instead of propagating; a `wrt` parameter nothing depends on gave silent zeros; retention reached the mean-field loop and `bo_surface`, where it is never used.
@@ -190,6 +196,7 @@ The Python tier passed 336 of 336 in 1m30s.
 The rules tier passed (9, 9 and 12 tests in its three testsets) in 52 s.
 The device tier gave 313 passed and 13 errored: the 13 errors are the known complex-`LOBPCG` testsets of `test/cuda/test_device.jl` (lines 61, 252, 258, 280, 313, 394, 435 to 437, 522 and 524 to 526), and `test/cuda/test_derivatives_device.jl` passed 12 of 12.
 After a reboot of the machine on 2026-11-11 the cuBLAS fault was gone, and the device tier, rerun on the same code with the GPU otherwise idle, passed 469 of 469 in 2m24s, with no errors: the complex-`LOBPCG` testsets pass and `test/cuda/test_derivatives_device.jl` passes 12 of 12.
+After the device tests of the derivative pass at a complex node, mixed pairs, weak coupling and the KITE block were added (2026-11-11, branch `derivatives-cg-floor`, the GPU otherwise idle before and after), the device tier passed 573 of 573 in 2m43s; `test/cuda/test_derivatives_device.jl` passes 116 of 116.
 
 ## Where things stand
 
