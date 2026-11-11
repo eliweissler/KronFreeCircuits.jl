@@ -983,9 +983,9 @@ The mean-field coefficients are complex in general (the outside expectations `�
 Real arithmetic for mean-field children is a non-goal of the design.
 
 **Measured: the KITE (design §6.1).**
-Two codes are compared with.
+The results below are compared with two other codes.
 The prototype is circuit-quantization's `product_state.py`, which `test/python/generate_kite_fixtures.jl` runs to produce the fixtures `test/fixtures/kite/`.
-The reference calculation is the owner's script that produced the figure (`mean_field_ref_dont_commit/kite_reference/`, untracked); its numbers are hard-coded in the benches with comments naming their source.
+The reference calculation is the owner's script that produced the figure (`mean_field_ref_dont_commit/kite_reference/`, untracked); its numbers are hard-coded in the benches and in `test/test_meanfield_kite.jl` with comments naming their source.
 
 - *Intermediate numbers (steps 1 and 2).*
   `test/python/generate_kite_fixtures.jl` runs the prototype and writes `test/fixtures/kite/{published,normal,optimum,meanfield_reference}.json`.
@@ -1048,7 +1048,7 @@ The rulings are those of the plan's ledger (`.superpowers/sdd/2026-11-10-mean-fi
    The recorded run predates a later fix to the gradient next to a non-finite score; it is not rerun because that case never occurred in it (its seven non-finite evaluations were one whole stencil), and the other changes were logging and wording (Ruling 15).
 6. *The Harmonium benchmark* (design §6.2) was not built.
    It is exploratory, depends on what the KITE work measured, and needs choices about sizes and the GPU; it is deferred to its own plan.
-   Multi-mode children, which it would exercise, are built; `mean_field_augment` is unit-tested on a parent whose child is a branch of two one-mode leaves and on one whose child is a single leaf on two modes (`test/test_augment.jl`): the product energy is an upper bound of the exact ground energy, the augmented parent's ground energy is variational and no worse than bare children at equal `m`, and with the bare ladder and `m` equal to the child's full dimension the parent reproduces the plain spectrum.
+   Multi-mode children, which it would exercise, are built; `mean_field_augment` is unit-tested on a parent whose child is a branch of two one-mode leaves and on one whose child is a single leaf on two modes (`test/test_augment.jl`): the product energy is an upper bound of the exact ground energy, the augmented parent's ground energy is variational and, with the default `bare = false`, no worse than bare children at equal `m` (with `bare = true` at a small `m` it was measured worse, because the union then holds fewer bare states than the plain child), and with the bare ladder and `m` equal to the child's full dimension the parent reproduces the plain spectrum.
    Caps and supplied starts are unit-tested on one-mode leaves.
 7. *Derivatives* through the mean-field bases are not provided, as the design's non-goals say; the augmented child keeps its basis and bare terms for the perturbative-derivatives project, which holds the basis fixed.
 

@@ -385,7 +385,7 @@ Both scripts, their runs and the measured details are in `bench/kite_meanfield/R
 ## Tests
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.test()'                                   # fast tier, under a minute
+julia --project=. -e 'using Pkg; Pkg.test()'                                   # fast tier, a few minutes
 KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'             # every file
 julia --project=. -e 'using Pkg; Pkg.test(test_args=["test_bo.jl"])'           # only the named files
 ```
