@@ -288,7 +288,9 @@ end
     MeanFieldSolution
 
 A self-consistent mean-field solution of the children of a node: each child solved in the mean field of the others.
-`energy` is the product energy, `children` holds every child's `MeanFieldChild` of the last iteration, and `start` is where the run began.
+`energy` is the product energy, and `children` holds every child's `MeanFieldChild` of the last iteration.
+`start` is where the run began: `nothing` (delocalized), a displacement `Dict`, or `:warm` when the run was started from another solution.
+A warm-started solution keeps no reference to the solution it came from.
 `converged` is `false` when the run stopped at its iteration limit, and `iterations` is the number of iterations run.
 Under mixing, the `expectations` and `bare_energy` of each child are the mixed values that `energy` was computed from, while `solved` holds the unmixed states of the last solve.
 """
@@ -297,7 +299,7 @@ struct MeanFieldSolution
     children::IdDict{Node,MeanFieldChild}
     iterations::Int
     converged::Bool
-    start
+    start                    # `nothing` (delocalized), a displacement Dict, or `:warm` (started from another solution)
 end
 
 """
@@ -322,6 +324,12 @@ end
 
 # The starting table of every child of `parent` for the start `start`.
 function _initial_tables(parent::Node, terms::Vector{Term}, start)
+    if start isa AbstractDict
+        under = modes(parent)
+        for m in keys(start)
+            m in under || throw(ArgumentError("the start displaces mode :$m, which is not under `parent` (its modes are $under)"))
+        end
+    end
     start isa MeanFieldSolution || return IdDict{Node,Expectations}(
         ch => (start === nothing ? delocalized_expectations(child_keys(parent, terms, ch)) :
                                    pinned_expectations(child_keys(parent, terms, ch), start)) for ch in parent.children)
@@ -346,6 +354,8 @@ The run converges when `|E - E_prev| < tol * max(1, |E|)` and no table entry cha
 A run that reaches `maxiter` iterations is returned with `converged = false`.
 The solution holds the energy of the last iteration and each child's `MeanFieldChild` of its last solve, with the `expectations` and `bare_energy` that energy was computed from (under mixing, the mixed values).
 `start` is `nothing` (delocalized), a `Dict{Symbol,Float64}` of displacements (see `pinned_expectations`), or a `MeanFieldSolution` whose tables it continues from.
+A displacement that names a mode not under `parent` is an `ArgumentError`, and a mode it leaves out has displacement zero.
+The returned solution's `start` is the given start, except that a warm start is recorded as `:warm`, so that no chain of earlier solutions is kept alive.
 `constant` is added to the product energy, and `state`, `weights` and `outside` are passed to `mean_field_child`.
 """
 function self_consistent(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare::AbstractDict{Node,<:MaterializedNode};
@@ -379,7 +389,7 @@ function self_consistent(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare
         if converged || it == maxiter
             children = IdDict{Node,MeanFieldChild}(ch => MeanFieldChild(ch, c.solved, c.terms, bare_energies[ch], tables[ch])
                                                    for (ch, c) in solved)
-            return MeanFieldSolution(E, children, it, converged, start)
+            return MeanFieldSolution(E, children, it, converged, start isa MeanFieldSolution ? :warm : start)
         end
     end
 end

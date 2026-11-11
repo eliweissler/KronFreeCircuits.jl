@@ -81,7 +81,7 @@ end
     B = Node([:phi => grid]; solver=Dense(), compute=4, keep=lowest(4))
     root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
     # the solves of the charge leaf note a phase-convention fallback for one of its kept states
-    sols = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any mean_field_solutions(root, spec, θ)
+    sols = @test_logs (:warn, r"no weight on the phase mask") (:warn, r"no weight on the phase mask") mean_field_solutions(root, spec, θ)
     @test issorted([s.energy for s in sols]) && all(s.converged for s in sols)
     exact = energies(materialize(Node([:theta => ChargeBasis(8), :phi => grid];
                                       solver=Dense(), compute=1, keep=lowest(1)), spec, θ))[1]
@@ -95,6 +95,9 @@ end
     w = self_consistent(root, terms, θ, bare; start=s, constant=real(KronFreeCircuits.constant_term(spec)(θ)))
     @test w.energy ≈ s.energy atol=1e-9
     @test w.iterations <= 3
+    @test w.start === :warm                                               # no reference to the solution it came from
+    # a displacement on a mode that is not under the parent is refused, not silently ignored
+    @test_throws "mode :ph, which is not under" self_consistent(root, terms, θ, bare; start=Dict(:ph => π))
     # the iteration limit is reported, not hidden (Review Focus 3)
     short = self_consistent(root, terms, θ, bare; start=Dict(:phi => π), maxiter=1)
     @test !short.converged && short.iterations == 1
@@ -126,4 +129,10 @@ end
     @test sols[2].energy ≈ opposite[1].energy atol=1e-8
     @test all(1 <= s.iterations <= 300 for s in sols)
     @test all(s.iterations == 300 for s in sols if !s.converged)
+    # detail 8 under mixing: the reported children reproduce the reported energy (a same-well start switches mixing on)
+    bare = IdDict(n => bare_child(root, circuit_terms(pair), (;), n) for n in (A, B))
+    same = self_consistent(root, circuit_terms(pair), (;), bare; start=Dict(:a => 2.0, :b => 2.0))
+    E = product_energy(root, circuit_terms(pair), (;), IdDict{Node,Float64}(n => c.bare_energy for (n, c) in same.children),
+                       IdDict{Node,Expectations}(n => c.expectations for (n, c) in same.children))
+    @test E ≈ same.energy rtol=1e-12
 end
