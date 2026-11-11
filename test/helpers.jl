@@ -472,3 +472,121 @@ function check_fd(analytic, fd::Tuple; rtol::Real = 1e-6, atol::Real = 0.0)
     @test _maxabs(analytic .- value) <= tol
     return nothing
 end
+
+# --- derivative test circuits (shared by every derivative test file) ---
+
+const chain3_json = """
+{"format": "kronfree-spec", "version": 1, "units": "GHz",
+ "parameters": ["E_J1", "E_J2", "E_J3", "g12", "g23", "n_g2"],
+ "modes": [{"name": "varphi_1", "type": "c"}, {"name": "varphi_2", "type": "c"}, {"name": "varphi_3", "type": "c"}],
+ "E_C": [["1.2", "g12/8", "0"], ["g12/8", "1.0", "g23/8"], ["0", "g23/8", "0.8"]],
+ "E_L": [["0", "0", "0"], ["0", "0", "0"], ["0", "0", "0"]],
+ "flux_linear": ["0", "0", "0"], "n_g": ["0.21", "n_g2", "0.1"],
+ "cosines": [{"energy": "E_J1", "omega": [1, 0, 0], "offset": "0"}, {"energy": "E_J2", "omega": [0, 1, 0], "offset": "0"},
+             {"energy": "E_J3", "omega": [0, 0, 1], "offset": "0"}]}
+"""
+const abc_deriv_json = """
+{"format": "kronfree-spec", "version": 1, "units": "GHz",
+ "parameters": ["E_C", "E_J", "E_J3", "n_ga", "varphi_ext"],
+ "modes": [{"name": "a", "type": "c"}, {"name": "b", "type": "c"}, {"name": "c", "type": "c"}],
+ "E_C": [["E_C", "0", "0"], ["0", "1.3*E_C", "0"], ["0", "0", "0.8*E_C"]],
+ "E_L": [["0", "0", "0"], ["0", "0", "0"], ["0", "0", "0"]],
+ "flux_linear": ["0", "0", "0"], "n_g": ["n_ga", "0.13", "0.37"],
+ "cosines": [{"energy": "E_J", "omega": [1, 0, 0], "offset": "0"}, {"energy": "0.7*E_J", "omega": [0, 1, 0], "offset": "0"},
+             {"energy": "1.2*E_J", "omega": [0, 0, 1], "offset": "0"}, {"energy": "E_J3", "omega": [1, 1, 1], "offset": "varphi_ext"}]}
+"""
+const oscillator_json = """
+{"format": "kronfree-spec", "version": 1, "units": "GHz", "parameters": ["E_C", "E_L"],
+ "modes": [{"name": "phi", "type": "e"}], "E_C": [["E_C"]], "E_L": [["E_L"]], "flux_linear": ["0"], "n_g": ["0"],
+ "cosines": [], "constant": "0"}
+"""
+
+# One transmon leaf: real on a charge basis, complex on a periodic grid (its `n` is imaginary there).
+function dc_transmon(; periodic::Bool=false, keep=lowest(4), compute::Int=0, solver=Dense(), retain::Symbol=:auto,
+                     θ=(E_J=20.0, E_C=1.0, n_g=0.2))
+    b = periodic ? PeriodicGrid(64; order=8) : ChargeBasis(30)
+    root = Node([:varphi_1 => b]; solver, compute, keep, retain, ports=[(:varphi_1, nport()), (:varphi_1, expiphi(1.0))])
+    return (; root, spec=load_spec(fixture("transmon.json")), θ)
+end
+# One fluxonium leaf (real), 601 grid points, off its sweet spots.
+function dc_fluxonium(; varphi_ext::Real=2.0, E_J::Real=8.9, solver=Dense(), compute::Int=8, keep=lowest(5), retain::Symbol=:auto)
+    root = Node([:varphi_1 => PhaseGrid(-10π, 10π, 601; order=8)]; solver, compute, keep, retain,
+                ports=[(:varphi_1, phiport()), (:varphi_1, nport())])
+    return (; root, spec=load_spec(fixture("fluxonium.json")), θ=(E_J=E_J, E_C=2.5, E_L=0.5, varphi_ext=varphi_ext))
+end
+# One harmonic oscillator on a Fock basis matched to θ: H is diagonal there, so closed forms hold to round-off.
+function dc_oscillator()
+    θ = (E_C=0.5, E_L=1.3)
+    root = Node([:phi => FockBasis(40; phi_zpf=(2 * θ.E_C / θ.E_L)^0.25)]; solver=Dense(), keep=lowest(6))
+    return (; root, spec=KronFreeCircuits.parse_spec(oscillator_json), θ)
+end
+# Two coupled transmons, a two-level tree: real on charge bases, complex (leaves and root) on periodic grids.
+# The offset charges 0.21 and 0.09 (here and in `dc_chain3`) are deliberate: a transmon leaf with E_J/E_C = 25 on a charge
+# basis changes the peak index of one of its four lowest states at n_g ≈ 0.024, 0.16 and 0.258 (measured), and a finite
+# difference across such a change is meaningless.
+function dc_two_transmons(; periodic::Bool=false, solver=Dense(), compute::Int=0, keep=lowest(6), leafkeep::Int=4, g::Real=0.3,
+                          retain::Symbol=:auto)
+    b() = periodic ? PeriodicGrid(64; order=8) : ChargeBasis(30)
+    leaves = [Node([Symbol("varphi_$i") => b()]; solver=Dense(), keep=lowest(leafkeep)) for i in 1:2]
+    root = Node(leaves; solver, compute, keep, retain, ports=[(:varphi_1, nport()), (:varphi_1, expiphi(1.0))])
+    θ = (E_J1=30.0, E_C1=1.2, n_g1=0.21, E_J2=25.0, E_C2=1.0, n_g2=0.09, g=g)
+    return (; root, leaves, spec=load_spec(fixture("two_transmons.json")), θ)
+end
+# Three transmons in a chain, a three-level tree (real): `inner` holds modes 1 and 2, and `g23` couples it to the third.
+function dc_chain3()
+    leaves = [Node([Symbol("varphi_$i") => ChargeBasis(30)]; solver=Dense(), keep=lowest(4)) for i in 1:2]
+    inner = Node(leaves; solver=Dense(), keep=lowest(10))
+    third = Node([:varphi_3 => ChargeBasis(10)]; solver=Dense(), keep=lowest(4))
+    root = Node([inner, third]; solver=Dense(), keep=lowest(6), ports=[(:varphi_1, nport())])
+    θ = (E_J1=30.0, E_J2=25.0, E_J3=20.0, g12=0.3, g23=0.2, n_g2=0.09)
+    return (; root, inner, third, leaves, spec=KronFreeCircuits.parse_spec(chain3_json), θ)
+end
+# The zero-pi as a two-level tree: every node is real, but the root's terms carry complex coefficients on paired ports.
+# Leaf A holds bare charge states and warns about the phase mask; wrap its materializations in `quiet`.
+function dc_zero_pi()
+    A = Node([:theta => ChargeBasis(8)]; solver=Dense(), keep=lowest(8))
+    B = Node([:phi => PhaseGrid(-12π, 12π, 201; order=6)]; solver=Dense(), compute=10, keep=lowest(10))
+    root = Node([A, B]; solver=Dense(), keep=lowest(6), ports=[(:theta, nport()), (:phi, phiport())])
+    return (; root, A, B, spec=load_spec(fixture("zero_pi.json")), θ=zero_pi_params())
+end
+# Three compact modes with one cosine on all three: `ab` is a two-mode leaf, so the root applies its joint ports.
+# The root is complex (the cosine's offset), its children real.
+function dc_abc()
+    ab = Node([:a => ChargeBasis(5), :b => ChargeBasis(5)]; solver=Dense(), keep=lowest(8))
+    c = Node([:c => ChargeBasis(5)]; solver=Dense(), keep=lowest(5))
+    root = Node([ab, c]; solver=Dense(), keep=lowest(6))
+    θ = (E_C=1.0, E_J=6.0, E_J3=0.6, n_ga=0.21, varphi_ext=0.7)
+    return (; root, ab, c, spec=KronFreeCircuits.parse_spec(abc_deriv_json), θ)
+end
+# The cos 2φ element near its parity degeneracy (at n_g = 1/2, E_1 = 0): a doublet with detuning 0.0593 GHz at n_g = 0.49,
+# coupled by the parameter E_1 with matrix element 0.7456.
+function dc_cos2phi(; n_g::Real=0.49, keep=lowest(4), basis=ChargeBasis(20), E_2::Real=5.0)
+    root = Node([:phi => basis]; solver=Dense(), keep, ports=[(:phi, expiphi(1.0))])
+    return (; root, spec=load_spec(fixture("cos2phi.json")), θ=(E_C=1.0, n_g=n_g, E_1=0.0, E_2=E_2))
+end
+
+# A circuit solved at θ with logging silenced, and the same memoized on θ: the finite differences of many quantities of
+# one circuit then share one set of solves, which is what keeps the tree tests fast.
+dc_solve(c, θ=c.θ) = quiet(() -> materialize(c.root, c.spec, θ))
+function dc_memo(c)
+    cache = Dict{Any,Any}()
+    return θ -> get!(() -> dc_solve(c, θ), cache, θ)
+end
+
+# The derivative data of the node `child` of circuit `c` by finite differences, holding only what the operator builder
+# reads (energies, ports, joint ports; zero vectors, gauge and peak amplitudes; no children).  `at` is `dc_memo(c)`.
+# Three arguments: the first derivative along `x`.  Four: the second derivative along `x` and `λ` (`fd_pair`).
+function fd_child(at, c, child, x::Symbol; h)
+    return _fd_child(at, c, child, f -> first(fd_derivative(f, c.θ, x; h)))
+end
+function fd_child(at, c, child, x::Symbol, λ::Symbol; hx, hλ=hx)
+    return _fd_child(at, c, child, f -> first(fd_pair(f, c.θ, x, λ; hx, hλ)))
+end
+function _fd_child(at, c, child, fd)
+    K = KronFreeCircuits
+    m = K.materialized(at(c.θ), child)
+    ports = Dict{Tuple{Symbol,K.Port},K.NodeMatrix}(k => fd(θ -> K.materialized(at(θ), child).ports[k]) for k in keys(m.ports))
+    joint = Dict{Vector{Tuple{Symbol,K.Port}},K.NodeMatrix}(k => fd(θ -> K.materialized(at(θ), child).joint_ports[k]) for k in keys(m.joint_ports))
+    return K.NodeDerivative{eltype(m.vectors)}(fd(θ -> K.materialized(at(θ), child).energies), zero(m.vectors), zeros(length(m.kept)),
+                                               ports, joint, zero(m.peak_amplitudes), Any[nothing for _ in m.children])
+end
