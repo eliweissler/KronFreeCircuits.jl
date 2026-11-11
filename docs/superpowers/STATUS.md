@@ -99,6 +99,73 @@ Test status, 2026-11-11, on the final code of this feature, after the final revi
 - `bench/kite_meanfield/levels.jl`: all its checks passed, with the twelve Figure 8(b) errors and ratios unchanged, 4m32s.
 - `bench/kite_meanfield/optimize.jl` with `KITE_MEANFIELD_MAXITER=1` (and `KITE_OPTIMIZE_OUT` elsewhere): ran end to end and exited with status 1, as a one-iteration run must (its wells are not at the optimum); its iterations 0 and 1 equal the recorded run's bitwise.
 
+## Perturbative derivatives (project 3, 2026-11-11)
+
+First and second derivatives of every kept energy, kept state, port and joint port of a materialized tree, with respect to named spec parameters, at the root and at every node, by perturbation theory carried upward through the tree (design `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`, plan `docs/superpowers/plans/2026-11-11-perturbative-derivatives.md`, architecture §20l, README "Derivatives"; §2, §11, §13, §13.1, §15, §16, §18, §20a, §20b and §20c are amended).
+This replaces the reverse-mode plan of architecture §11, which this file called "plan 5".
+The work is, as of 2026-11-11, on the local branch `derivatives`, off the local `main`; merging it into `main` and pushing are Eli's.
+The run's ledger, with eleven rulings, is a local file that is not tracked (`.superpowers/` is git-ignored); the content of each ruling cited below is stated where it is cited.
+It was built overnight without waiting for plan approval, on Eli's instruction of 2026-11-10; the decisions he has not seen are listed under "Decisions still Eli's".
+
+Done:
+- Symbolic derivatives of coefficient expressions over the whole grammar, `differentiate` (`src/diffcoeff.jl`).
+- Retention of the computed but unkept pairs, `Node(...; retain = :auto | :always | :never)` and `Retained` (on by default except at a `Dense` node above 1000 states).
+- The derivative operator with its three contributions, the first- and second-order rules at one node, the passes through the tree, and the API `derivatives(sys; wrt, order, mixed, scale, ...)` read through `energies`, `eigenvectors` and `port` (`src/derivoperator.jl`, `src/resolvent.jl`, `src/derivatives.jl`).
+- Iterative nodes: a projected, Jacobi-preconditioned conjugate-gradient solve on the complement of the computed states, with a checked true residual; the selection-boundary warning (architecture §11.3).
+- Near-degenerate blocks with an effective Hamiltonian, `blocks` and `block_levels` (`src/derivblocks.jl`).
+- Augmented children (basis held fixed) and `GivenSystem` children declared independent with `given_independent = true`.
+- `spectrum(root, spec, θ; ports)` and its `rrule` and `frule` in the extension `KronFreeCircuitsChainRulesCoreExt` (weak dependency `ChainRulesCore`), tested directly and through Zygote in `test/chainrules`.
+- A symbolic KITE fixture (`test/fixtures/kite/optimum_symbolic.json`, generator `test/python/generate_kite_symbolic.jl`) and its acceptance tests, slow tier.
+- `bench/derivative_design`: a three-parameter design problem solved with BFGS on the Zygote gradient; `bench/retention_cost.jl` and `bench/derivative_sums.jl`.
+- A device test of the derivative pass at an `LOBPCG(on = CuArray)` node.
+
+Measured (details in architecture §20l):
+- Finite differences: the reviewers' independent checks at untested parameter values agree to 2.4e-10 to 1e-7 at first order and to 2.8e-9 to 4e-7 at second order for energies and ports (3.5e-6 for the second derivatives of the vectors of a complex two-level tree), on leaves, two- and three-level trees, joint ports and augmented children.
+- The KITE doublet (Δ = 0.0135992 GHz) at an `LOBPCG` root: the block is found; first and second derivatives in the flux offset agree with finite differences to 4.8e-9 and 6.0e-7 relative; the curvature matches `4c²/Δ` to 1.3e-6 relative; the effective Hamiltonian reproduces a full re-solve within 9.9e-9 GHz at δ = 0.01, where the Taylor expansion misses by 1.17e-2; the iterative and dense routes agree to 3.2e-12.
+- The effective Hamiltonian's error on the `cos 2φ` doublet falls as δ⁴ (1.155e-7, 4.24e-9, 2.87e-10, 1.85e-11 GHz at δ = 0.05, 0.02, 0.01, 0.005).
+- The linear solve: at most 190 iterations in the tests, 49 to 60 at the KITE root; at the default `LOBPCG` tolerance the derivatives still match the dense route to 4.3e-12.
+- The optimization demonstration: BFGS converged on its gradient tolerance in 13 iterations (1.6 s), reaching the planted design to about 1e-11; the gradient agreed with finite differences to 1.9e-9 relative at the start.
+- The cost of retention at a `Dense` leaf with `compute = 10`: forward time ×4.8 and memory 73 KB → 5.2 MB at 801 states (transmon), ×1.9 and 83 KB → 6.5 MB at 901 (fluxonium); 0.0064 → 0.0111 s and 30 KB → 0.51 MB on the KITE tree.
+- How fast the sum over states converges (first order, three `Dense` leaves): 1e-8 in the state derivatives needs about the 40 to 80 nearest of 596 other states on a fluxonium and 10 of 57 on a transmon; port derivatives converge faster (architecture §20l has the table).
+
+Missed, and why:
+- The device tier did not pass: 13 errors in older complex-`LOBPCG` testsets of `test/cuda/test_device.jl`, none in the new derivative test (10 of 10).
+  Diagnosed as a fault on this machine, not this project and not the dependency versions: cuBLAS's complex-double triangular solve (`cublasZtrsm_v2_64`) fails on every call with `CUBLAS_STATUS_EXECUTION_FAILED`, even on a 2×2 matrix, and LOBPCGEigensolver reports it as a failure to orthonormalize; it fails the same way on `origin/main`, with the older environment, and in a copy of the environment that passed on 2026-10-18.
+  Why it passed on 2026-10-18 is not established, nor whether the CUDA runtime artifact is damaged (its tree hash does not match its name).
+  Ruling 11: recorded as a machine fault, not worked around.
+  So a complex iterative node's derivative pass, mixed pairs and blocks are untested on the device.
+- Iterative-node tests tighten the eigensolver tolerance (Decision 11), and second-order finite-difference tests use `rtol = 1e-5` (the design's target is `1e-6`) because second differences are themselves good only to `1e-8` to `8e-6` on the test circuits; the reviewers' checks above give the actual agreement.
+- The second-order state, normalization and gauge formulas were derived for this project, because Eli's notes (`tight_binding.tex`) are not on this machine; they were checked on random Hermitian families (1e-11 and 1e-8), re-derived by a reviewer and confirmed by finite differences, but not compared with the notes (Ruling 4).
+- Untested paths a user could reach: a `NaN` child column entering a parent through several levels; a near-degenerate block at an augmented node; a pair that clashes only in a mixed second-order pass; the terms routed below an augmented node are not checked against those of its bare solve.
+
+Departures from the design and decisions Eli has not seen (each with its reason in architecture §20l):
+- `scale` (the `δx` of the block test) is a keyword `NamedTuple` per parameter (Ruling 3; design §4.4 marks this as unconfirmed).
+- The `:follow` restriction is narrowed (Ruling 2): only a node whose phases were actually fixed by following a previous solution is an `ArgumentError` (workaround: re-materialize at the point without `previous`); a `follow` selection alone is differentiated.
+- Retention is on by default (Ruling 7, despite the measured cost above); the default was not changed after the convergence measurement.
+- The linear solve is a hand-written conjugate gradient; the `ShiftInvert` factorization is not reused.
+- Exactly degenerate coupled states give `NaN` derivatives with a reported block, and a `NaN` child makes every ancestor `NaN` (plan Decision P5).
+- The effective Hamiltonian of a block is second order in the displacement (plan Decision P6).
+- Design §4.8 is partly wrong on Born–Oppenheimer reduced specs: a `fit_surfaces` spec keeps the fitted-over parameters, so derivatives with respect to them are derivatives of the fit, not an error (Ruling 2).
+- The plan assumed the symbolic KITE fixture differs from `test/fixtures/kite/optimum.json` by a flux gauge; a reviewer showed they are the same circuit (coefficients coincide at `delta = 0`, levels agree to 1e-13).
+- `ChainRulesCore` is a weak dependency whose extension is in practice always active (it is loaded through `ITensors`); Zygote 0.7.16 works on Julia 1.13.2; differentiating twice through the rule fails with an obscure "Flatten" error, and second derivatives come from `derivatives(...; order = 2)`.
+
+Not done: a reverse sweep, third order, and derivatives with respect to the frame or through basis construction (design non-goals); a truncated, convergence-checked sum over the nearest states (measured, not built).
+
+Side effects on this machine during the run:
+- Implementers twice ran `Pkg.develop` in a test environment by mistake: once in a scratch worktree's `test/` (the worktree was deleted), once in this checkout's `test/` (reverted with `git checkout -- test/Project.toml` before any test ran); no repository environment was left changed.
+- `test/chainrules` was resolved and instantiated (Zygote 0.7.16, ChainRules 1.74.13 and their dependencies downloaded), `bench/derivative_design` likewise (Optim 2.3.2, Zygote 0.7.16), and `test/cuda`, which had no Manifest, offline (nothing downloaded; it resolved CUDA 6.5.1 and GPUArrays 12.2.0); their Manifests are git-ignored.
+- The root project was resolved once for the new extension: only its `project_hash` and the extension lines of the git-ignored root Manifest changed, no package version.
+- The device diagnosis used scratch worktrees (removed) and instantiated one offline with the older Manifest (nothing downloaded).
+
+Test status, 2026-11-11, on the final code of this project with these documents (ewdesktop, Julia 1.13.2, under load from another job, load average 8 to 19):
+- Default tier: passed, 28 files, no warnings, 26m33s.
+- Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 40m47s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints; its notices are the `F2 n_g = 1/2` note of `test/test_catalogue.jl` (also on `main`) and the two this project's tests print on purpose, the largest linear-solve iteration count of `test/test_derivatives_iterative.jl` (190) and of `test/test_derivatives_kite.jl` (60).
+- Python tier: passed, 336 of 336 tests, no warnings, 3m51s, against circuit-quantization at `c8c8714`.
+- Rules tier (`test/chainrules`): passed, 25 of 25 tests (9 + 9 + 7, and the extension check), no warnings, 1m40s.
+- Device tier (`test/cuda`, the GPU otherwise idle): 311 passed and 13 errored, as expected from the cuBLAS fault above: all 13 in the complex-`LOBPCG` testsets of `test/cuda/test_device.jl`, and the derivative test 10 of 10.
+- `bench/derivative_design/design.jl`: all four checks passed, with the recorded run's numbers to every printed digit except timings, 1m13s.
+- `bench/retention_cost.jl`: ran; the sizes equal the recorded ones, and the times were 0.035 → 0.087 s (transmon), 0.076 → 0.152 s (fluxonium) and 0.0055 → 0.0102 s (KITE) for `retain = :never` → `:auto`.
+
 ## Where things stand
 
 Plans 1, 1b, 2, 2b, 3 and 4 are done.
@@ -122,9 +189,9 @@ The periodic-gauge change (2026-10-30/11-01) is merged into `main` (fast-forward
 ## Next plan
 
 Pre-autodiff quick wins done (2026-10-20): test tiers, reduced specs cross-checked numerically against circuit-quantization, BO hardening, and the duplicate `_primitive` test helper removed; merging this branch into `main` is Eli's.
-Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3, deferred to plan 5).
+Born–Oppenheimer follow-ups, next: the KITE of Smith et al. (BO design §9: varphi slow, (φ, θ) fast, after a shear removing the charge–charge coupling), and the data-valued `DiagonalOp` entry into a `Term` (§20a; BO design §2 and §4.3; it was deferred to plan 5 only because the old approach wrapped `materialize`, and the perturbative derivatives no longer block it).
 Z4 three-way pilot rerun on ewdesktop with the `composite-ports` branch (Eli): the command is in the requirements document; check that the hierarchy materializes, the root operator is Hermitian to roundoff, and record the lowest eight energies and the run time in the pilot's `run.json`; then the convergence sweep.
-Plan 5, automatic differentiation (spec §11, with §20c decision 9 and §20f "What stays complex": derivative operators and pullbacks promote to complex where a cotangent or derivative operator is complex).
+Plan 5, automatic differentiation, was replaced by the perturbative derivatives above (architecture §20l).
 Then plan 6 (export, caching, NPZ), the sweep layer, and the noise plan (which needs the format's `operators`/`noise_channels` sections, §20b, on both sides).
 Proposed by Eli (2026-10-20), not yet designed:
 - Local matrix-element queries in the full space after materialization (a single-mode operator, or a product across subsystems, between the root's kept states, lifted on demand through the stored eigenvectors); this is the core the noise plan's element operators would use. A product of factors on modes inside one child needs a joint port; the joint port now exists (§20i) for terms of the Hamiltonian, and only the user-requested form (`Node(ports=...)`, selection rules) is missing.
@@ -160,12 +227,19 @@ Proposed by Eli (2026-10-20), not yet designed:
 8. The cos 2φ fixture has no generated counterpart (one compact mode with junction harmonics 2 and 1 is not a lumped circuit).
 
 9. Born–Oppenheimer surfaces (§13.1), checked on 2026-10-19 with a throwaway two-stage zero-pi spike (Di Paolo et al., arXiv:1811.07921v1, App. B): a user-side "promote mode to parameter" term-list transformation (about 20 lines) gives a fast φ node that classifies real and matches an independent dense λ₀(θ̃) to 2e-12 over 64 points; the low-level `KronFreeOperator` takes the resulting surface U(θ) as a `DiagonalOp` with the `PeriodicGrid` kinetic term and matches a dense build to 3e-15.
-   The gap is the one recorded in §20a: a data-valued operator (the surface fed back as a potential) has no entry into a `Term`, so stage 2 cannot go through `materialize`; it should be designed with plan 5, since autodiff wraps `materialize`.
+   The gap is the one recorded in §20a: a data-valued operator (the surface fed back as a potential) has no entry into a `Term`, so stage 2 cannot go through `materialize`; it was to be designed with plan 5, since autodiff was to wrap `materialize`, which the perturbative derivatives (§20l) do not, so it is now an item of its own.
    The promotion transformation is now in the package as a spec-level `promote_mode` (BO plan, §20h); the data-valued entry is still open.
 
 ## Decisions still Eli's
 
-- Selection cluster closure over near-degenerate states and the §11.3 warning (needed before autodiff).
+- Selection cluster closure over near-degenerate states (not part of the perturbative-derivatives project; the §11.3 warning now exists as its selection-boundary test).
+- How the `scale` (`δx`) of the near-degeneracy test is supplied (design §4.4); built as a keyword `NamedTuple` per parameter.
+- The retention default, in view of its measured cost and of how fast the sums converge: whether a convergence-checked sum over the nearest states should replace full retention (design §4.5; both tables in architecture §20l).
+- Whether an augmented child's union basis should ever move with the parameters (today it is held fixed, so the derivative is that of the projected problem).
+- Whether followed sweeps (`phase = :follow` with `previous`) need differentiating; today they are refused.
+- The device fault: reboot or reset the GPU and rerun a 2×2 `CUBLAS.trsm!` with `ComplexF64`; if it persists, re-download the CUDA runtime artifact, then report it to JuliaGPU/CUDA.jl (no compat bound: the older stack fails the same way).
+- Comparing the second-order state and normalization formulas derived for the derivatives (architecture §20l) with `tight_binding.tex`.
+- Merging `derivatives` into `main`, and pushing.
 - Guard stopping rule for LOBPCG on stiff leaves.
 - Branch phase at the joint peak: antisymmetric exchange states with vanishing joint-peak amplitude (fallback vs the tabled Cauchy–Schwarz search), and the related observation from plan 3 that the peak argmax can tie on exchange-symmetric trees, so global signs of some root states differ between arithmetics (energies and ports agree).
 - Whether to commit the spike directories (`docs/spikes/2026-10-16-itensor-audit`, `2026-10-16-pathological-test-catalogue`, `2026-10-17-leaf-solvers`), untracked in the main checkout.

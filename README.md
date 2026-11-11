@@ -382,6 +382,67 @@ In the published frame the two wells' states coincide on one mode up to the loop
 `bench/kite_meanfield/optimize.jl` optimizes the frame from the identity on the product energy and ends at a frame as good as the paper's optimum (two wells at −9.429473654505 GHz against −9.429473599561 on the same bases), after 150 iterations, the cap, without meeting its gradient tolerance.
 Both scripts, their runs and the measured details are in `bench/kite_meanfield/README.md`; the design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, and spec §20k records the build and where it departed from the design.
 
+## Derivatives
+
+`derivatives` gives the first and second derivatives of every kept energy, kept state and port of a materialized tree with respect to named parameters, at the root and at every node.
+They are computed by perturbation theory carried upward through the tree, children first, with no autodiff engine and no re-solve.
+Two coupled transmons (`test/fixtures/two_transmons.json`):
+
+```julia
+using KronFreeCircuits
+
+spec = load_spec("test/fixtures/two_transmons.json")
+θ = (E_J1=30.0, E_C1=1.2, n_g1=0.21, E_J2=25.0, E_C2=1.0, n_g2=0.09, g=0.3)
+q1, q2 = (Node([Symbol("varphi_$i") => ChargeBasis(30)]; solver=Dense(), keep=lowest(4)) for i in 1:2)
+root = Node([q1, q2]; solver=Dense(), keep=lowest(6), ports=[(:varphi_1, nport())])
+sys = materialize(root, spec, θ)
+
+d = derivatives(sys; wrt=(:E_J1, :g), order=2, mixed=((:E_J1, :g),), scale=(g=0.5,))
+energies(d, :E_J1)                  # ∂E/∂E_J1 of the root's kept levels (GHz per GHz)
+energies(d, :E_J1, :g)              # the mixed second derivative ∂²E/∂E_J1∂g
+energies(d, :E_J1, q1)              # the same at a child node
+eigenvectors(d, :g)                 # ∂ψ/∂g, one column per kept state, in the root's product basis
+port(d, :g, :g, :varphi_1, nport()) # ∂²/∂g² of the root's charge port
+b = first(blocks(d))                # states [2, 3]: their Taylor expansion is not trusted over δg = 0.5
+block_levels(b, (g=0.2,))           # their levels at g + 0.2, from the block's effective Hamiltonian
+```
+
+The derivatives are those of the calculation as performed: the selection of kept states, every basis and grid, the coordinate frame, the solvers, each node's real or complex arithmetic and its discrete phase choice are held fixed.
+They agree with finite differences of `materialize` wherever those are themselves well defined.
+Each node's `∂H/∂x` has three parts: the derivatives of its own coefficients, its children's port derivatives and its children's energy derivatives.
+At a node with its complete spectrum the sum over states is exact; at an iterative node (`LOBPCG`, `Lanczos`, `ShiftInvert`, `ChebyshevFilter`) the part outside the computed states comes from a preconditioned conjugate-gradient solve whose true residual is checked (`lintol = 1e-10`) and recorded in `d.linear_solves`.
+
+`scale` gives a typical displacement `δx` for a parameter.
+A pair of kept states whose coupling `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx` exceeds `r = 0.1` times their detuning forms a near-degenerate block.
+The point derivatives are the true derivatives whatever the blocks; a block says that the second-order Taylor expansion of its levels is not trusted over `δx`, and `block_levels` gives its levels at a finite displacement from a small effective Hamiltonian, second order in the displacement.
+Without `scale` only exact degeneracies are looked for.
+A kept state degenerate with a state it couples to (within `degenerate_tol = 1e-9` GHz) has `NaN` derivatives, with a warning and a block, and a `NaN` reaches every ancestor.
+A kept state close to an unkept computed state warns ("selection boundary") and is recorded in `d.boundary`, since the derivative at a fixed selection is fragile there.
+
+Every node now retains the eigenvectors of the states its solver computed but did not keep (`Node(...; retain = :auto)`), because the sum over states needs them.
+The exception is a `Dense` node above 1000 product states, where retention is opt-in (`retain = :always`); without it such a node is re-diagonalized by the derivative pass, with a notice.
+A retaining `Dense` node with a `compute` limit computes its full decomposition: measured on a 801-state transmon leaf with `compute = 10`, `materialize` took 0.091 s against 0.019 s and the system 5.2 MB against 73 KB (`bench/retention_cost.jl`).
+`retain = :never` restores the old behaviour per node.
+
+What `derivatives` refuses or does not do:
+- A node whose phases followed a previous solution (`phase = :follow` with `previous`) is an `ArgumentError`; re-materialize at the point without `previous`.
+  A `follow` selection alone is fine.
+- A `GivenSystem` child is an `ArgumentError` unless `given_independent = true` declares its numbers independent of every parameter.
+- An augmented child is differentiated with its union basis held fixed: the derivative of the projected problem, not of a re-run of the mean-field loop.
+- No third order, no derivatives with respect to the frame, the bases or the grids, and no reverse sweep: the cost is one pass per parameter and per mixed pair.
+
+`spectrum(root, spec, θ; ports)` returns the root's `(; energies, ports)`, and the ChainRulesCore extension (loaded with the package, through its dependencies) gives it an `rrule` and an `frule`, so a loss written over energies and port elements can be differentiated by Zygote:
+
+```julia
+using Zygote
+L(θ) = (y = spectrum(root, spec, θ; ports=[(:varphi_1, nport())]); y.energies[2] - y.energies[1] + abs2(y.ports[1][1, 2]))
+Zygote.gradient(L, θ)[1]            # a NamedTuple: ∂L/∂E_J1, …, ∂L/∂g
+```
+
+The rules run `derivatives` to first order; second derivatives come from `derivatives(...; order = 2)`, not from differentiating the rule twice.
+`bench/derivative_design` solves a three-parameter design problem with BFGS on this gradient.
+The design is `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`; spec §20l records the equations, the measurements and where the build departed from the design.
+
 ## Tests
 
 ```bash
@@ -419,6 +480,13 @@ JULIA_CONDAPKG_BACKEND=Null JULIA_PYTHONCALL_EXE=/path/to/env/bin/python julia -
 
 The default tier checks that the package itself stays free of Python: no file under `src/` loads or calls PythonCall, and the extension is not loaded.
 
+The rules tier tests the `rrule` and `frule` of `spectrum` (the ChainRulesCore extension), directly and through Zygote; it has its own environment, `test/chainrules`, and is never included by `Pkg.test()`:
+
+```bash
+julia --project=test/chainrules -e 'using Pkg; Pkg.instantiate()'
+julia --project=test/chainrules test/chainrules/runtests.jl
+```
+
 The device tests have their own environment and need a CUDA device:
 
 ```bash
@@ -450,7 +518,7 @@ Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and gener
 The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
 The circuit-quantization interface (2026-11-10: a PythonCall extension with the symbolic and loop routes to a spec in a new frame, `numeric_spec`, constant coefficients that never compile, and run records; spec §20j) is on `main` (local; not pushed as of 2026-11-11); what is done and what is open is in `docs/superpowers/STATUS.md`.
 Mean-field basis augmentation (2026-11-11: mean-field children, the self-consistent loop, union bases and augmented children; spec §20k) is on `main` (local; not pushed as of 2026-11-11); its Harmonium benchmark (design §6.2) is deferred to its own plan.
-The next plan (5) is automatic differentiation rules.
+Derivatives by perturbation theory through the tree (2026-11-11: first and second derivatives, near-degenerate blocks, and the outer rule of `spectrum`; spec §20l) replace the automatic-differentiation rules that were to be plan 5; see "Derivatives" above and `docs/superpowers/STATUS.md`.
 Later plans:
 
 1. Export, caching, and NPZ output.
