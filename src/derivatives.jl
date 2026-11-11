@@ -165,10 +165,12 @@ from the second derivative of the phase convention (`ℓ_j · ψ_j` real; zero o
 The result's `gauge` is `b`, its `children` is `dxλ` itself.
 A kept state degenerate with a state its right-hand side couples to, or already `NaN` at first order, has `NaN`
 derivatives, with one warning per call.
+With `boundary = (; records, key)` the clashes of kept states with unkept computed states at second order are recorded
+by `_selection_boundary!` (its clash records only) under the pass's key `key`, `_pairkey(x, λ)`, and pushed to `records`.
 """
 function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::KronFreeOperator,
                             Hxλ::KronFreeOperator, res::Resolvent, dX::NodeDerivative, dΛ::NodeDerivative,
-                            dxλ::Vector{Any}) where {T}
+                            dxλ::Vector{Any}; boundary=nothing) where {T}
     V = mn.vectors
     E = mn.energies
     n = length(E)
@@ -192,6 +194,7 @@ function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::
               (isempty(clashing) || isempty(first_bad) ? "" : "; ") *
               (isempty(first_bad) ? "" : "states $first_bad are degenerate at first order")
     end
+    boundary === nothing || _selection_boundary!(boundary.records, mn, res, RHS, clashes, boundary.key; plain=false)
     normalization = Float64[-real(dot(view(Wx, :, j), view(Wλ, :, j))) - dX.gauge[j] * dΛ.gauge[j] for j in 1:n]
     amps = _peak_amps(mn)
     axes = collect(eachindex(amps))
@@ -221,16 +224,18 @@ function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::
 end
 
 """
-    _selection_boundary!(records, mn, res, R, clashes, x; δx, r) -> records
+    _selection_boundary!(records, mn, res, R, clashes, x; δx=nothing, r=0.1, plain=true) -> records
 
 The selection-boundary test (design §3) of the node `mn` along the parameter `x`, over each kept state `i` and each other known state `l` of its resolvent `res`, with `R = (∂H/∂x) V` and `clashes` from `_apply_resolvent`.
+At second order `x` is the pass's pair `_pairkey(x, λ)`, `R` the right-hand side of `_node_second_order` and `plain = false`: only the clashes below are recorded.
 The coupling `|⟨ψ_l|R[:, i]⟩|` of a pair is zero by the per-column rule of `_apply_resolvent`, `≤ 1e-10 ‖R[:, i]‖`.
 With a scale `δx` the pair is recorded when its coupling is not zero and `coupling · δx > r |E_i − E_l|`; without one (`δx === nothing`) when `|E_i − E_l| ≤ 1e-6 max(|E_i − E_1|, |E_l − E_1|)`, with `E_1` the lowest known energy, and its `coupling` is `NaN`.
-In either case a clash of column `i` with an unkept state (a `0` in `clashes[i]`) is recorded with its coupling, the partner recomputed by the same rule; it replaces a plain record of the same pair.
-Each record is `(; node, parameter, kept, unkept, detuning, coupling)`, with `kept` a column of the node's vectors and `unkept` the state's index among the node's computed pairs; one `@warn` reports them all.
+In either case (and with `plain = false` alone) a clash of column `i` with an unkept state (a `0` in `clashes[i]`) is recorded with its coupling, the partner recomputed by the same rule; it replaces a plain record of the same pair.
+Each record is `(; node, parameter, kept, unkept, detuning, coupling)`, with `parameter` the `x` given (a parameter, or a pair at second order), `kept` a column of the node's vectors and `unkept` the state's index among the node's computed pairs; one `@warn` reports them all.
 """
 function _selection_boundary!(records::Vector, mn::MaterializedNode, res::Resolvent, R::AbstractMatrix,
-                              clashes::Vector{Vector{Int}}, x::Symbol; δx, r)
+                              clashes::Vector{Vector{Int}}, x::Union{Symbol,Tuple{Symbol,Symbol}};
+                              δx=nothing, r=0.1, plain::Bool=true)
     E, Eo = res.energies, res.other_energies
     isempty(Eo) && return records
     Co = res.other_vectors' * R                 # as in `_apply_resolvent`
@@ -244,16 +249,17 @@ function _selection_boundary!(records::Vector, mn::MaterializedNode, res::Resolv
             coupling = abs(Co[l, i])
             coupled = coupling > zero_overlap
             clash = unkept_clash && detuning <= res.degenerate_tol && coupled
-            plain = δx === nothing ? detuning <= 1e-6 * max(abs(E[i] - E1), abs(Eo[l] - E1)) :
-                                     coupled && coupling * δx > r * detuning
-            (clash || plain) || continue
+            close = plain && (δx === nothing ? detuning <= 1e-6 * max(abs(E[i] - E1), abs(Eo[l] - E1)) :
+                                               coupled && coupling * δx > r * detuning)
+            (clash || close) || continue
             push!(found, (; node=mn.node, parameter=x, kept=i, unkept=res.other_indices[l], detuning,
                           coupling=clash || δx !== nothing ? Float64(coupling) : NaN))
         end
     end
     isempty(found) && return records
     finite = [f.coupling for f in found if !isnan(f.coupling)]
-    @warn "selection boundary: node on modes $(modes(mn.node)), parameter :$x: kept states close to unkept computed " *
+    pass = x isa Symbol ? "parameter :$x" : "second order in (:$(x[1]), :$(x[2]))"
+    @warn "selection boundary: node on modes $(modes(mn.node)), $pass: kept states close to unkept computed " *
           "states, (kept, unkept) = $(join(("($(f.kept), $(f.unkept))" for f in found), ", ")); smallest detuning " *
           "$(minimum(f.detuning for f in found)) GHz, largest coupling $(isempty(finite) ? NaN : maximum(finite)); " *
           "the fixed-selection derivative is fragile there"
@@ -269,15 +275,18 @@ _pairkey(x::Symbol, λ::Symbol) = x <= λ ? (x, λ) : (λ, x)
     Derivatives
 
 The derivatives of a materialized tree, returned by [`derivatives`](@ref) and read through [`energies`](@ref),
-[`eigenvectors`](@ref) and [`port`](@ref) with a parameter name.
+[`eigenvectors`](@ref) and [`port`](@ref) with a parameter name (first order) or two (second order).
 `sys` is the differentiated [`System`](@ref), `wrt` the parameters (in the order processed), `order` the order, and
-`mixed` the mixed pairs of second order.
+`mixed` the mixed pairs of second order, each as `_pairkey` orders it.
 `first[x]` is the root's first-order derivative data along `x` (a `NodeDerivative`, the children's nested in it), or
 `nothing` when nothing in the tree depends on `x`.
-`second` and `blocks` hold second-order data and near-degenerate blocks; this version of the pass leaves them empty.
+With `order = 2`, `second[_pairkey(x, λ)]` is the root's second-order data along the pair `(x, λ)`, for `x == λ` each
+parameter of `wrt` and for `x ≠ λ` each pair of `mixed`, likewise nested, or `nothing` when no node depends on both.
+`blocks` holds near-degenerate blocks; this version of the pass leaves it empty.
 `boundary` holds the selection-boundary records `(; node, parameter, kept, unkept, detuning, coupling)`: a kept state
 (`kept`, a column of the node's vectors) close to an unkept computed state (`unkept`, its index among the node's
-computed pairs), with `coupling` `NaN` when it was not computed.
+computed pairs), with `coupling` `NaN` when it was not computed; `parameter` is the parameter of a first-order pass,
+or the pair `_pairkey(x, λ)` of a second-order pass, which records only clashes (an exact degeneracy with a coupling).
 `linear_solves` holds one record `(; modes, columns, iterations, residual)` per linear solve on the complement of a
 node's computed states, with `residual` the largest relative true residual of its columns.
 """
@@ -298,7 +307,8 @@ end
                 linmaxiter=5000, given_independent=false) -> Derivatives
 
 The first derivatives, along each parameter of `wrt`, of every kept energy, kept vector, port and joint port of every
-node of the materialized tree `sys`, by perturbation theory carried upward through the tree.
+node of the materialized tree `sys`, by perturbation theory carried upward through the tree; with `order = 2` also the
+second derivatives along each parameter of `wrt` alone and along each pair of `mixed`.
 They are the derivatives of the calculation as performed: the selection of kept states, the bases, the solvers, the
 real or complex arithmetic of every node and its discrete phase choice (its peak indices, `peak_component`) are held
 fixed, and nothing is re-solved.
@@ -307,11 +317,20 @@ root, of the constant), its children's port and joint-port derivatives, and its 
 The element types are those of the stored quantities: `Float64` energies, and vectors and ports of the types
 [`materialized`](@ref) stores them in.
 A node whose subtree (and, at the root, the constant) does not depend on a parameter is not visited and reads as zeros.
+At second order a node's `∂²H/∂x∂λ` has the same three contributions by the product rule, and a node whose subtree
+does not depend on both parameters reads as zeros.
+
+Cost: one first-order pass per parameter and, with `order = 2`, one second-order pass per parameter and per mixed
+pair, each about one resolvent application (a linear solve at an iterative node) per kept state per node it visits.
+A second-order pass rebuilds the operators `∂H/∂x`, `∂H/∂λ` and `∂²H/∂x∂λ` at each node; only the first-order data
+and each node's resolvent are kept between passes.
 
 Keywords:
 - `wrt`: a parameter name or a collection of names, each a key of `sys.θ`; duplicates are removed.
-- `order`: the order of the derivatives; only `1` is available.
-- `mixed`: the pairs of parameters whose mixed second derivatives are wanted (second order); must be empty.
+- `order`: `1` (first derivatives) or `2` (also the second derivative along each parameter of `wrt` alone).
+- `mixed`: the pairs of parameters whose mixed second derivatives are wanted, a collection of pairs such as
+  `((:E_J, :varphi_ext),)`, each of two different parameters of `wrt`; a pair given in either order is the same pair.
+  A nonempty `mixed` needs `order = 2`.
 - `scale`: a `NamedTuple` of typical displacements `δx` of parameters in `wrt`, positive and finite, for the
   near-degeneracy test `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx > r |E_i − E_l|`.
 - `r`: the ratio of that test, positive.
@@ -321,6 +340,9 @@ Keywords:
   distance from the node's lowest computed energy), or degenerate with one it couples to, is recorded in `boundary`
   with one warning per node and parameter, since the derivative at a fixed selection is fragile there.
   States beyond a node's `compute` were never computed and cannot be tested.
+  A kept state that clashes (is degenerate with a state its right-hand side couples to) only at second order has `NaN`
+  second derivatives with a warning; a clash with an unkept computed state is also recorded in `boundary`, with the
+  pair `_pairkey(x, λ)` of the pass as its `parameter`.
 - `degenerate_tol`: the detuning (GHz) at or below which two states are exactly degenerate; a kept state degenerate
   with a state it couples to has `NaN` derivatives.
 - `lintol`, `linmaxiter`: the relative tolerance and iteration limit of the linear solve at a node without its
@@ -337,8 +359,10 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
                      degenerate_tol::Real=1e-9, lintol::Real=1e-10, linmaxiter::Int=5000,
                      given_independent::Bool=false, _parts=(:coefficients, :ports, :energies), _truncate::Bool=false)
     params = _check_wrt(wrt, sys.θ)
-    order == 1 || throw(ArgumentError("order = $order is not available; only first derivatives (order = 1) are"))
-    isempty(mixed) || throw(ArgumentError("`mixed` pairs need order = 2, which is not available"))
+    order in (1, 2) || throw(ArgumentError("`order` must be 1 or 2, got $order"))
+    mixed_pairs = _check_mixed(mixed, params)
+    isempty(mixed_pairs) || order == 2 ||
+        throw(ArgumentError("`mixed` pairs are second derivatives and need order = 2, got order = $order"))
     for (k, v) in pairs(scale)
         k in params || throw(ArgumentError("`scale` has an entry for :$k, which is not in `wrt` ($(join(":" .* string.(params), ", ")))"))
         v isa Real && isfinite(v) && v > 0 ||
@@ -355,8 +379,35 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
         bd = (; records=boundary, x, δx=get(scale, x, nothing), r)
         first[x] = _first_order_pass(sys, routed, x, resolvents; degenerate_tol, parts=_parts, lin, boundary=bd)
     end
-    return Derivatives(sys, params, order, Tuple{Symbol,Symbol}[], first, Dict{Tuple{Symbol,Symbol},Any}(), Any[],
-                       boundary, linear_solves)
+    second = Dict{Tuple{Symbol,Symbol},Any}()
+    if order == 2
+        for (x, λ) in [[(x, x) for x in params]; mixed_pairs]
+            second[_pairkey(x, λ)] = _second_order_pass(sys, routed, x, λ, first[x], first[λ], resolvents;
+                                                         parts=_parts, records=boundary)
+        end
+    end
+    return Derivatives(sys, params, order, mixed_pairs, first, second, Any[], boundary, linear_solves)
+end
+
+# `mixed` as a vector of distinct `_pairkey`s, each of two different parameters of `params`.
+function _check_mixed(mixed, params::Vector{Symbol})
+    mixed isa Union{AbstractVector,Tuple,AbstractSet} ||
+        throw(ArgumentError("`mixed` must be a collection of pairs of parameter names, got $(repr(mixed))"))
+    out = Tuple{Symbol,Symbol}[]
+    for p in mixed
+        p isa Union{Tuple,AbstractVector} && length(p) == 2 && all(s -> s isa Symbol, p) ||
+            throw(ArgumentError("`mixed` must hold pairs of parameter names such as (:x, :y), got $(repr(p))"))
+        x, λ = p
+        x === λ && throw(ArgumentError("the mixed pair $(repr(p)) names one parameter twice; the second derivative " *
+                                       "along one parameter alone is computed for every parameter of `wrt`"))
+        for s in (x, λ)
+            s in params || throw(ArgumentError("the mixed pair $(repr(p)) names :$s, which is not in `wrt` " *
+                                               "($(join(":" .* string.(params), ", ")))"))
+        end
+        key = _pairkey(x, λ)
+        key in out || push!(out, key)
+    end
+    return out
 end
 
 # `wrt` as a vector of distinct parameter names of `θ`, in order.
@@ -415,6 +466,31 @@ function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{An
         return _node_first_order(mn, H1, res, dx; boundary)
     end
     return visit(sys.root)
+end
+
+# The second-order pass along the pair `(x, λ)` (`x == λ` allowed), from the roots' first-order data `dX` and `dΛ` of the
+# two parameters: every node with first-order data for both, children first; the root's `NodeDerivative`, or `nothing`.
+# A node rebuilds `∂H/∂x`, `∂H/∂λ` (the same operator when `x == λ`) and `∂²H/∂x∂λ` exactly as the first-order pass built
+# them, and uses the resolvent cached in `resolvents` by that pass.
+# Second-order clashes make the states concerned `NaN` with the warning of `_node_second_order`; a clash with an unkept
+# computed state is also recorded in `records` under `_pairkey(x, λ)`, with one selection-boundary warning per node.
+function _second_order_pass(sys::System, routed, x::Symbol, λ::Symbol, dX, dΛ, resolvents::IdDict{Any,Resolvent};
+                            parts, records)
+    root = sys.root.node
+    function visit(mn::MaterializedNode, nx, nλ)
+        (nx === nothing || nλ === nothing) && return nothing
+        dx, dλ = nx.children, nλ.children
+        dxλ = Any[c isa MaterializedNode ? visit(c, dx[a], dλ[a]) : nothing for (a, c) in enumerate(mn.children)]
+        constant = mn.node === root ? sys.constant : Coefficient(0)
+        res = resolvents[mn.node]
+        on = res.complement === nothing ? Array : res.complement.H.on
+        terms = routed[mn.node]
+        Hx = _derivative_operator(mn, terms, sys.θ, x, dx; constant, parts, on)
+        Hλ = x === λ ? Hx : _derivative_operator(mn, terms, sys.θ, λ, dλ; constant, parts, on)
+        Hxλ = _derivative_operator(mn, terms, sys.θ, x, λ, dx, dλ, dxλ; constant, parts, on)
+        return _node_second_order(mn, Hx, Hλ, Hxλ, res, nx, nλ, dxλ; boundary=(; records, key=_pairkey(x, λ)))
+    end
+    return visit(sys.root, dX, dΛ)
 end
 
 # The resolvent of `mn`, with its forward operator rebuilt only when `_resolvent` needs it: a node without its complete
@@ -494,6 +570,60 @@ end
 function port(d::Derivatives, x::Symbol, key::AbstractVector{Tuple{Symbol,Port}}, node::Node=d.sys.root.node)
     length(key) == 1 && return port(d, x, only(key)..., node)
     data = _first_data(d, x)
+    P = port(d.sys, key, node)
+    nd = _node_derivative(data, d.sys, node)
+    return nd === nothing ? zero(P) : nd.joint_ports[_sortkey!(collect(Tuple{Symbol,Port}, key))]
+end
+
+function _second_data(d::Derivatives, x::Symbol, λ::Symbol)
+    key = _pairkey(x, λ)
+    haskey(d.second, key) && return d.second[key]
+    computed = isempty(d.second) ? "none (order = $(d.order))" :
+               join(("(:$a, :$b)" for (a, b) in sort!(collect(keys(d.second)))), ", ")
+    throw(ArgumentError("no second derivative along (:$x, :$λ) was computed; computed pairs: $computed"))
+end
+
+"""
+    energies(d::Derivatives, x, λ, node=root) -> Vector{Float64}
+
+The second derivatives `∂²E/∂x∂λ` of the kept energies of `node` (`x == λ` for the second derivative along one
+parameter), absolute as at first order, with the selection, bases, solvers, arithmetic and peak indices held fixed (see
+[`derivatives`](@ref)); symmetric in `(x, λ)`.
+The pair must have been computed: `x == λ` with `order = 2`, else `(x, λ)` in `mixed`.
+"""
+function energies(d::Derivatives, x::Symbol, λ::Symbol, node::Node=d.sys.root.node)
+    nd = _node_derivative(_second_data(d, x, λ), d.sys, node)
+    return nd === nothing ? zeros(length(materialized(d.sys, node).energies)) : nd.energies
+end
+
+"""
+    eigenvectors(d::Derivatives, x, λ, node=root) -> Matrix
+
+The second derivatives along `(x, λ)` of the kept eigenvectors of `node` in its product basis, as
+[`energies`](@ref)`(d, x, λ, node)` and the first-order `eigenvectors(d, x, node)` describe them.
+"""
+function eigenvectors(d::Derivatives, x::Symbol, λ::Symbol, node::Node=d.sys.root.node)
+    nd = _node_derivative(_second_data(d, x, λ), d.sys, node)
+    return nd === nothing ? zero(materialized(d.sys, node).vectors) : nd.vectors
+end
+
+"""
+    port(d::Derivatives, x, λ, mode, p, node=root) -> Matrix
+    port(d::Derivatives, x, λ, key::AbstractVector{Tuple{Symbol,Port}}, node=root) -> Matrix
+
+The second derivative along `(x, λ)` of the port `p` of `mode`, or of the joint port of the factors `key`, in the kept
+eigenbasis of `node`, as [`energies`](@ref)`(d, x, λ, node)` and the first-order `port(d, x, ...)` describe them.
+"""
+function port(d::Derivatives, x::Symbol, λ::Symbol, mode::Symbol, p::Port, node::Node=d.sys.root.node)
+    data = _second_data(d, x, λ)
+    P = port(d.sys, mode, p, node)
+    nd = _node_derivative(data, d.sys, node)
+    return nd === nothing ? zero(P) : nd.ports[(mode, p)]
+end
+
+function port(d::Derivatives, x::Symbol, λ::Symbol, key::AbstractVector{Tuple{Symbol,Port}}, node::Node=d.sys.root.node)
+    length(key) == 1 && return port(d, x, λ, only(key)..., node)
+    data = _second_data(d, x, λ)
     P = port(d.sys, key, node)
     nd = _node_derivative(data, d.sys, node)
     return nd === nothing ? zero(P) : nd.joint_ports[_sortkey!(collect(Tuple{Symbol,Port}, key))]

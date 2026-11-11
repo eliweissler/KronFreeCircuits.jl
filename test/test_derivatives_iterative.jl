@@ -54,3 +54,16 @@ end
     @test norm(cut - full, Inf) > 1e-3 * norm(full, Inf)
     @test_throws "did not converge" derivatives(sys; wrt=:g, linmaxiter=2)
 end
+
+@testset "second order: the linear-solve route equals the full-spectrum route" begin
+    for (periodic, x, λ) in ((false, :g, :g), (false, :g, :E_J2), (true, :g, :g), (true, :g, :n_g1))
+        wrt = unique([x, λ]); mixed = x === λ ? () : ((x, λ),)
+        di = derivatives(dc_solve(tree(LOBPCG(tol=1e-11); periodic)); wrt, order=2, mixed)
+        dd = derivatives(dc_solve(tree(Dense(); periodic)); wrt, order=2, mixed)
+        @test energies(di, x, λ) ≈ energies(dd, x, λ) rtol=1e-6 atol=1e-8
+        @test norm(eigenvectors(di, x, λ) - eigenvectors(dd, x, λ), Inf) <= 1e-5 * norm(eigenvectors(dd, x, λ), Inf)
+        for p in (nport(), expiphi(1.0))
+            @test norm(port(di, x, λ, :varphi_1, p) - port(dd, x, λ, :varphi_1, p), Inf) <= 1e-5 * norm(port(dd, x, λ, :varphi_1, p), Inf)
+        end
+    end
+end
