@@ -604,3 +604,12 @@ function node_first_order(sys, x::Symbol; setup=node_setup(sys))
     H1 = K._derivative_operator(setup.mn, setup.terms, sys.θ, x, setup.none; constant=sys.constant)
     return K._node_first_order(setup.mn, H1, setup.res, setup.none)
 end
+# The second-order rule on a one-node system, with the first-order data and the operators it used.
+function node_second_order(sys, x::Symbol, λ::Symbol)
+    K = KronFreeCircuits
+    u = node_setup(sys)
+    op(args...) = K._derivative_operator(u.mn, u.terms, sys.θ, args...; constant=sys.constant)
+    Hx, Hλ, Hxλ = op(x, u.none), op(λ, u.none), op(x, λ, u.none, u.none, u.none)
+    dX, dΛ = K._node_first_order(u.mn, Hx, u.res, u.none), K._node_first_order(u.mn, Hλ, u.res, u.none)
+    return (; d=K._node_second_order(u.mn, Hx, Hλ, Hxλ, u.res, dX, dΛ, u.none), dX, dΛ, Hλ, Hxλ)
+end

@@ -42,11 +42,8 @@ function _port_derivatives(mn::MaterializedNode, V1::AbstractMatrix, dx::Vector{
     function derivative(K::_FactorKey)
         ops = _axis_ops(mn.node, mn.children, K)
         P = _sandwich(mn, V1, V, K, ops) + _sandwich(mn, V, V1, K, ops)
-        for (g, (a, _, Ka)) in enumerate(ops)
-            dx[a] === nothing && continue
-            replaced = copy(ops)
-            replaced[g] = (a, _derivative_op(dx[a], Ka), Ka)
-            P += _sandwich(mn, V, V, K, replaced)
+        for set in _first_replacements(_op_axes(ops), dx)
+            P += _sandwich(mn, V, V, K, _replace_ops(ops, set))
         end
         return P
     end
@@ -84,14 +81,7 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
     boundary === nothing ||
         _selection_boundary!(boundary.records, mn, res, R, clashes, boundary.x; δx=boundary.δx, r=boundary.r)
     amps = _peak_amps(mn)
-    L1 = nothing
-    for (k, d) in enumerate(dx)
-        d === nothing && continue
-        a1 = copy(amps)
-        a1[k] = d.peak_amplitudes
-        L = _peak_map(mn, V, a1)
-        L1 = L1 === nothing ? L : L1 + L
-    end
+    L1 = _peak_map_sum(mn, V, amps, _first_replacements(collect(eachindex(amps)), dx))
     if T === Float64
         gauge = zeros(n)
         V1 = Matrix{T}(W)
@@ -105,6 +95,129 @@ function _node_first_order(mn::MaterializedNode{T}, H1::KronFreeOperator, res::R
     L1 === nothing || (A1 = A1 + L1)
     ports, joint = _port_derivatives(mn, V1, dx)
     return NodeDerivative{T}(dE, V1, gauge, ports, joint, Matrix{T}(A1), dx)
+end
+
+# `Σ` over the replacement sets `sets` (as `_first_replacements` or `_second_replacements` give them, over the node's
+# axes) of `_peak_map(mn, X, amps)` with the amplitudes of each set's axes replaced by its data's `peak_amplitudes`:
+# the derivative of the peak functionals carried by the children; `nothing` when there is no set.
+function _peak_map_sum(mn::MaterializedNode, X::AbstractMatrix, amps::Vector{Any}, sets)
+    L = nothing
+    for set in sets
+        replaced = copy(amps)
+        for (k, d) in set
+            replaced[k] = d.peak_amplitudes
+        end
+        M = _peak_map(mn, X, replaced)
+        L = L === nothing ? M : L + M
+    end
+    return L
+end
+
+"""
+    _port_second_derivatives(mn, V2, Vx, Vλ, dx, dλ, dxλ) -> (ports, joint_ports)
+
+The second derivative along `(x, λ)` of every port and joint port `P = V† O V` of `mn`, given the derivatives `Vx`,
+`Vλ` and `V2` of its kept vectors and its children's first-order data `dx`, `dλ` and second-order data `dxλ` (per axis
+a `NodeDerivative` or `nothing`).
+With `S(W, U; O) = W† O U` (`_sandwich`), `O_x` the operator with one child operator replaced by the child's
+`x`-derivative (summed over the entries), and `O_xλ` with one replaced by the child's second derivative or two distinct
+ones by the `x`- and the `λ`-derivative (summed over the entries and the ordered pairs):
+`S(V2, V; O) + S(V, V2; O) + S(Vx, Vλ; O) + S(Vλ, Vx; O) + S(Vx, V; O_λ) + S(V, Vx; O_λ) + S(Vλ, V; O_x) + S(V, Vλ; O_x) + S(V, V; O_xλ)`.
+"""
+function _port_second_derivatives(mn::MaterializedNode, V2::AbstractMatrix, Vx::AbstractMatrix, Vλ::AbstractMatrix,
+                                  dx::Vector{Any}, dλ::Vector{Any}, dxλ::Vector{Any})
+    V = mn.vectors
+    function derivative(K::_FactorKey)
+        ops = _axis_ops(mn.node, mn.children, K)
+        axes = _op_axes(ops)
+        S(W, U, o) = _sandwich(mn, W, U, K, o)
+        P = S(V2, V, ops) + S(V, V2, ops) + S(Vx, Vλ, ops) + S(Vλ, Vx, ops)
+        for set in _first_replacements(axes, dλ)
+            o = _replace_ops(ops, set)
+            P += S(Vx, V, o) + S(V, Vx, o)
+        end
+        for set in _first_replacements(axes, dx)
+            o = _replace_ops(ops, set)
+            P += S(Vλ, V, o) + S(V, Vλ, o)
+        end
+        for set in _second_replacements(axes, dx, dλ, dxλ)
+            P += S(V, V, _replace_ops(ops, set))
+        end
+        return P
+    end
+    ports = Dict{Tuple{Symbol,Port},NodeMatrix}(key => derivative([key]) for key in keys(mn.ports))
+    joint = Dict{_FactorKey,NodeMatrix}(K => derivative(K) for K in keys(mn.joint_ports))
+    return ports, joint
+end
+
+"""
+    _node_second_order(mn, Hx, Hλ, Hxλ, res, dX, dΛ, dxλ) -> NodeDerivative
+
+The second derivatives of the node `mn` along the pair `(x, λ)` (`x == λ` allowed), from `Hx = ∂H/∂x`, `Hλ = ∂H/∂λ`,
+`Hxλ = ∂²H/∂x∂λ` (`KronFreeOperator`s on any storage), the node's resolvent `res`, its own first-order data `dX`, `dΛ`
+(whose `children` hold the children's) and its children's second-order data `dxλ`.
+With `W^x = ∂_xV − i V diag(a^x)` the part of each first derivative orthogonal to its state (likewise `W^λ`), per kept
+state `j`, `RHS = (Hx W^λ − W^λ diag(∂_xE)) + (Hλ W^x − W^x diag(∂_λE)) + Hxλ V`:
+the energies are `∂²E_j = Re⟨ψ_j|RHS_j⟩`;
+the part of `∂²ψ_j` orthogonal to `ψ_j` is `u_j`, the resolvent applied to `RHS_j` plus `i W^x_j a^λ_j + i W^λ_j a^x_j`;
+and `∂²ψ_j = u_j + (n_j + i b_j) ψ_j`, with `n_j = −Re⟨W^x_j|W^λ_j⟩ − a^x_j a^λ_j` from the normalization and `b_j`
+from the second derivative of the phase convention (`ℓ_j · ψ_j` real; zero on a real node).
+The result's `gauge` is `b`, its `children` is `dxλ` itself.
+A kept state degenerate with a state its right-hand side couples to, or already `NaN` at first order, has `NaN`
+derivatives, with one warning per call.
+"""
+function _node_second_order(mn::MaterializedNode{T}, Hx::KronFreeOperator, Hλ::KronFreeOperator,
+                            Hxλ::KronFreeOperator, res::Resolvent, dX::NodeDerivative, dΛ::NodeDerivative,
+                            dxλ::Vector{Any}) where {T}
+    V = mn.vectors
+    E = mn.energies
+    n = length(E)
+    dx, dλ = dX.children, dΛ.children
+    Vx, Vλ = dX.vectors, dΛ.vectors
+    Wx = T === Float64 ? Vx : Vx .- V .* transpose(im .* dX.gauge)
+    Wλ = T === Float64 ? Vλ : Vλ .- V .* transpose(im .* dΛ.gauge)
+    apply(H, X) = Array(H * adapt(H.on, Matrix{T}(X)))
+    RHS = apply(Hx, Wλ) .- Wλ .* transpose(dX.energies) .+ apply(Hλ, Wx) .- Wx .* transpose(dΛ.energies) .+ apply(Hxλ, V)
+    undefined(d::NodeDerivative, j) = isnan(d.energies[j]) || any(isnan, view(d.vectors, :, j))
+    first_bad = [j for j in 1:n if undefined(dX, j) || undefined(dΛ, j)]
+    RHS[:, first_bad] .= 0                      # kept out of the resolvent (and of a linear solve)
+    d2E = Float64[real(dot(view(V, :, j), view(RHS, :, j))) for j in 1:n]
+    G, clashes = _apply_resolvent(res, RHS, E, [[j] for j in 1:n])
+    clashing = findall(!isempty, clashes)
+    bad = sort!(union(first_bad, clashing))
+    if !isempty(bad)
+        @warn "Node on modes $(modes(mn.node)): kept states $bad have no second derivatives (NaN): " *
+              (isempty(clashing) ? "" : "states $clashing are degenerate with states they couple to at second order " *
+               "($(join(("$j with $(clashes[j])" for j in clashing), ", ")); 0 is an unkept state)") *
+              (isempty(clashing) || isempty(first_bad) ? "" : "; ") *
+              (isempty(first_bad) ? "" : "states $first_bad are degenerate at first order")
+    end
+    normalization = Float64[-real(dot(view(Wx, :, j), view(Wλ, :, j))) - dX.gauge[j] * dΛ.gauge[j] for j in 1:n]
+    amps = _peak_amps(mn)
+    axes = collect(eachindex(amps))
+    Lx = _peak_map_sum(mn, Vλ, amps, _first_replacements(axes, dx))                  # ℓ^x · ∂_λV
+    Lλ = _peak_map_sum(mn, Vx, amps, _first_replacements(axes, dλ))                  # ℓ^λ · ∂_xV
+    Lxλ = _peak_map_sum(mn, V, amps, _second_replacements(axes, dx, dλ, dxλ))       # ℓ^{xλ} · V
+    carried = filter(!isnothing, Any[Lx, Lλ, Lxλ])
+    if T === Float64
+        gauge = zeros(n)
+        V2 = Matrix{T}(G .+ V .* transpose(normalization))
+    else
+        U = G .+ im .* (Wx .* transpose(dΛ.gauge) .+ Wλ .* transpose(dX.gauge))
+        L0 = _peak_map(mn, U, amps)
+        A = mn.peak_amplitudes
+        gauge = Float64[-imag(L0[j, j] + sum((L[j, j] for L in carried); init=0)) / real(A[j, j]) for j in 1:n]
+        V2 = Matrix{T}(U .+ V .* transpose(normalization .+ im .* gauge))
+        gauge[bad] .= NaN
+    end
+    d2E[bad] .= NaN
+    V2[:, bad] .= NaN
+    A2 = _peak_map(mn, V2, amps)
+    for L in carried
+        A2 = A2 + L
+    end
+    ports, joint = _port_second_derivatives(mn, V2, Vx, Vλ, dx, dλ, dxλ)
+    return NodeDerivative{T}(d2E, V2, gauge, ports, joint, Matrix{T}(A2), dxλ)
 end
 
 """
