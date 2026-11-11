@@ -34,8 +34,8 @@ JuliaLocalPreferences.toml
 # macOS
 .DS_Store
 
-# Run records written by bench/kite_frames/run.jl
-bench/kite_frames/results/
+# Run records written by bench_archive/kite_frames/run.jl
+bench_archive/kite_frames/results/
 
-# Results written by bench/kite_meanfield/optimize.jl
-bench/kite_meanfield/results/
+# Results written by bench_archive/kite_meanfield/optimize.jl
+bench_archive/kite_meanfield/results/

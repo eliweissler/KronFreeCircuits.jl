@@ -192,8 +192,8 @@ rec = load_record("kite_optimum.json")                        # (; result, spec,
 ```
 
 The same circuit, with its parameter values and three frames, is `kite()` in `test/python/kite.jl`.
-The tree above is small, for illustration: its four levels lie 1e-4 to 7e-4 GHz above the converged ones, and `materialize` prints warnings about the kept leaf states (phase grids too small for them, and phase fixing), which `bench/kite_frames/README.md` explains.
-`bench/kite_frames/run.jl` solves the three frames on converged trees, and its README shows that the four lowest levels agree across frames to 7e-6 GHz.
+The tree above is small, for illustration: its four levels lie 1e-4 to 7e-4 GHz above the converged ones, and `materialize` prints warnings about the kept leaf states (phase grids too small for them, and phase fixing), which `bench_archive/kite_frames/README.md` explains.
+`bench_archive/kite_frames/run.jl` solves the three frames on converged trees, and its README shows that the four lowest levels agree across frames to 7e-6 GHz.
 
 There are two routes to a spec in a new frame `φ = S φ′`.
 `S` is a square real matrix over the retained modes; it must be invertible, mix no noncompact mode into a compact one (zeros below the compact block), and have an integer, unimodular compact block, and an inadmissible `S` is an `ArgumentError` on both routes.
@@ -224,7 +224,7 @@ With `check=true` (the default) the spec is first rebuilt from `res`, the frame,
 `load_record` returns the spec of the run, the symbolic `Result` that was passed as `circuit`, the frame, the base-frame values (in the order of `Spec(res).parameters`) and the tolerances, so `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run and `Spec(QuantizedCircuit(rec.result; values=rec.values), rec.frame; zero_rtol=rec.zero_rtol, zero_atol=rec.zero_atol)` rebuilds its numeric spec.
 
 Measured on an Intel i7-11700K with Julia 1.13.2 on one thread (2026-11-10): `Spec(qc, S)` for the three-mode KITE takes 0.134 ms per call in a tight loop, against a design target of 5 ms; `Spec(res; frame=S)` takes 0.37 s for the KITE and 0.80 s for six-mode coupled zero-pis.
-`bench/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: in its run of 2026-11-10 on commit `d3f338c`, 0.355 ms for the frame change, 0.569 ms through `materialize`'s setup, and no coefficient compiled in the loop.
+`bench_archive/kite_frames/README.md` holds the KITE bench's figures, a loop over random frames with a full solve per frame: in its run of 2026-11-10 on commit `d3f338c`, 0.355 ms for the frame change, 0.569 ms through `materialize`'s setup, and no coefficient compiled in the loop.
 
 The Python tests are a separate tier, never run by `Pkg.test()`; see "Tests" below.
 
@@ -308,7 +308,7 @@ save_spec("zero_pi_reduced.json", F.spec; metadata=F.metadata)              # a 
 
 `slow_spec(S[1])` gives the slow spec of one surface from its Fourier coefficients instead of a fit.
 Promotion is a spec-to-spec transformation; a charge coupling between slow and fast modes is rejected, and only the single lowest surface is used (no derivative couplings).
-The reproduction (`bench/born_oppenheimer/zero_pi.jl`, results in `bench/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
+The reproduction (`bench_archive/born_oppenheimer/zero_pi.jl`, results in `bench_archive/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
 
 ## Mean-field bases
 
@@ -369,7 +369,7 @@ An augmented child (`AugmentedChild`) keeps its union basis, its bare terms and 
 Mean field acts one level deep, among the children of one node, and mean-field and augmented nodes run in complex arithmetic.
 `KronFreeCircuits.operator(sys, node)` throws for an augmented node, and derivatives through the mean-field bases are not provided.
 
-Figure 8(b) of the paper, reproduced by `bench/kite_meanfield/levels.jl`: the largest error of the four lowest levels, in GHz, with two-well leaves, against the reference calculation's (ratio in brackets):
+Figure 8(b) of the paper, reproduced by `bench_archive/kite_meanfield/levels.jl`: the largest error of the four lowest levels, in GHz, with two-well leaves, against the reference calculation's (ratio in brackets):
 
 | frame | m = 8 | m = 12 | m = 16 | m = 20 |
 |---|---|---|---|---|
@@ -379,8 +379,8 @@ Figure 8(b) of the paper, reproduced by `bench/kite_meanfield/levels.jl`: the la
 
 In the normal-mode and optimum frames the levels match the reference calculation's to 1.5e-13 GHz.
 In the published frame the two wells' states coincide on one mode up to the loop's convergence residue, whose Gram–Schmidt remainders straddle the `1e-6` drop threshold, so the union depends on where the loop stopped and on round-off; that is the inferred cause of the ratios 0.9986 and 0.9726.
-`bench/kite_meanfield/optimize.jl` optimizes the frame from the identity on the product energy and ends at a frame as good as the paper's optimum (two wells at −9.429473654505 GHz against −9.429473599561 on the same bases), after 150 iterations, the cap, without meeting its gradient tolerance.
-Both scripts, their runs and the measured details are in `bench/kite_meanfield/README.md`; the design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, and spec §20k records the build and where it departed from the design.
+`bench_archive/kite_meanfield/optimize.jl` optimizes the frame from the identity on the product energy and ends at a frame as good as the paper's optimum (two wells at −9.429473654505 GHz against −9.429473599561 on the same bases), after 150 iterations, the cap, without meeting its gradient tolerance.
+Both scripts, their runs and the measured details are in `bench_archive/kite_meanfield/README.md`; the design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, and spec §20k records the build and where it departed from the design.
 
 ## Derivatives
 
@@ -426,7 +426,7 @@ A kept state close to an unkept computed state warns ("selection boundary") and 
 
 Every node now retains the eigenvectors of the states its solver computed but did not keep (`Node(...; retain = :auto)`), because the sum over states needs them; the solves inside the mean-field loop and in `bo_surface`, whose results are never differentiated, do not.
 The exception is a `Dense` node above 1000 product states, where retention is opt-in (`retain = :always`); without it such a node is re-diagonalized by the derivative pass, with a notice.
-A retaining `Dense` node with a `compute` limit computes its full decomposition: measured on a 801-state transmon leaf with `compute = 10`, `materialize` took 0.091 s against 0.019 s and the system 5.2 MB against 73 KB (`bench/retention_cost.jl`).
+A retaining `Dense` node with a `compute` limit computes its full decomposition: measured on a 801-state transmon leaf with `compute = 10`, `materialize` took 0.091 s against 0.019 s and the system 5.2 MB against 73 KB (`bench_archive/retention_cost.jl`).
 `retain = :never` restores the old behaviour per node.
 The cost adds up in stored sweeps: the `System`s of a 21-point sweep of one 901-point leaf take 130 MB with retention against 0.81 MB without (measured by the final review).
 At a retaining, compute-limited `Dense` node the rotation inside an exactly degenerate pair of kept states may differ from the one before retention (the full decomposition replaces the partial one).
@@ -452,7 +452,7 @@ Zygote.gradient(L, θ)[1]            # a NamedTuple: ∂L/∂E_J1, …, ∂L/∂
 ```
 
 The rules run `derivatives` to first order; second derivatives come from `derivatives(...; order = 2)`, not from differentiating the rule twice.
-`bench/derivative_design` solves a three-parameter design problem with BFGS on this gradient.
+`bench_archive/derivative_design` solves a three-parameter design problem with BFGS on this gradient.
 The design is `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`; spec §20l records the equations, the measurements and where the build departed from the design.
 
 ## Tests
@@ -507,14 +507,14 @@ julia --project=test/cuda test/cuda/runtests.jl
 ```
 
 Two benchmark scripts take their settings from environment variables, documented at the top of each file.
-`bench/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
+`bench_archive/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench_archive/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
 Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`, and the rerun with the plan-2b leaf solvers (`BENCH_LEAF_SOLVER=shiftinvert`, `chebyshev` or `auto`) is in `docs/spikes/2026-10-17-plan2b-benchmark/results.md`.
-`BENCH_ARITHMETIC=auto|complex` sets `arithmetic=` on every node of `bench/end_to_end.jl`'s tree; the plan-3 results and commands are in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
+`BENCH_ARITHMETIC=auto|complex` sets `arithmetic=` on every node of `bench_archive/end_to_end.jl`'s tree; the plan-3 results and commands are in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 
 ```bash
-BENCH_SMOKE=1 julia --project=. -t 1 bench/end_to_end.jl                                  # reduced sizes, CPU
-BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=. -t 1 bench/parent_solve.jl
-BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=test/cuda -t 1 bench/parent_solve.jl
+BENCH_SMOKE=1 julia --project=. -t 1 bench_archive/end_to_end.jl                                  # reduced sizes, CPU
+BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=. -t 1 bench_archive/parent_solve.jl
+BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=test/cuda -t 1 bench_archive/parent_solve.jl
 ```
 
 ## Status and plans
@@ -523,7 +523,7 @@ The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design
 Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
 Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
 Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
-`Auto()`'s `dense_cutoff` was benchmarked (`bench/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, and it was lowered from 2500 to 1000 once `ShiftInvert`'s spurious residual-check failures were fixed; 3D leaves are tabled (spec §20e decision 8).
+`Auto()`'s `dense_cutoff` was benchmarked (`bench_archive/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, and it was lowered from 2500 to 1000 once `ShiftInvert`'s spurious residual-check failures were fixed; 3D leaves are tabled (spec §20e decision 8).
 KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
 Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
 Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.

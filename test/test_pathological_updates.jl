@@ -63,11 +63,13 @@ end
 end
 
 @testset "Fock displacement: large arguments must remain finite" begin
-    # Exact matrix elements of a unitary have modulus <= 1. The unscaled Laguerre
-    # recurrence currently overflows before multiplying by an underflowed Gaussian.
+    # Exact matrix elements of a unitary have modulus <= 1. Regression: an unscaled Laguerre
+    # recurrence overflowed here before it was multiplied by an underflowed Gaussian, and the
+    # product was NaN. The elements are now evaluated on a carried scale (see `displacement`;
+    # test_bases.jl has the element-by-element checks against high-precision references).
     D = KronFreeCircuits.displacement(400, 40.0im)
-    @test_broken all(isfinite, D)
-    # This is not harmless underflow of negligible entries: the last diagonal
+    @test all(isfinite, D)
+    # The NaNs were not harmless underflow of negligible entries: the last diagonal
     # element is about -0.03525. Evaluate exp(-x/2) L_399(x) at 256-bit precision.
     reference = setprecision(256) do
         x = BigFloat(1600)
@@ -78,8 +80,8 @@ end
         Float64(exp(-x / 2) * q)
     end
     @test abs(reference) > 0.03
-    @test_broken isapprox(D[end, end], reference; atol=1e-12)
-    # A smaller displacement exercises the same recurrence without overflow.
+    @test isapprox(D[end, end], reference; atol=1e-12)
+    # A smaller displacement exercises the same recurrence far from the overflow.
     Dsmall = KronFreeCircuits.displacement(40, 3.0im)
     @test all(isfinite, Dsmall)
     @test opnorm(Dsmall) <= 1 + 1e-12

@@ -64,3 +64,5 @@ end
     # options the rules set themselves are refused
     @test_throws ArgumentError ChainRulesCore.rrule(spectrum, c.root, c.spec, θ; ports=key, derivative_options=(; order=2))
 end
+
+include("test_pathological.jl")

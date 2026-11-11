@@ -152,3 +152,134 @@ end
     @test_throws ArgumentError suggest_bases(s; max_points=1)
     @test_throws ArgumentError suggest_bases(s; extent_scale=0)
 end
+
+# Test-only references for ⟨n|D(α)|m⟩ = √(m!/n!) e^{-|α|²/2} α^(n-m) L_m^(n-m)(|α|²), n ≥ m, with
+# ⟨m|D(α)|n⟩ = conj(⟨n|D(-α)|m⟩), in BigFloat arithmetic, which has the exponent range for the unscaled factors.
+# `_displacement_ref` runs the three-term recurrence of the Laguerre polynomial in its degree; `_displacement_ref_sum`
+# is the explicit alternating sum, an independent formula that needs (and is given) many more digits.
+function _displacement_ref(n::Int, m::Int, α::Number; precision::Int=256)
+    n < m && return conj(_displacement_ref(m, n, -α; precision))
+    setprecision(BigFloat, precision) do
+        αb = Complex{BigFloat}(α); x = abs2(αb); a = n - m
+        p, q = big(0.0), big(1.0)                               # L_{j-1}, L_j of L^(a) at j = 0
+        for j in 1:m
+            p, q = q, ((2j - 1 + a - x) * q - (j - 1 + a) * p) / j
+        end
+        sqrt(factorial(big(m)) / factorial(big(n))) * exp(-x / 2) * αb^a * q
+    end
+end
+function _displacement_ref_sum(n::Int, m::Int, α::Number; precision::Int=4096)
+    n < m && return conj(_displacement_ref_sum(m, n, -α; precision))
+    setprecision(BigFloat, precision) do
+        αb = Complex{BigFloat}(α); x = abs2(αb); a = n - m
+        L = sum((-1)^k * binomial(big(n), big(m - k)) * x^k / factorial(big(k)) for k in 0:m)
+        sqrt(factorial(big(m)) / factorial(big(n))) * exp(-x / 2) * αb^a * L
+    end
+end
+
+@testset "Bases: displacement where the Laguerre polynomial and the Gaussian leave the Float64 range" begin
+    # e^{-|α|²/2} underflows and L_m^(a)(|α|²) overflows for |α|² ≳ 1420 (and the polynomial alone for N ≳ 1030) while
+    # their product is an ordinary number: the matrix elements are evaluated on a carried scale and stay finite.
+    D = displacement(400, 40.0im)
+    @test all(isfinite, D)
+    reference = setprecision(256) do                             # the diagonal element of Fock level 399, an independent recurrence
+        x = BigFloat(1600)
+        p, q = BigFloat(1), 1 - x
+        for m in 2:399
+            p, q = q, ((2m - 1 - x) * q - (m - 1) * p) / m
+        end
+        Float64(exp(-x / 2) * q)
+    end
+    @test reference ≈ -0.03524982424275595 rtol=1e-15
+    @test D[end, end] ≈ reference atol=1e-12
+    @test abs(D[end, end]) > 0.03                                # an appreciable element, not a zero in place of a NaN
+    # every element of the first 200 levels of D(100i) is below the smallest Float64: an exact zero matrix, not NaN
+    D100 = displacement(200, 100.0im)
+    @test all(isfinite, D100) && maximum(abs, D100) <= 1e-300
+    @test abs(_displacement_ref(199, 199, 100.0im)) < big"1e-1000"
+    # the polynomial alone overflows at a small argument once N is large
+    Dbig = displacement(1100, 0.3im)
+    @test all(isfinite, Dbig)
+    for (n, m) in ((1099, 1099), (1099, 1080), (1080, 1099), (1000, 990), (500, 1099))   # measured error of the whole matrix: 1.5e-12
+        @test Dbig[n+1, m+1] ≈ ComplexF64(_displacement_ref(n, m, 0.3im)) atol=1e-10
+    end
+
+    # selected elements against the references, with an absolute tolerance. `tiny` lists elements far below that
+    # tolerance but inside the Float64 range, whose scale must also be right (a relative tolerance).
+    samples = (
+        # |α|²/2 = 800: the Gaussian is below the smallest Float64. The old evaluation returned NaN for n + m ≥ 564.
+        (N=400, α=40.0im, entries=((399, 399), (399, 398), (398, 399), (399, 380), (380, 399), (380, 380), (350, 350), (399, 300),
+                                   (300, 399), (340, 340), (17, 5), (0, 0)),
+         tiny=((399, 0), (0, 399), (200, 133), (133, 399), (300, 300), (200, 200), (100, 100))),
+        # both components nonzero, |α|²/2 = 762.5
+        (N=400, α=25.0 - 30.0im, entries=((399, 399), (399, 390), (390, 399), (384, 399), (399, 329), (329, 399), (350, 395), (10, 3)),
+         tiny=((250, 60), (60, 250), (399, 0), (150, 150))),
+        (N=400, α=-31.25 + 23.5im, entries=((399, 399), (395, 380), (380, 395), (399, 371), (360, 360)), tiny=((120, 40), (0, 399))),
+        # |α|²/2 between log(floatmax) = 709.8 and -log of the smallest subnormal = 744.4: the gradual-underflow range
+        (N=400, α=-37.7, entries=((399, 399), (399, 396), (396, 399), (373, 346), (346, 373), (395, 352), (300, 300)),
+         tiny=((399, 0), (200, 200))),
+        (N=400, α=38.5im, entries=((399, 399), (398, 399), (399, 360), (360, 390)), tiny=((250, 250), (0, 399))),
+        # below the range: elements the old evaluation had right
+        (N=400, α=37.0im, entries=((399, 399), (399, 296), (296, 399), (372, 372), (359, 336), (12, 7)), tiny=((399, 0), (150, 150))),
+        (N=400, α=26.0im, entries=((399, 399), (399, 41), (41, 399), (226, 210), (334, 64), (100, 100)), tiny=((3, 1), (0, 0))),
+        (N=300, α=12.5 - 9.25im, entries=((299, 299), (299, 0), (0, 243), (150, 100), (100, 299), (141, 232), (239, 46)), tiny=((17, 5), (0, 0))),
+        (N=200, α=10.0 + 5.0im, entries=((199, 199), (199, 0), (2, 148), (146, 116), (10, 198), (60, 61)), tiny=((1, 0), (0, 0))),
+        (N=60, α=0.4 - 0.25im, entries=((59, 59), (58, 53), (53, 58), (55, 54), (0, 0), (1, 0), (0, 1), (30, 12)), tiny=((59, 0), (0, 40))),
+        (N=40, α=0.3im, entries=((39, 39), (39, 37), (37, 39), (39, 38), (0, 0), (5, 2)), tiny=((39, 0), (20, 0))),
+        (N=6, α=1.0, entries=((0, 0), (5, 5), (4, 2), (2, 4), (5, 4), (5, 0), (0, 5)), tiny=()),
+    )
+    for s in samples
+        Ds = displacement(s.N, s.α)
+        @test all(isfinite, Ds)
+        for (list, relative) in ((s.entries, false), (s.tiny, true)), (n, m) in list
+            ref = _displacement_ref(n, m, s.α)
+            @test abs(ref - _displacement_ref(n, m, s.α; precision=512)) <= 1e-40 * abs(ref)   # the reference is converged
+            if relative
+                @test floatmin(Float64) * 1e20 < abs(ref) < 1e-16
+                @test Ds[n+1, m+1] ≈ ComplexF64(ref) rtol=1e-9
+            else
+                @test Ds[n+1, m+1] ≈ ComplexF64(ref) atol=1e-12
+            end
+        end
+    end
+    # the recurrence reference against the explicit sum, at the difficult samples
+    for (n, m, α) in ((399, 399, 40.0im), (399, 380, 40.0im), (390, 399, 25.0 - 30.0im), (396, 399, -37.7), (133, 399, 40.0im))
+        ref = _displacement_ref_sum(n, m, α)
+        @test abs(ref - _displacement_ref(n, m, α)) <= 1e-40 * abs(ref)
+    end
+
+    # zero displacement and small dimensions
+    @test displacement(5, 0.0) == I(5) && displacement(5, 0.0im) == I(5) && displacement(1, 0) == ones(1, 1)
+    @test displacement(1, 2.0 - 1.0im) ≈ fill(exp(-2.5), 1, 1)
+    for α in (0.7, -1.3im, 0.6 + 0.8im, 40.0im)
+        @test displacement(2, α) ≈ exp(-abs2(α) / 2) * [1 -conj(α); α 1-abs2(α)] atol=1e-300 rtol=1e-13
+    end
+    Dtiny = displacement(3, 1e-200)                              # |α|² underflows; α does not
+    @test Dtiny[2, 1] ≈ 1e-200 && Dtiny[1, 2] ≈ -1e-200 && Dtiny[3, 2] ≈ sqrt(2) * 1e-200 && Dtiny[3, 1] == 0 && Dtiny[3, 3] == 1
+    # opposite arguments: D(-α) = D(α)', exactly for a real or an imaginary α
+    for α in (40.0im, -40.0, 37.7, -38.5im, 0.3im, 2.0)
+        @test displacement(400, -α) == displacement(400, α)'
+    end
+    for α in (25.0 - 30.0im, 12.5 - 9.25im, 0.4 - 0.25im)
+        @test displacement(400, -α) ≈ displacement(400, α)' atol=1e-12
+    end
+    # phases: a real α gives a real matrix; an imaginary α gives real elements for n - m even and imaginary ones for n - m odd
+    Dr = displacement(400, -40.0)
+    @test all(iszero ∘ imag, Dr) && real(Dr) == transpose(real(displacement(400, 40.0)))
+    @test all(iszero(isodd(i - j) ? real(D[i, j]) : imag(D[i, j])) for i in 1:400, j in 1:400)
+    @test D[400, 399] ≈ ComplexF64(_displacement_ref(399, 398, 40.0im)) atol=1e-12
+    @test real(Dr[400, 399]) ≈ -imag(D[400, 399]) && real(Dr[399, 400]) ≈ imag(D[399, 400])   # (±1)^a against (±i)^a at a = 1
+
+    # the ports of a Fock basis reach the same evaluation with their conventions: e^{ikφ̂} = D(i k φ_zpf), e^{2πik n̂} = D(-2π k n_zpf)
+    F = FockBasis(400; phi_zpf=0.5)                               # n_zpf = 1
+    E = dense(localop(F, expiphi(80)))                           # D(40i)
+    @test all(isfinite, E) && E == D
+    @test E[400, 400] ≈ reference atol=1e-12
+    @test dense(localop(F, expiphi(-80))) == E'
+    T = dense(localop(F, exp2pin(6)))                            # D(-12π), |α|²/2 = 710.6
+    @test all(isfinite, T) && all(iszero ∘ imag, T) && T == displacement(400, -2π * 6)
+    for (n, m) in ((399, 399), (399, 396), (396, 399), (360, 381))
+        @test T[n+1, m+1] ≈ ComplexF64(_displacement_ref(n, m, -2π * 6)) atol=1e-12
+    end
+    @test dense(localop(F, exp2pin(-6))) == T'
+end
