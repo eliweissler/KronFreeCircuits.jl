@@ -6,7 +6,7 @@ include("helpers.jl")
 # end-to-end, solver, catalogue and Born–Oppenheimer files, and last the published-reference reproductions.
 # `Pkg.test(test_args=["test_bo.jl", ...])` runs only the named files, in either tier.
 const SLOW_FILES = ("test_apply.jl", "test_bo.jl", "test_catalogue.jl", "test_character.jl", "test_composite_slow.jl", "test_generated_specs.jl",
-                    "test_materialize.jl", "test_solvers.jl")
+                    "test_materialize.jl", "test_meanfield_kite.jl", "test_solvers.jl")
 const REFERENCE_FILES = ("test_zero_pi_reference.jl", "test_born_oppenheimer_reference.jl")
 for f in (SLOW_FILES..., REFERENCE_FILES...)          # a renamed slow file would otherwise move into the fast tier
     isfile(joinpath(@__DIR__, f)) || error("runtests.jl lists $f as slow, but there is no such file")

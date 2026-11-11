@@ -136,3 +136,38 @@ end
                        IdDict{Node,Expectations}(n => c.expectations for (n, c) in same.children))
     @test E ≈ same.energy rtol=1e-12
 end
+
+# The KITE in the optimum frame, against the reference calculation's fixture (test/python/generate_kite_fixtures.jl): the
+# two wells from one start in each, with the product energies and the three lowest mean-field levels of every mode to
+# 1e-6 GHz.
+# The two wells are degenerate to 1e-11, so each solution is compared with the reference well nearest in ⟨φ⟩.
+# The levels are those of `mean_field_child` at the solution's tables, as the reference's are; `solved.energies` are one
+# iteration older and differ from them by up to 1.4e-5 GHz here.
+# The bare solve of the compact leaf warns once: its second kept state is the charge state |-1>, which has no weight on
+# the positive-charge phase mask.
+# The full comparison, three frames and 33 starts, is in the slow file test_meanfield_kite.jl.
+@testset "KITE optimum frame: both wells from two starts" begin
+    ref = KronFreeCircuits.JSON3.read(read(fixture("kite/meanfield_reference.json"), String)).optimum
+    spec = load_spec(fixture("kite/optimum.json"))
+    leaves = [Node([m => b]; solver=Dense(), compute=3, keep=lowest(3), arithmetic=:complex)
+              for (m, b) in suggest_bases(spec; charge_cutoff=16, max_points=120, extent_scale=1.5)]
+    root = Node(leaves; compute=4, keep=lowest(4))
+    names = [m.name for m in spec.modes]
+    starts = [Dict{Symbol,Float64}(zip(names, (0.0, 0.0, 0.0))), Dict{Symbol,Float64}(zip(names, (π, -π/2, π)))]
+    phase_warning = (:warn, r"^fix_phases!: column 2 has no weight on the phase mask")
+    sols = @test_logs phase_warning mean_field_solutions(root, spec, (;); starts)
+    bare = @test_logs phase_warning IdDict(ch => bare_child(root, circuit_terms(spec), (;), ch) for ch in leaves)
+    @test length(sols) == 2 && all(s.converged for s in sols)
+    phi(s, i) = real(expectations(s.children[leaves[i]].solved, [[(names[i], phiport())]])[[(names[i], phiport())]])
+    nearest(s) = argmin(j -> maximum(abs(phi(s, i) - ref.solutions[j].phi[i]) for i in 2:3), eachindex(ref.solutions))
+    @test sort([nearest(s) for s in sols]) == [1, 2]
+    for s in sols
+        r = ref.solutions[nearest(s)]
+        @test s.energy ≈ r.energy atol=1e-6
+        tables = IdDict{Node,Expectations}(ch => c.expectations for (ch, c) in s.children)
+        for (leaf, levels) in zip(leaves, r.levels)
+            mf = mean_field_child(root, circuit_terms(spec), (;), leaf, bare[leaf], tables)
+            @test mf.solved.energies[1:3] ≈ Float64.(levels) atol=1e-6
+        end
+    end
+end
