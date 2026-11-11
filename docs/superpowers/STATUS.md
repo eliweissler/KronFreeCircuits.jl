@@ -104,14 +104,14 @@ Test status, 2026-11-11, on the final code of this feature, after the final revi
 First and second derivatives of every kept energy, kept state, port and joint port of a materialized tree, with respect to named spec parameters, at the root and at every node, by perturbation theory carried upward through the tree (design `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`, plan `docs/superpowers/plans/2026-11-11-perturbative-derivatives.md`, architecture §20l, README "Derivatives"; §2, §11, §13, §13.1, §15, §16, §18, §20a, §20b and §20c are amended).
 This replaces the reverse-mode plan of architecture §11, which this file called "plan 5".
 The work is, as of 2026-11-11, on the local branch `derivatives`, off the local `main`; merging it into `main` and pushing are Eli's.
-The run's ledger, with eleven rulings, is a local file that is not tracked (`.superpowers/` is git-ignored); the content of each ruling cited below is stated where it is cited.
+The run's ledger is a local file that is not tracked (`.superpowers/` is git-ignored); the content of each ruling cited below is stated where it is cited.
 It was built overnight without waiting for plan approval, on Eli's instruction of 2026-11-10; the decisions he has not seen are listed under "Decisions still Eli's".
 
 Done:
 - Symbolic derivatives of coefficient expressions over the whole grammar, `differentiate` (`src/diffcoeff.jl`).
-- Retention of the computed but unkept pairs, `Node(...; retain = :auto | :always | :never)` and `Retained` (on by default except at a `Dense` node above 1000 states).
+- Retention of the computed but unkept pairs, `Node(...; retain = :auto | :always | :never)` and `Retained` (on by default except at a `Dense` node above 1000 states, and except in the solves that are never differentiated: the mean-field loop's and `bo_surface`'s).
 - The derivative operator with its three contributions, the first- and second-order rules at one node, the passes through the tree, and the API `derivatives(sys; wrt, order, mixed, scale, ...)` read through `energies`, `eigenvectors` and `port` (`src/derivoperator.jl`, `src/resolvent.jl`, `src/derivatives.jl`).
-- Iterative nodes: a projected, Jacobi-preconditioned conjugate-gradient solve on the complement of the computed states, with a checked true residual; the selection-boundary warning (architecture §11.3).
+- Iterative nodes: a projected, Jacobi-preconditioned conjugate-gradient solve on the complement of the computed states, whose true residual is checked against the whole right-hand side of each column (since the final review, which found the solve failing for weakly coupled children; tested at couplings 0.03 to 3e-4); the selection-boundary warning (architecture §11.3).
 - Near-degenerate blocks with an effective Hamiltonian, `blocks` and `block_levels` (`src/derivblocks.jl`).
 - Augmented children (basis held fixed) and `GivenSystem` children declared independent with `given_independent = true`.
 - `spectrum(root, spec, θ; ports)` and its `rrule` and `frule` in the extension `KronFreeCircuitsChainRulesCoreExt` (weak dependency `ChainRulesCore`), tested directly and through Zygote in `test/chainrules`.
@@ -123,10 +123,12 @@ Measured (details in architecture §20l):
 - Finite differences: the reviewers' independent checks at untested parameter values agree to 2.4e-10 to 1e-7 at first order and to 2.8e-9 to 4e-7 at second order for energies and ports (3.5e-6 for the second derivatives of the vectors of a complex two-level tree), on leaves, two- and three-level trees, joint ports and augmented children.
 - The KITE doublet (Δ = 0.0135992 GHz) at an `LOBPCG` root: the block is found; first and second derivatives in the flux offset agree with finite differences to 4.8e-9 and 6.0e-7 relative; the curvature matches `4c²/Δ` to 1.3e-6 relative; the effective Hamiltonian reproduces a full re-solve within 9.9e-9 GHz at δ = 0.01, where the Taylor expansion misses by 1.17e-2; the iterative and dense routes agree to 3.2e-12.
 - The effective Hamiltonian's error on the `cos 2φ` doublet falls as δ⁴ (1.155e-7, 4.24e-9, 2.87e-10, 1.85e-11 GHz at δ = 0.05, 0.02, 0.01, 0.005).
-- The linear solve: at most 190 iterations in the tests, 49 to 60 at the KITE root; at the default `LOBPCG` tolerance the derivatives still match the dense route to 4.3e-12.
+- The linear solve: at most 190 iterations in the tests, 49 to 60 at the KITE root; at the default `LOBPCG` tolerance the derivatives still match the dense route to 4.3e-12 at `g = 0.3`.
+  At couplings 0.03 to 3e-4 it threw at the default settings until the final review's fix; after it, all 32 cases of the reviewer's comparison finish in 2 to 7 iterations, with state derivatives within 2.1e-8 of the dense route, and the default solvers stay within 5.1e-11 of it at `g = 0.3`.
+- The final review's cross-feature experiments (three-level complex trees with an iterative interior node, augmented children under an iterative root, `indices` and `within` selections, flux offsets on periodic grids, `retain = :never` leaves, Zygote through an iterative root) agree with finite differences to within about 1.5 times the finite differences' own error (architecture §20l has the table).
 - The optimization demonstration: BFGS converged on its gradient tolerance in 13 iterations (1.6 s), reaching the planted design to about 1e-11; the gradient agreed with finite differences to 1.9e-9 relative at the start.
 - The cost of retention at a `Dense` leaf with `compute = 10`: forward time ×4.8 and memory 73 KB → 5.2 MB at 801 states (transmon), ×1.9 and 83 KB → 6.5 MB at 901 (fluxonium); 0.0064 → 0.0111 s and 30 KB → 0.51 MB on the KITE tree.
-- How fast the sum over states converges (first order, three `Dense` leaves): 1e-8 in the state derivatives needs about the 40 to 80 nearest of 596 other states on a fluxonium and 10 of 57 on a transmon; port derivatives converge faster (architecture §20l has the table).
+- How fast the sum over states converges (first order, three cases on two `Dense` leaves): 1e-8 in the state derivatives needs about the 40 to 80 nearest of 596 other states on a fluxonium and 10 of 57 on a transmon; port derivatives converge faster (architecture §20l has the table).
 
 Missed, and why:
 - The device tier did not pass: 13 errors in older complex-`LOBPCG` testsets of `test/cuda/test_device.jl`, none in the new derivative test (10 of 10).
@@ -136,14 +138,17 @@ Missed, and why:
   So a complex iterative node's derivative pass, mixed pairs and blocks are untested on the device.
 - Iterative-node tests tighten the eigensolver tolerance (Decision 11), and second-order finite-difference tests use `rtol = 1e-5` (the design's target is `1e-6`) because second differences are themselves good only to `1e-8` to `8e-6` on the test circuits; the reviewers' checks above give the actual agreement.
 - The second-order state, normalization and gauge formulas were derived for this project, because Eli's notes (`tight_binding.tex`) are not on this machine; they were checked on random Hermitian families (1e-11 and 1e-8), re-derived by a reviewer and confirmed by finite differences, but not compared with the notes (Ruling 4).
-- Untested paths a user could reach: a `NaN` child column entering a parent through several levels; a near-degenerate block at an augmented node; a pair that clashes only in a mixed second-order pass; the terms routed below an augmented node are not checked against those of its bare solve.
+- Found by the final review and fixed in its fix wave: the linear solve failed at default settings for a parameter internal to a weakly coupled child under an iterative parent (its convergence was measured against the small part of the right-hand side outside the computed states, below round-off); a `NaN` child under an iterative parent threw instead of propagating; a `wrt` parameter nothing depends on gave silent zeros; retention reached the mean-field loop and `bo_surface`, where it is never used.
+- Untested paths a user could reach: a `NaN` child column entering a parent through more than one level (one level is tested); a near-degenerate block at an augmented node; a pair that clashes only in a mixed second-order pass; the terms routed below an augmented node are not checked against those of its bare solve.
 
 Departures from the design and decisions Eli has not seen (each with its reason in architecture §20l):
 - `scale` (the `δx` of the block test) is a keyword `NamedTuple` per parameter (Ruling 3; design §4.4 marks this as unconfirmed).
-- The `:follow` restriction is narrowed (Ruling 2): only a node whose phases were actually fixed by following a previous solution is an `ArgumentError` (workaround: re-materialize at the point without `previous`); a `follow` selection alone is differentiated.
-- Retention is on by default (Ruling 7, despite the measured cost above); the default was not changed after the convergence measurement.
-- The linear solve is a hand-written conjugate gradient; the `ShiftInvert` factorization is not reused.
-- Exactly degenerate coupled states give `NaN` derivatives with a reported block, and a `NaN` child makes every ancestor `NaN` (plan Decision P5).
+- The `:follow` restriction is narrowed (Ruling 2): only a node whose phases were actually fixed by following a previous solution is an `ArgumentError` (workaround: re-materialize at the point without `previous`); a `follow` selection is fine with `phase = :positive_sector` given explicitly, or without `previous` (note that `keep = follow(...)` defaults to `phase = :follow`).
+- Retention is on by default (Ruling 7, despite the measured cost above); the default was not changed after the convergence measurement, nor after the final review measured a stored sweep (the `System`s of a 21-point sweep of one 901-point leaf take 130 MB with retention against 0.81 MB without).
+- The linear solve is a hand-written conjugate gradient that runs on any device (P3), and the `ShiftInvert` factorization is not reused, which is that choice's cost; its residual is measured against each column's whole right-hand side.
+- The selection-boundary threshold without `scale` is the plan's (P8): a detuning at most 1e-6 times the distance from the lowest computed energy.
+- A `wrt` parameter nothing depends on is an `ArgumentError` when the spec does not declare it, else zeros with a warning.
+- Exactly degenerate coupled states give `NaN` derivatives with a reported block, and a `NaN` child makes every ancestor `NaN` (plan Decision P5), at a `Dense` or an iterative parent, with one warning per node naming the child.
 - The effective Hamiltonian of a block is second order in the displacement (plan Decision P6).
 - Design §4.8 is partly wrong on Born–Oppenheimer reduced specs: a `fit_surfaces` spec keeps the fitted-over parameters, so derivatives with respect to them are derivatives of the fit, not an error (Ruling 2).
 - The plan assumed the symbolic KITE fixture differs from `test/fixtures/kite/optimum.json` by a flux gauge; a reviewer showed they are the same circuit (coefficients coincide at `delta = 0`, levels agree to 1e-13).
@@ -157,11 +162,11 @@ Side effects on this machine during the run:
 - The root project was resolved once for the new extension: only its `project_hash` and the extension lines of the git-ignored root Manifest changed, no package version.
 - The device diagnosis used scratch worktrees (removed) and instantiated one offline with the older Manifest (nothing downloaded).
 
-Test status, 2026-11-11, on the final code of this project with these documents (ewdesktop, Julia 1.13.2, under load from another job, load average 8 to 19):
+Baseline test status, 2026-11-11, on the code before the final review's fixes, with the first version of these documents (ewdesktop, Julia 1.13.2, under load from another job, load average 8 to 19):
 - Default tier: passed, 28 files, no warnings, 26m33s.
 - Slow tier (`KRONFREE_SLOW_TESTS=1`): passed, 40m47s; its only warnings are the 20 `fix_phases!` warnings that `main` also prints; its notices are the `F2 n_g = 1/2` note of `test/test_catalogue.jl` (also on `main`) and the two this project's tests print on purpose, the largest linear-solve iteration count of `test/test_derivatives_iterative.jl` (190) and of `test/test_derivatives_kite.jl` (60).
 - Python tier: passed, 336 of 336 tests, no warnings, 3m51s, against circuit-quantization at `c8c8714`.
-- Rules tier (`test/chainrules`): passed, 25 of 25 tests (9 + 9 + 7, and the extension check), no warnings, 1m40s.
+- Rules tier (`test/chainrules`): passed, 26 tests (25 in its three testsets, 9 + 9 + 7, and the extension check), no warnings, 1m40s.
 - Device tier (`test/cuda`, the GPU otherwise idle): 311 passed and 13 errored, as expected from the cuBLAS fault above: all 13 in the complex-`LOBPCG` testsets of `test/cuda/test_device.jl`, and the derivative test 10 of 10.
 - `bench/derivative_design/design.jl`: all four checks passed, with the recorded run's numbers to every printed digit except timings, 1m13s.
 - `bench/retention_cost.jl`: ran; the sizes equal the recorded ones, and the times were 0.035 → 0.087 s (transmon), 0.076 → 0.152 s (fluxonium) and 0.0055 → 0.0102 s (KITE) for `retain = :never` → `:auto`.
@@ -199,7 +204,7 @@ Proposed by Eli (2026-10-20), not yet designed:
 
 ## Open items, in priority order
 
-1. Test time is now tiered (Eli, 2026-10-20): the default `Pkg.test()` runs the 14 unit-level files in about 50 s; `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes on the loaded Mac (`SLOW_FILES` and `REFERENCE_FILES` in test/runtests.jl); `Pkg.test(test_args=[...])` runs named files. Most of the full suite's time is first-call compilation of the materialize and solver paths; a PrecompileTools workload would cut it for tests and users alike (not done).
+1. Test time is now tiered (Eli, 2026-10-20): the default `Pkg.test()` runs the unit-level files (14 in about 50 s then; 28 since the perturbative derivatives, 26 minutes on the loaded ewdesktop); `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes on the loaded Mac (`SLOW_FILES` and `REFERENCE_FILES` in test/runtests.jl); `Pkg.test(test_args=[...])` runs named files. Most of the full suite's time is first-call compilation of the materialize and solver paths; a PrecompileTools workload would cut it for tests and users alike (not done).
 2. `ShiftInvert(slices=8)` measured 4.35 s against 2.9 s for a single shift on the benchmark leaf; `Auto()` keeps the single shift.
 3. Done (2026-10-20, `bench/dense_cutoff/results.md`): `Auto()`'s `dense_cutoff` is lowered from 2500 to 1000.
    `Dense` loses to `ShiftInvert` (leaves) and `LOBPCG` (branches) from below 100 to about 350 states, or about 700 to 960 for a 1-mode transmon leaf, on an M2 at 1 and 4 BLAS threads, so about 1000 is the speed-optimal cutoff for all shapes together; between 1000 and 2000 states `Dense` takes 0.04 to 0.9 s per node against 0.02 to 0.09 s.
@@ -235,6 +240,11 @@ Proposed by Eli (2026-10-20), not yet designed:
 - Selection cluster closure over near-degenerate states (not part of the perturbative-derivatives project; the §11.3 warning now exists as its selection-boundary test).
 - How the `scale` (`δx`) of the near-degeneracy test is supplied (design §4.4); built as a keyword `NamedTuple` per parameter.
 - The retention default, in view of its measured cost and of how fast the sums converge: whether a convergence-checked sum over the nearest states should replace full retention (design §4.5; both tables in architecture §20l).
+  Stored results pay it too: the `System`s of a 21-point sweep of one 901-point leaf take 130 MB with retention against 0.81 MB without (`retain = :never` per node restores the old size); the solves inside the mean-field loop and `bo_surface` no longer retain.
+- Plan Decision P5 at symmetric operating points: a non-degenerate root whose derivative exists reports `NaN` because a child keeps both members of an exactly degenerate, coupled pair; a parallel-transport gauge inside the child would give correct parent energies (not built).
+- Test tolerances looser than the agreement measured (not changed): iterative and device vectors and ports 1e-6 / 1e-5 against 1e-11 to 1e-12; KITE `block_levels` 1e-4 against 1e-8, its curvature 1e-2 against 1.3e-6; trees 1e-6 against at most 4.3e-8; stored-data children 1e-6 / 1e-5 against 2e-9 / 4e-7; the rules 1e-6 against about 1e-8.
+- Not built, for a later decision: a pairs-only second-order request; reuse of the `ShiftInvert` factorization; `show` methods for `Derivatives` and `NearDegenerateBlock`; `extra_terms` in `spectrum`; a clear error for differentiating twice through the rule.
+- The plan's choices listed under "Departures from the design" above (and in architecture §20l): `scale`, the narrowed `:follow` rule, the hand-written solver, the selection-boundary threshold without `scale`, the handling of unused parameters.
 - Whether an augmented child's union basis should ever move with the parameters (today it is held fixed, so the derivative is that of the projected problem).
 - Whether followed sweeps (`phase = :follow` with `previous`) need differentiating; today they are refused.
 - The device fault: reboot or reset the GPU and rerun a 2×2 `CUBLAS.trsm!` with `ComplexF64`; if it persists, re-download the CUDA runtime artifact, then report it to JuliaGPU/CUDA.jl (no compat bound: the older stack fails the same way).

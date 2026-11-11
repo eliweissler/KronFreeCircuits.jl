@@ -381,6 +381,7 @@ Intermediate truncations are robust to relabeling inside the kept set, because t
 
 Amended 2026-11-11 (Section 20l): the explicit cluster handling is the near-degenerate block report (`blocks`, `block_levels`): a pair of kept states is flagged when its coupling times the caller's scale of the parameter exceeds a fraction of its detuning, and each block carries an effective Hamiltonian for finite displacements; point derivatives stay the true derivatives, and an exactly degenerate coupled pair gives `NaN` with a report.
 The cluster-invariant observables listed below were not built as separate functions.
+The warning below "when two *kept* states at a node are within the tolerance of each other" was not built either: near-degenerate kept pairs are reported only as blocks.
 
 Zero-pi qubits have ground doublets split by MHz or less while the spectrum spans GHz.
 Within such a cluster the individual eigenvectors are only resolved to about (solver tolerance)/(splitting) in the forward pass, and the eigenvector pullback amplifies cotangents by $1/(\lambda_i-\lambda_j)$.
@@ -714,7 +715,7 @@ A warm start whose element type differs from the operator's (only possible when 
 `ShiftInvert` follows the operator's element type only: its assembled-matrix realness check (`isreal_assembled`, value-based) is retired from the solver and from the exports (Eli, 2026-10-18), and tests that used it check the operator's element type instead.
 The CUDA extension needs no new device code beyond confirming the real path (cuTENSOR and cuBLAS real contractions, the expectation kernel already generic).
 
-**What stays complex.** Complex nodes; imaginary and paired ports in their natural type; `charge_port` on a `PeriodicGrid` mode; derivative operators and the autodiff pullbacks of plan 4, which promote to complex where a cotangent or a derivative operator is complex.
+**What stays complex.** Complex nodes; imaginary and paired ports in their natural type; `charge_port` on a `PeriodicGrid` mode; derivative operators and the autodiff pullbacks of plan 4, which promote to complex where a cotangent or a derivative operator is complex (amended 2026-11-11: there are no autodiff pullbacks; the derivative operators of Section 20l are built in the node's own arithmetic, and the outer rule's tangents take the promoted element type of a port and its derivative).
 
 **Validation (decided).** For every fixture with a real node, materializing with `arithmetic=:auto` and with `arithmetic=:complex` gives energies equal to about 1e-12 with `Dense` and to the solver tolerance otherwise, ports equal up to the per-state signs (inside an exactly degenerate level, where the two paths may pick different bases, the comparison uses rotation-invariant quantities such as the cluster projector and the port's block norms), and the expected arithmetic per node (the classification above is a test).
 Tests that relied on `isreal_assembled` change meaning: the `PeriodicGrid` transmon at a parameter `n_g` of 0 is now complex by structure, so those assertions become element-type checks (the exact-zero imaginary part of its assembled matrix at `n_g = 0` can still be asserted as a property of the operator data; at ½ it is nonzero in the periodic gauge, §20d 2026-10-30).
@@ -773,7 +774,7 @@ The generator applied `together` to every expression before `to_spec(res)` for t
 
 The Born–Oppenheimer workflow of Section 13.1 is designed in `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md` and implemented in `src/spectransform.jl` (`substitute`, `promote_mode`) and `src/bo.jl` (`bo_surface`, `fourier_coefficients`, `slow_spec`, `fit_surfaces`).
 Promotion is spec-level: `promote_mode` turns a mode of a `Spec` into a parameter and returns the fast `Spec`, so the term list, `materialize` and the tree are unchanged; a charge coupling between the slow and fast modes is rejected by expression, never by value.
-The surface reaches the slow stage only as a reduced one-mode spec (a Fourier `slow_spec` or a linear least-squares `fit_surfaces`), written with `save_spec`; the data-valued `DiagonalOp` entry into a `Term` (Section 20a) is still deferred to plan 5.
+The surface reaches the slow stage only as a reduced one-mode spec (a Fourier `slow_spec` or a linear least-squares `fit_surfaces`), written with `save_spec`; the data-valued `DiagonalOp` entry into a `Term` (Section 20a) is still deferred to plan 5 (amended 2026-11-11: plan 5 was replaced by Section 20l, which does not wrap `materialize`; the entry is now an open item of its own, STATUS.md).
 Acceptance: the gated `test/test_born_oppenheimer_reference.jl` reproduces Di Paolo et al.'s E_α and E_γ (arXiv:1811.07921v1, Appendix B) to 0.2% with E_Cφ derived from the plasma-frequency identity (decided 2026-10-20; `bench/born_oppenheimer/results.md`).
 
 ### 20i. Composite ports (2026-10-26)
@@ -1100,21 +1101,23 @@ They were checked numerically on random Hermitian families before the plan was w
 
 **What a derivative is.**
 The derivatives are those of the calculation as performed: the selection of kept states, every basis, grid and cutoff, the coordinate frame, the mean-field bases, the solver of each node, its real or complex arithmetic and its discrete phase choice (its peak indices, `peak_component`) are held fixed.
-They agree with finite differences of `materialize` wherever those are themselves well defined (away from exact degeneracies, symmetric points, kept/unkept crossings and changes of a peak index inside the stencil).
+They agree with finite differences of `materialize` wherever those are themselves well defined (away from exact degeneracies, symmetric points, kept/unkept crossings and changes of a peak index inside the stencil), to within the finite differences' own error in every measurement below, including weakly coupled children under an iterative parent (the weak-coupling testset of `test/test_derivatives_iterative.jl`, couplings 0.03 to 3e-4, added after the final review found that case failing).
 A node's `∂H/∂x` has three contributions: the derivatives of the coefficients of the terms routed to it (and, at the root, of the constant), its children's port and joint-port derivatives, and its children's energy derivatives on the diagonal (Section 11.1, which stands).
 Removing either of the last two makes a test fail (`test/test_derivoperator.jl`, `test/test_derivatives_tree.jl`).
 Coefficients are differentiated symbolically over the whole expression grammar, `differentiate(c, x)` (`src/diffcoeff.jl`); the result is an ordinary `Coefficient`, so `∂H/∂x` is applied by the existing apply layer.
 The derivative operator is built from the terms themselves, beside the forward operator and never from it (Decision 4): the forward real operator drops a term whose coefficient vanishes at `θ`, whose derivative need not vanish (a coupling at `g = 0`, a flux term at `varphi_ext = 0`).
 A node none of whose terms (in its subtree, and the constant at the root) depends on `x` is not visited and reads as zeros (P7).
+At the root, a parameter of `wrt` that nothing in the system depends on (no term, no augmented child's bare term, not the constant) is an `ArgumentError` when the system has a spec that does not declare it (a `θ` key the spec never named, or a parameter `substitute` replaced by a number), and otherwise reads as zeros with one warning; the rules of `spectrum` differentiate only the parameters something depends on and neither throw nor warn for the others.
 
 **First order at one node** (plan Task 4; `src/derivatives.jl`, `_node_first_order`).
-`V` are the kept vectors (columns `ψ_j`), `E` the kept energies, `A = mn.peak_amplitudes`, and `H1 = ∂H/∂x`.
+`mn` is the node's materialized data (a `MaterializedNode`), `V` its kept vectors (columns `ψ_j`), `E` its kept energies, `A = mn.peak_amplitudes`, and `H1 = ∂H/∂x`; `dx` holds, per axis of the node, the child's first-order derivative data along `x` (a `NodeDerivative`) or `nothing` for a basis or a child that does not depend on `x`.
+In physical terms: Hellmann–Feynman for the energies, first-order perturbation theory over every other state for the states, then a phase term that keeps the phase convention.
 
-1. `R = H1 V`, `C = V† R`, and `∂E_j = Re C[j, j]` (the paper's `eq:eig_val_grad`).
-2. `W, clashes = _apply_resolvent(res, R, E, [[j] for j])`: `w_j = Σ_{l ≠ j} ψ_l ⟨ψ_l|H1|ψ_j⟩ / (E_j − E_l)` over all states of the node's space, so `(H − E_j) w_j = −(H1 − ∂E_j) ψ_j` and `w_j ⟂ ψ_j` (the paper's `eq:eig_vec_grad`, with the sum complete).
+1. `R = H1 V`, `C = V† R`, and `∂E_j = Re C[j, j]` (the paper's `eq:eig_val_grad`): the energy moves by the expectation value of the perturbation.
+2. `W, clashes = _apply_resolvent(res, R, E, [[j] for j])`: `w_j = Σ_{l ≠ j} ψ_l ⟨ψ_l|H1|ψ_j⟩ / (E_j − E_l)` over all states of the node's space, so `(H − E_j) w_j = −(H1 − ∂E_j) ψ_j` and `w_j ⟂ ψ_j` (the paper's `eq:eig_vec_grad`, with the sum complete): the state mixes in each other state in proportion to their coupling over their detuning.
 3. The gauge.
    The phase convention makes `ℓ_j · ψ_j` real and positive, where `ℓ_j · X = _peak_map(mn, X, _peak_amps(mn))[j, :]` (at a leaf it is the entry of `X` at the state's peak index; at a branch the contraction with the children's peak amplitudes).
-   Its derivative must be real: `a_j = −Im( L1[j, j] + L0[j, j] ) / Re A[j, j]`, with `L0 = _peak_map(mn, W, _peak_amps(mn))` and `L1` the sum, over the axes `k` with `dx[k] !== nothing`, of `_peak_map(mn, V, amps)` with `amps[k]` replaced by `dx[k].peak_amplitudes`.
+   Its derivative must therefore be real, which fixes the one free component of `∂ψ_j`, along `iψ_j`: `a_j = −Im( L1[j, j] + L0[j, j] ) / Re A[j, j]`, with `L0 = _peak_map(mn, W, _peak_amps(mn))` and `L1` the sum, over the axes `k` with `dx[k] !== nothing`, of `_peak_map(mn, V, amps)` with `amps[k]` replaced by `dx[k].peak_amplitudes`.
    On a real node `a_j = 0` and is not computed.
 4. `∂ψ_j = w_j + i a_j ψ_j`; `gauge = a`.
 5. `∂A = _peak_map(mn, ∂V, _peak_amps(mn)) + L1`.
@@ -1122,6 +1125,7 @@ A node none of whose terms (in its subtree, and the constant at the root) depend
    `∂P = _sandwich(mn, ∂V, V, K, ops) + _sandwich(mn, V, ∂V, K, ops) + Σ_g _sandwich(mn, V, V, K, ops with entry g replaced by _derivative_op(dx[k_g], K_g))`, the last sum over the entries `g = (k_g, op_g, K_g)` whose child has derivative data.
    `O` need not be Hermitian, so the first two terms are computed separately.
 7. A column with a clash gets `∂E_j = NaN` and `∂ψ_j = NaN` (and `NaN` flows into the ports and peak amplitudes), with one warning per call that names the states.
+8. A column of `R` that is not finite comes from a child whose derivative is undefined (P5): it is set to zero before the resolvent (so it reaches no linear solve, no selection-boundary test and no block search), and every output of that state is `NaN`, its gauge included on a real node, with one warning per call naming the children ("…undefined (NaN) because a child's derivative is undefined…"), not a degeneracy warning.
 
 The phase convention is one functional at every node, "`ℓ_j · ψ_j` is real and positive", so leaves and branches share one code path and each node hands the derivative of its peak amplitudes to its parent (P4).
 On a complex node the eigenvector rule differs from the paper's by the term along `ψ_j` itself (step 4), which the paper sets to zero.
@@ -1130,18 +1134,20 @@ Energies and diagonal port elements are blind to that term; the off-diagonal ele
 **Second order at one node** (plan Task 7; `_node_second_order`).
 The operator `∂²H/∂x∂λ`, for a term with coefficient `c` and operators `ops`, with `g`, `h` running over the entries of `ops`: `c_xλ(θ)` on `ops`; `c_x(θ)` on `ops[g → dλ]` and `c_λ(θ)` on `ops[g → dx]`, for every `g` whose child has that data; `c(θ)` on `ops[g → dxλ]`; `c(θ)` on `ops[g → dx, h → dλ]` for every ordered pair `g ≠ h`; then the children's second energy derivatives on the diagonal and the constant's second derivative.
 With `x == λ` the same list gives the factor 2 of the cross terms.
-Per kept state `j`, with `W^x = ∂_xV − i V diag(a^x)` (likewise `W^λ`):
+Per kept state `j`, with `W^x = ∂_xV − i V diag(a^x)` (likewise `W^λ`), the part of the first derivative orthogonal to the state (columns `w^x_j`), and `dx`, `dλ`, `dxλ` the children's first- and second-order data per axis as above.
+In physical terms: second-order perturbation theory driven by the first-order responses, then the normalization and the phase convention, each differentiated once more.
 
 1. `RHS = (Hx W^λ − W^λ diag(∂_xE)) + (Hλ W^x − W^x diag(∂_λE)) + Hxλ V`.
-2. `∂²E_j = Re⟨ψ_j|RHS_j⟩`, which equals `⟨ψ_j|Hxλ|ψ_j⟩ + 2 Re⟨w^x_j|Hλ|ψ_j⟩`, the paper's `eq:eig_val_secondgrad`.
-3. `G, clashes = _apply_resolvent(res, RHS, E, [[j] for j])` and `U = G + i W^x diag(a^λ) + i W^λ diag(a^x)`: the part of `∂²ψ_j` orthogonal to `ψ_j`.
-4. Normalization: `Re⟨ψ_j|∂²ψ_j⟩ = −Re⟨∂_xψ_j|∂_λψ_j⟩ = −Re⟨w^x_j|w^λ_j⟩ − a^x_j a^λ_j =: n_j`.
+2. `∂²E_j = Re⟨ψ_j|RHS_j⟩` (the curvature of the level: the second-order operator's expectation plus the level repulsion of the first-order mixing), which equals `⟨ψ_j|Hxλ|ψ_j⟩ + 2 Re⟨w^x_j|Hλ|ψ_j⟩`, the paper's `eq:eig_val_secondgrad`.
+3. `G, clashes = _apply_resolvent(res, RHS, E, [[j] for j])` and `U = G + i W^x diag(a^λ) + i W^λ diag(a^x)`, whose column `u_j` is the part of `∂²ψ_j` orthogonal to `ψ_j`.
+4. Normalization (the state stays a unit vector to second order): `Re⟨ψ_j|∂²ψ_j⟩ = −Re⟨∂_xψ_j|∂_λψ_j⟩ = −Re⟨w^x_j|w^λ_j⟩ − a^x_j a^λ_j =: n_j`.
 5. Gauge (complex nodes; `b_j = 0` on a real node): the second derivative of `ℓ_j · ψ_j` is real, so `b_j = −Im( ℓ^{xλ}_j·ψ_j + ℓ^x_j·∂_λψ_j + ℓ^λ_j·∂_xψ_j + ℓ_j·u_j ) / Re A[j, j]`, where `ℓ^x` replaces one axis's amplitudes by the child's first derivative (summed over the axes with data), and `ℓ^{xλ}` is the sum over axes of the child's second derivative replaced, plus the sum over ordered pairs of axes `k ≠ m` with `k → dx[k]`, `m → dλ[m]` replaced together.
 6. `∂²ψ_j = u_j + (n_j + i b_j) ψ_j`; `gauge = b`.
 7. `∂²A = ℓ·∂²V + ℓ^x·∂_λV + ℓ^λ·∂_xV + ℓ^{xλ}·V` (all rows).
 8. Each port and joint port, with `S(W, V; O)` for `_sandwich`, `O_x` the operator with one entry replaced by the child's `x`-derivative (summed over entries), and `O_xλ` built like `ℓ^{xλ}`:
    `∂²P = S(∂²V, V; O) + S(V, ∂²V; O) + S(∂_xV, ∂_λV; O) + S(∂_λV, ∂_xV; O) + S(∂_xV, V; O_λ) + S(V, ∂_xV; O_λ) + S(∂_λV, V; O_x) + S(V, ∂_λV; O_x) + S(V, V; O_xλ)`.
 9. A column with a clash in step 3, or already `NaN` at first order, is `NaN` in energy and state, with one warning.
+   When a child's first- or second-order data is undefined, the columns of `RHS` that are not finite and the node's own first-order `NaN` states are inherited from the child: they are zeroed before the resolvent, are `NaN` (gauge included), and are reported by the warning of step 8 of the first order, not as "degenerate at first order".
 
 The tree pass runs one first-order pass per parameter and, with `order = 2`, one second-order pass per parameter and per mixed pair; each node's resolvent is formed once and shared by all passes.
 A second-order pass rebuilds `∂H/∂x`, `∂H/∂λ` and `∂²H/∂x∂λ` at each node; only first-order data and resolvents are kept between passes.
@@ -1149,9 +1155,12 @@ A second-order pass rebuilds `∂H/∂x`, `∂H/∂λ` and `∂²H/∂x∂λ` at
 **What is retained, and its cost** (Decision 2, P1, P2; `Retained` in `src/materialize.jl`, the `retain` keyword in `src/tree.jl`).
 The sum over states needs the states a node computed but did not keep.
 Every node now retains them (`Node(...; retain = :auto)`), except a `Dense` node above 1000 product states (`_RETAIN_DENSE_MAX`, the `Auto` dense cutoff), where it is opt-in (`retain = :always`); `retain = :never` restores the old behaviour per node.
+The solves whose results are never differentiated do not retain whatever the node's setting: the re-solves inside the mean-field loop (`mean_field_child`) and the solves of `bo_surface` (an internal override of `_solve_node`, added after the final review; `bare_child` keeps the node's setting, since the derivative pass visits its children below an augmented node).
 `Retained` holds every computed energy, the vectors of the computed states that were not kept (the kept ones are not stored twice), and the flags `complete` and `followed`.
 A retaining `Dense` node with a `compute` limit computes its full decomposition, and still hands only the lowest `compute` pairs to `keep`.
-A `Dense` node without its complete spectrum is re-diagonalized by the derivative pass, with an `@info` naming the remedy `retain = :always`.
+A `Dense` node without its complete spectrum is re-diagonalized by the derivative pass, with one `@info` per node naming the remedy `retain = :always`.
+Where its selection boundary cuts an exactly degenerate cluster, the re-diagonalization's partners of a kept state are replaced by an orthonormal basis of the cluster with the stored kept vectors projected out, so that the other columns do not count the kept state twice (measured on the `cos 2φ` element with the pair at 16 GHz cut: the derivative of the ground state, which couples to the pair, equals a retaining twin's to 1e-12, where before it put the pair's whole contribution, 0.0625, on one charge state instead of 0.03125 on each).
+A retaining compute-limited `Dense` node now computes the full decomposition where it computed a partial one, so the rotation inside an exactly degenerate pair of kept states may differ from before (noted when retention was built; energies and the kept subspace are unchanged).
 Measured cost of the default (`bench/retention_cost.jl`, minimum of five `materialize` timings and `Base.summarysize`, on the loaded build machine):
 
 | tree | `retain = :never` | `retain = :auto` |
@@ -1161,10 +1170,11 @@ Measured cost of the default (`bench/retention_cost.jl`, minimum of five `materi
 | the KITE tree of `test/test_meanfield_kite.jl`, optimum frame | 0.0064 s, 30 KB | 0.0111 s, 0.51 MB |
 
 Ruling 7 kept the default despite this cost: the absolute cost is under 0.1 s per leaf, the owner prefers retention (design §4.5), and `retain = :never` restores the old behaviour; it costs slower forward solves in loops that re-solve small `Dense` leaves with a `compute` limit many times.
+That ground understates the cost of keeping results: the final review measured the `System`s of a 21-point sweep of one 901-point leaf at 130 MB with retention against 0.81 MB without (`retain = :never` per node restores the old size).
 Peak memory at a retaining `Dense` node with `compute` below its dimension is about 4N² elements while it is solved (a reviewer's reading of the code, not measured).
 
 **How fast the sum over states converges** (design §4.5 asked for this before the default is fixed; `bench/derivative_sums.jl`).
-At three single `Dense` leaves, the first-order state derivatives were recomputed with the resolvent's other states cut to the `M` lowest above the kept ones; the table gives the largest error relative to the largest element of the full result, for the state derivatives and for each port derivative:
+In three cases on two single `Dense` leaves (the fluxonium for `varphi_ext` and for `E_J`, and the transmon), the first-order state derivatives were recomputed with the resolvent's other states cut to the `M` lowest above the kept ones; the table gives the largest error relative to the largest element of the full result, for the state derivatives and for each port derivative:
 
 | leaf, parameter | M | states | port 1 | port 2 |
 |---|---|---|---|---|
@@ -1193,18 +1203,27 @@ The default was not changed; the choice is the owner's (STATUS.md).
 **Iterative nodes: the linear solve** (Decision 1, P3, Ruling 9; `src/resolvent.jl`, `_complement_solve`).
 At a node without its complete spectrum (`LOBPCG`, `Lanczos`, `ShiftInvert`, `ChebyshevFilter`), the part of each state derivative orthogonal to the node's known states (kept and retained unkept) solves `Q (H − E_j) Q x = −Q R_j`, with `Q` the projector off the known states, and the sum over the known states gives the rest; truncating to the known states without the solve is never done (a test asserts that it would be wrong).
 The solver is a hand-written conjugate gradient, all columns in lockstep through the operator's block apply, projected on the complement, preconditioned by the Jacobi diagonal `1 / hypot(D − E_j, 0.01)` that `:ritz` uses; it uses only `mul!`, broadcasts and column sums, so it runs on a device unchanged.
-Its true residual is recomputed with a fresh application of `H` and must be at most `10 lintol` (`lintol = 1e-10`, `linmaxiter = 5000`); a column that misses it, or a non-positive `⟨p, (H − E_j) p⟩` (a kept state degenerate with or above a state that was not computed), is an error.
-Each solve is recorded in `Derivatives.linear_solves`.
-A right-hand side whose projection on the complement is only round-off (`‖Q B_j‖ ≤ lintol ‖B_j‖`) is solved as exactly zero (Ruling 9).
-The `ShiftInvert` factorization is not reused (the design allowed it; `KrylovKit.linsolve` has no preconditioner hook and works one column at a time, P3).
-A node that keeps every state of its space needs no solve, and a node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones.
-Measured: the largest iteration count in the tests is 190 (`test/test_derivatives_complement.jl`); at the KITE root (`LOBPCG`, 6 computed, 4 kept) 15 solves took 49 to 60 iterations with true residuals at most 9.8e-11.
-The iterative tests tighten the eigensolver tolerance (`tol = 1e-11`, Decision 11); a reviewer measured that at the default `LOBPCG` tolerance (1e-8) the derivatives still match the dense route to 2.8e-12 (vectors) and 4.3e-12 (energies).
+Its right-hand side is formed on the host as `R_j` minus its components on every known state, from the overlaps the sum over the known states already uses (Decision 1's `R_j − ψ_j ∂E_j`, with the other known components subtracted too, in one cancellation).
+Its convergence and its true residual, recomputed with a fresh application of `H`, are measured against `‖R_j‖`, the norm of the whole right-hand side of the column, the scale of the whole derivative, and the true residual must be at most `10 lintol` relative to it (`lintol = 1e-10`, `linmaxiter = 5000`); a column that misses it is an error, and so is a non-positive `⟨p, (H − E_j) p⟩` on a column that has not converged ("a state below or degenerate with the kept state was not computed (or was not retained)").
+A column whose complement part is already below `lintol ‖R_j‖` is converged from the start and solved as exactly zero; this subsumes Ruling 9's rule (`‖Q B_j‖ ≤ lintol ‖B_j‖`).
+Each solve is recorded in `Derivatives.linear_solves`, with `residual` the largest true residual relative to `‖R_j‖` and `from_start` the columns converged from the start.
+Why the scale is `‖R_j‖` (the final review's finding, fixed after it): until then convergence was measured against `‖Q R_j‖`.
+For a parameter internal to a weakly coupled child, `R_j ≈ ψ_j ∂E_child` lies almost inside the parent's computed states, and the round-off of the projection, about `eps ‖R_j‖`, cannot go below `lintol ‖Q R_j‖` once `‖Q R_j‖/‖R_j‖` falls under about 1e-6.
+Measured on two transmons under an `LOBPCG` root (12 states per leaf, 8 computed, 6 kept), for `E_J2`: `‖Q R_j‖/‖R_j‖` was 5e-5 to 2e-3 at `g = 0.03`, 5e-6 to 2e-4 at 0.003 and 5e-7 to 2e-5 at 3e-4, while the conjugate gradient's floor stayed at a true residual of 5e-16 to 9e-15 of `‖R_j‖`, that is 1e-10 to 3e-9 of `‖Q R_j‖`; the default settings threw "did not converge" at `g = 0.03` (`E_J2`) and at 0.003 (`E_J2`, `E_C1`), and "not positive on the complement" at 3e-4 on periodic grids, where the iteration continued past its round-off floor.
+After the fix all 32 cases of that comparison (charge bases and periodic grids, `g` from 0.3 to 3e-4, `E_J2`, `E_C1`, `n_g1`, `g`) finish in 2 to 7 iterations, with state derivatives within 2.1e-8 of the `Dense` route (within 7e-10 down to `g = 0.003`); the slow tier's weak-coupling testset checks them against the `Dense` route at both orders, and the fast tier one case.
+At the ordinary coupling (`g = 0.3`) the state derivatives of a child-internal parameter now agree with the `Dense` route to 3.5e-12 where they agreed to 5e-14 (the looser scale), and the reviewer's comparison of the default solvers against the `Dense` route (`Auto()`, `ShiftInvert` leaf and `LOBPCG` root at their default tolerances, both orders and mixed) is unchanged at 5.1e-11 at worst.
+The `ShiftInvert` factorization is not reused: plan P3 chose one hand-written conjugate gradient that runs unchanged on any device, and gives up that reuse as its cost (`KrylovKit.linsolve`, the other candidate, has no preconditioner hook and works one column at a time).
+A node that keeps every state of its space needs no solve, and a node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones; it records no selection-boundary pairs (its unkept computed states are not known).
+The iteration count grows roughly linearly with a grid leaf's point count (measured: 744, 1505 and 3055 iterations at 3001, 6001 and 12001 points at the default settings), so `linmaxiter` may need raising for very fine grids.
+Measured: the largest iteration count in the tests is 190 (`test/test_derivatives_iterative.jl`); at the KITE root (`LOBPCG`, 6 computed, 4 kept) 15 solves took 49 to 60 iterations with true residuals at most 9.8e-11 (both before the change of scale).
+The iterative tests tighten the eigensolver tolerance (`tol = 1e-11`, Decision 11); a reviewer measured that at the default `LOBPCG` tolerance (1e-8) the derivatives still match the dense route to 2.8e-12 (vectors) and 4.3e-12 (energies), at `g = 0.3` only.
 
 **Degeneracy, the selection boundary and near-degenerate blocks** (design §4.4; Decision 7, P5, P6, P8; `src/derivblocks.jl`).
 - Exact degeneracy.
   A pair within `degenerate_tol = 1e-9` GHz is exactly degenerate; with a zero coupling by the per-column rule (`|⟨ψ_l|R_j⟩| ≤ 1e-10 ‖R_j‖`, the one definition of a zero coupling throughout) it is left out of the sum, otherwise the column is `NaN`, with a warning and a block (or a selection-boundary record when the partner is not kept).
   A `NaN` child makes every ancestor `NaN` (P5): a parent whose own derivatives exist despite a degenerate coupled pair in a child reports `NaN`, and the block report names the child.
+  This holds at a `Dense` and at an iterative parent, at both orders, and when the child clashes only at second order (tested in `test/test_derivatives_blocks.jl`); until the final review an iterative parent threw "not positive on the complement" instead, and a `Dense` parent's second-order warning called its states "degenerate at first order".
+  The cost at symmetric operating points: a non-degenerate root whose derivative exists reports `NaN` because a child keeps both members of an exactly degenerate, coupled pair; a parallel-transport gauge inside the child would give correct parent energies (not built; the owner's decision, STATUS.md).
 - The selection boundary (the warning of Section 11.3).
   At every visited node, a kept state close to an unkept computed state warns ("selection boundary") and is recorded in `Derivatives.boundary`, since the derivative at a fixed selection is fragile there.
   "Close" is the block test below when `scale` has an entry for the parameter, else a detuning at most `1e-6` times the states' distance from the node's lowest computed energy (P8); an exact degeneracy with an unkept state it couples to, at either order, is always recorded.
@@ -1214,8 +1233,8 @@ The iterative tests tighten the eigensolver tolerance (`tol = 1e-11`, Decision 1
   Point derivatives are always the true derivatives and are not changed by the blocks (bitwise identical with and without `scale`, measured by a reviewer).
   A block is a validity report: the second-order Taylor expansion of its levels is not trusted over `δx`.
   It carries the effective Hamiltonian, second order in the displacement (first order when `order = 1`), P6:
-  `H_eff(δ) = E_B + Σ_x δ_x C^x + ½ Σ_{x,y} δ_x δ_y (⟨H_xy⟩ + F^{xy} + F^{yx})`, with the states outside the block folded in through `F^{xy} = ½ (M^{xy} + (M^{yx})†)`, `M^{xy}[b, b′] = ⟨(∂H/∂x) ψ_b|Y^y_{b′}⟩` and `Y^y_{b′} = Σ_{l ∉ B} ψ_l ⟨ψ_l|∂H/∂y|ψ_{b′}⟩ / (E_{b′} − E_l)` over every state outside the block, kept or not.
-  `block_levels(b, displacement)` diagonalizes it densely; its eigenvalues differ from a re-solve by `O(|δ|³ v³ / g²)` (`v` the block's largest coupling to outside states, `g` its gap to them).
+  `H_eff(δ) = diag(E_B) + Σ_x δ_x C^x + ½ Σ_{x,y} δ_x δ_y (⟨H_xy⟩ + F^{xy} + F^{yx})`, with `E_B` the block's energies, `C^x = H1[x] = ⟨ψ_b|∂H/∂x|ψ_b′⟩` and `⟨H_xy⟩ = ⟨ψ_b|∂²H/∂x∂y|ψ_b′⟩` over the block's states `b`, `b′`, the states outside the block folded in through `F^{xy} = ½ (M^{xy} + (M^{yx})†)`, `M^{xy}[b, b′] = ⟨(∂H/∂x) ψ_b|Y^y_{b′}⟩` and `Y^y_{b′} = Σ_{l ∉ B} ψ_l ⟨ψ_l|∂H/∂y|ψ_{b′}⟩ / (E_{b′} − E_l)` over every state outside the block, kept or not.
+  `block_levels(b, displacement)` diagonalizes it densely (an `ArgumentError` when it is not finite, which happens when a block state is exactly degenerate with a state outside the kept set that it couples to, a selection-boundary record); its eigenvalues differ from a re-solve by `O(|δ|³ v³ / g²)` (`v` the block's largest coupling to outside states, `g` its gap to them).
   Measured on the `cos 2φ` doublet (detuning 0.0593 GHz, coupling 0.7456, `test/test_derivatives_blocks.jl`), against independent re-solves, by a reviewer:
 
   | δ | 0.05 | 0.02 | 0.01 | 0.005 |
@@ -1225,6 +1244,7 @@ The iterative tests tighten the eigensolver tolerance (`tol = 1e-11`, Decision 1
   The error falls as δ⁴ at this symmetric point (the odd orders vanish there), so no second-order term is missing.
   On the KITE doublet (below) it is 9.9e-9 at δ = 0.01 and 1.1e-9 at δ = 0.005.
   Forming a block's second-order pieces costs two resolvent applications per pass on as many columns as the block has states.
+  For a block flagged in more than one way `coupling` is the largest of quantities that may have different units, for reporting only; `tr(H1[x])` and `tr(H2[(x, x)])` are the block-invariant sums of the first and second derivatives of the block's energies, which exist even when the per-state derivatives are `NaN`.
 
 **Stored-data children** (design §4.8, Decision 8).
 An augmented child (Section 20k) is differentiated as its bare operator projected on its fixed stored basis: its `∂H/∂x` is the derivative of its stored bare terms projected on the basis, plus its node children's port and energy derivatives; its stored states are the whole spectrum of the projected problem, so its resolvent is the sum over them, with no solve, no re-diagonalization and no selection boundary.
@@ -1237,27 +1257,27 @@ A Born–Oppenheimer reduced spec is an ordinary spec and needs no special handl
 **The API** (Decision 6, P9).
 
 - `derivatives(sys::System; wrt, order=1, mixed=(), scale=(;), r=0.1, degenerate_tol=1e-9, lintol=1e-10, linmaxiter=5000, given_independent=false) -> Derivatives`.
-  `wrt` is a parameter or a collection; `mixed` holds pairs of different parameters of `wrt` (both must be in `wrt`, the plan's disagreement on D6) and needs `order = 2`; `scale` is a `NamedTuple` of positive displacements of parameters in `wrt`.
-- Read through new methods of the existing generics, at the root or at any `node`: `energies(d, x[, node])`, `eigenvectors(d, x[, node])`, `port(d, x, mode, p[, node])` and `port(d, x, key[, node])` for a joint port, and the same with two parameters `(d, x, λ, ...)` for second derivatives (symmetric in `x`, `λ`).
+  `wrt` is a parameter or a collection; `degenerate_tol ≥ 0`, `lintol > 0` and `linmaxiter > 0` are checked; `mixed` holds pairs of different parameters of `wrt` (both must be in `wrt`, the plan's disagreement on D6) and needs `order = 2`; `scale` is a `NamedTuple` of positive displacements of parameters in `wrt`.
+- Read through new methods of the existing generics, at the root or at any `node`: `energies(d, x[, node])`, `eigenvectors(d, x[, node])`, `port(d, x, mode, p[, node])`, its spec-form spelling `port(d, x, kind, mode[, node]; k)` (as `port(sys, kind, mode, node; k)`), and `port(d, x, key[, node])` for a joint port, and the same with two parameters `(d, x, λ, ...)` for second derivatives (symmetric in `x`, `λ`).
 - `blocks(d)` returns the `NearDegenerateBlock`s (`node`, `parameters`, `states`, `energies`, `detuning`, `coupling`, `exact`, `order`, `H1`, `H2`); `block_levels(b, displacement)` gives a block's levels and states at a finite displacement.
 - `Derivatives` also holds `boundary` (the selection-boundary records) and `linear_solves`.
-- `spectrum(root, spec, θ; ports, derivative_options) -> (; energies, ports)`, defined in the core with no autodiff code, is the one function the outer rule covers.
+- `spectrum(root, spec, θ; ports, derivative_options) -> (; energies, ports)`, defined in the core with no autodiff code, is the one function the outer rule covers; a zero cotangent or tangent gives zeros without running the derivative pass.
 
 **The outer rule** (design §4.6, Decision 9; `ext/KronFreeCircuitsChainRulesCoreExt.jl`).
 An `rrule` and an `frule` of `spectrum`, each running the first-order passes of `derivatives` once and contracting with the cotangent or tangent; the `rrule` follows ChainRules' convention for a real loss of complex port elements (the cotangent of `P` is `∂L/∂Re P + i ∂L/∂Im P`).
 `ChainRulesCore` is a weak dependency with this extension; the core's `[deps]` are unchanged.
 In practice the extension is always active, because `ChainRulesCore` is loaded transitively through `ITensors` in every session.
-`Zygote` is test-only, in `test/chainrules` with its own environment (Zygote 0.7.16 and ChainRules 1.74.13 resolved and work on Julia 1.13.2); `FiniteDifferences` and `ChainRulesTestUtils` are not used, the tests comparing against the package's own Richardson-extrapolated central differences.
+`Zygote` is test-only (a user adds it to their own environment), in `test/chainrules` with its own environment (Zygote 0.7.16 and ChainRules 1.74.13 resolved and work on Julia 1.13.2); `FiniteDifferences` and `ChainRulesTestUtils` are not used, the tests comparing against the package's own Richardson-extrapolated central differences.
 Differentiating twice through the rule (Zygote over Zygote) fails with an obscure "Flatten" `ArgumentError`; second derivatives come from `derivatives(...; order = 2)`, as the docstring says.
 Measured (`bench/derivative_design/design.jl`, two coupled transmons, `x = (E_J1, E_J2, g)`, a least-squares loss on `[E_2 − E_1, E_3 − E_1, |n_1[1, 2]|]`): BFGS on the Zygote gradient converged on its gradient tolerance (`‖∇L‖∞ = 1.78e-11`) in 13 iterations, 16 loss and 16 gradient evaluations, 1.6 s, reaching the planted design to about 1e-11 with final loss 3.8e-23; the gradient agreed with finite differences of the loss to 1.9e-9 relative at the start, and at the end both were about 1.8e-11.
 A reviewer checked the Zygote gradient of a loss of complex off-diagonal port elements on the complex periodic two-transmon tree against central differences for all seven parameters (about 1e-8 relative), and the `frule` against the `rrule` by a dot-product test.
 
 **Devices** (design §4.7, Decision 12; `test/cuda/test_derivatives_device.jl`).
 The derivative pass ran on the GPU with no change to the code at a real `LOBPCG(on = CuArray)` root of two transmons (144 states, 8 computed, 6 kept): its first and second derivatives along `g` and `n_g1`, with the linear solve on the complement, equal the host's `Dense` route at the test's tolerances, 10 of 10 tests on an RTX A4500, with the results as host arrays.
-The test does not assert that the solve ran on the device (it would also pass on the host).
+The test asserts that the root's resolved solver and the forward operator of its linear solve are on `CuArray` (added after the final review; before, it would also have passed on the host).
 The device tier as a whole had 13 errors, all in older testsets of `test/cuda/test_device.jl` that solve complex `LOBPCG` on the device, none in the new file.
 Diagnosed on the build machine: cuBLAS's complex-double triangular solve (`cublasZtrsm_v2_64`, cuBLAS 13.8.0.4) fails on every call with `CUBLAS_STATUS_EXECUTION_FAILED`, even on a 2×2 matrix, while `zgemm`, `ztrmm`, `zherk`, the device Cholesky, `ComplexF32` and real triangular solves work; LOBPCGEigensolver's `ortho!` uses that solve, catches the error as a Cholesky failure and gives up ("badly failing to keep the vectors normalized").
-It is not caused by this project or by dependency versions: `origin/main` fails identically with the new environment, this code fails identically with the old one (CUDA 6.4.2, GPUArrays 11.5.16), and a copy of the environment that passed this tier on 2026-10-18 fails today on the minimal case.
+It is not caused by this project or by dependency versions: `origin/main` fails identically with the new environment, this code fails identically with the old one (CUDA 6.4.2, GPUArrays 11.5.16), and a copy of the environment that passed this tier on 2026-10-18 fails today on the minimal case (if that log was indeed from this machine and depot: the 2026-10-18 log may come from another machine or depot, which is the second unproven suspect).
 Unproven: why it passed on 2026-10-18 (no relevant depot file, Julia install or driver module changed since 2026-10-15), and whether the CUDA runtime artifact is damaged (its tree hash does not match its name; its files are unmodified since installation).
 Recommended to the owner, not done: no compat bound (the old stack fails the same way); reboot or reset the GPU and rerun a 2×2 `CUBLAS.trsm!` with `ComplexF64`; if it still fails, re-download the CUDA runtime artifact; if it persists, report the 2×2 reproduction to JuliaGPU/CUDA.jl.
 Consequently a complex iterative node's derivative pass, mixed pairs and blocks are untested on the device.
@@ -1267,8 +1287,9 @@ The symbolic KITE in the optimum frame (`test/fixtures/kite/optimum_symbolic.jso
 - The doublet's detuning is Δ = 0.0135992 GHz; the root reports the block of states [1, 2] for `delta` (coupling 1.73193, not exact), so the block search runs at a branch and through the complement solve.
 - The first derivative in `delta` agrees with finite differences to 4.8e-9 relative and the second to 6.0e-7 (tolerances 1e-5 and 1e-4, Decision 11).
 - The curvature `E2[2] − E2[1]` is 882.28074 against `4c²/Δ` = 882.27962 (1.3e-6 relative).
-- `block_levels` reproduces a full re-solve within 9.9e-9 GHz at δ = 0.01 and 1.1e-9 at δ = 0.005, where the second-order Taylor expansion misses by 1.17e-2.
-- The `LOBPCG` route agrees with a `Dense`, `retain = :always` route to 3.2e-12 at first order and 1.3e-12 at second; given `scale`, the `Dense` route reports the same blocks, and the two routes' `block_levels` agree to 4.6e-14.
+- `block_levels` reproduces a full re-solve within 9.9e-9 GHz at δ = 0.01, where the second-order Taylor expansion misses by 1.17e-2, and within 1.1e-9 at δ = 0.005.
+- The `LOBPCG` route agrees with a `Dense`, `retain = :always` route to 3.2e-12 at first order and 1.3e-12 at second; given `scale`, the `Dense` route reports the same blocks, and the two routes' `block_levels` agree to 4.6e-14 (asserted to 1e-9 since the final review).
+- At `delta = 0`, `n_g1 = 0`, the symbolic fixture and the numeric `test/fixtures/kite/optimum.json` give the same four lowest levels on one tree with thirteen states on the compact leaf (measured 1.0e-13, asserted 1e-10); the fixture was generated with circuit-quantization at `c8c8714` (branch `to-spec-zero-tolerance`).
 - Off the sweet spot (`delta = 0.05`) the mixed derivative `∂²f_01/∂E_J∂delta` is 0.0427752105, within 1.7e-7 relative of finite differences.
 
 **Finite-difference agreement** (the reviewers' independent checks at parameter values the tests do not use; relative to the largest element unless stated).
@@ -1277,16 +1298,27 @@ The symbolic KITE in the optimum frame (`test/fixtures/kite/optimum_symbolic.jso
 - Second order at one node (Task 7): a complex leaf's `expiphi` port second derivatives 4.4e-8, 2.8e-9 and 5.0e-9 (removing the gauge term gives 0.33, 4.7e-3 and 7.3e-2, removing the normalization 5.9, 4.5e-2 and 0.69); the closed form `eq:eig_val_secondgrad` to 1e-14.
 - Second order through trees (Task 8), a complex two-level tree: `(E_J1, g)` energies 2.1e-8, ports 2.8e-7, vectors 3.5e-6; `(n_g1, g)` energies 5.3e-8, ports 8e-8; symmetric to 2e-16 under swapped roles.
 - Augmented children with bases that are not eigen-subspaces (Task 10): a branch child at first order 2e-9, at second order 4e-7 (the finite difference's own error 3e-7); a leaf child at first order 1e-7, at second order within the finite difference's error.
+- The final review's cross-feature experiments, each against Richardson finite differences at every node's energies, vectors, ports and joint ports (worst relative error, with the finite difference's own error in parentheses; first order / second order):
+  E1, a three-level tree with complex leaves, an `LOBPCG` interior node and mixed pairs entering at different levels: 3.7e-7 (4.4e-7) / 2.8e-4 (2.1e-4);
+  E2, an augmented branch child whose basis is not an eigen-subspace, under an `LOBPCG` root: 8.6e-9 (2.0e-8) / 1.0e-5 (8.0e-6);
+  E3, an iterative interior node and root keeping `indices` sets that skip states: 3.3e-6 (4.1e-6) / 8.8e-5 (8.1e-5);
+  E4, a parameter entering only through a cosine offset of a periodic-grid leaf, alone and mixed: 4.4e-8 (5.5e-8) / 2.0e-4 (3.4e-3);
+  E5, `retain = :never` leaves under an iterative parent: 7.6e-9 (7.8e-9) / 7.3e-5 (5.8e-5);
+  E6, `within` windows as the selection of the root and of an interior node: 1.2e-8 (2.0e-8) / 7.5e-6 (7.9e-6);
+  E10, the default solvers (`Auto()`: a 1501-point `ShiftInvert` leaf, a 1156-state `LOBPCG` root) at their default tolerances against the `Dense` route: at most 5.1e-11, before and after the change of scale of the linear solve;
+  E11, the Zygote gradient through `spectrum` on a tree with an iterative complex root: at most 1.5e-7 (1.4e-7).
+  In every case the worst error is within a factor of about 1.5 of the finite difference's own error, so these measure the finite differences more than the derivatives.
 The tests assert `1e-6` relative where the finite difference is itself good to that (Decision 11); second differences reach `1e-8` to `8e-6` self-consistency on the test circuits, so second-order tests use `rtol = 1e-5` except where `1e-6` was measured to hold, and the KITE doublet tests use `1e-5` and `1e-4`.
+Several tolerances are looser than the agreement measured, a note for the owner, not changed: iterative and device vectors and ports 1e-6 / 1e-5 against 1e-11 to 1e-12 measured; KITE `block_levels` 1e-4 against 1e-8, and its curvature 1e-2 against 1.3e-6; trees 1e-6 against at most 4.3e-8; stored-data children 1e-6 / 1e-5 against 2e-9 / 4e-7; the rules 1e-6 against about 1e-8.
 
 **Where the build departed from the design, and why.**
 
 1. *The call* is `derivatives(sys; wrt, ...)`, not the design's illustrative `derivatives(sys, spec, θ; ...)`: the `System` already carries its terms, `θ` and constant (Decision 6).
 2. *`scale` is a keyword `NamedTuple` of `δx` per parameter* (Decision 7, Ruling 3); the design marks how `δx` is supplied as not confirmed by the owner, and its own illustrative call does it this way; a change costs a keyword rename.
-3. *The `:follow` restriction is narrowed* (the plan's disagreement on D5, Ruling 2): only a node whose phases were actually fixed by following a previous solution (`Retained.followed`) is refused, with an `ArgumentError` whose workaround is to re-materialize at the point without `previous`; a `:follow` node materialized without `previous` used the positive-sector rule and is differentiated, and a `follow` selection alone is a discrete choice held fixed like any other.
+3. *The `:follow` restriction is narrowed* (the plan's disagreement on D5, Ruling 2): only a node whose phases were actually fixed by following a previous solution (`Retained.followed`) is refused, with an `ArgumentError` whose workaround is to re-materialize at the point without `previous`; a `:follow` node materialized without `previous` used the positive-sector rule and is differentiated, and a `follow` selection is a discrete choice held fixed like any other when its phase is `:positive_sector` given explicitly, or without `previous`; note that `keep = follow(...)` defaults to `phase = :follow`.
    A followed sweep cannot be differentiated directly.
 4. *What is retained* (the plan's disagreement on D2): all computed energies, but only the vectors of the unkept states, so a node that keeps all it computes stores nothing extra.
-5. *The linear solve* does not reuse the `ShiftInvert` factorization (P3, above).
+5. *The linear solve* is a hand-written, Jacobi-preconditioned conjugate gradient that runs on any device and does not reuse the `ShiftInvert` factorization (P3, above); its residual is measured against the whole right-hand side `‖R_j‖` (the final review's fix, above).
 6. *A mixed pair needs both members in `wrt`* (the plan's disagreement on D6): the pair needs both first-order responses.
 7. *Design §4.8 on Born–Oppenheimer reduced specs is partly wrong* (the plan's disagreement on D8, Ruling 2).
    It says a derivative with respect to a parameter the reduced spec no longer carries is an error by construction; that holds for a `slow_spec`, but a `fit_surfaces` spec keeps the fitted-over parameters symbolically in its fit model, so derivatives with respect to them are derivatives of the fit, not an error.
@@ -1296,12 +1328,18 @@ The tests assert `1e-6` relative where the finite difference is itself good to t
 9. *Exact degeneracy* gives `NaN` per-state derivatives with a block, and the `NaN` propagates to every ancestor (P5); the design asks that per-state derivatives be reported as undefined, and says nothing about ancestors.
 10. *Accuracy* (Decision 11): the design's target is `1e-6` relative where the finite difference is trustworthy; second-order and KITE tests are looser where it is not (above), and the iterative tests tighten the eigensolver tolerance, so the default `LOBPCG` tolerance is exercised only by the reviewer's check above.
 11. *The outer rule* targets ChainRulesCore in an extension (left to the builder by the design), which is always active in practice (above).
+12. *Retention is on by default* (Ruling 7, Decision 2), despite its measured cost and the convergence table above; only the solves that are never differentiated (mean-field loop, `bo_surface`) do not retain.
+13. *The selection-boundary threshold without `scale`* is a detuning at most `1e-6` times the states' distance from the node's lowest computed energy (P8), a choice of the plan; the design gives no threshold without a scale.
+14. *A `wrt` parameter nothing depends on* is an error when the spec does not declare it and zeros with a warning otherwise (ruled after the final review); the design does not mention the case.
+STATUS.md lists the same decisions under "Decisions still Eli's".
 
 **Not built, and not tested.**
 - Not built, by the design's non-goals: a reverse (adjoint) sweep, third and higher order, derivatives with respect to the frame `S`, and derivatives through basis construction (grids, cutoffs, mean-field bases).
 - A truncated, convergence-checked sum over the nearest states (design §4.5's note): measured, not built.
-- Untested paths a user could reach: a `NaN` child column entering a parent's right-hand side through several levels (NaN propagation and second-order clashes are tested on one-node trees); a near-degenerate block at an augmented node; a pair that clashes only in a mixed second-order pass (no available circuit produces one); the terms routed below an augmented node are not checked against those of its bare solve (an `extra_terms` entry routed there would differentiate a different operator than the bare solve used).
-- Known limitations: `block_levels` on a block whose second-order piece is `NaN` (a block state exactly degenerate with an unkept state it couples to) throws `eigen`'s "matrix contains Infs or NaNs"; a followed node or an undeclared `GivenSystem` cannot reach `spectrum` (it has no `previous` and takes a `Spec`), so the rules' pass-through of those errors is untested; a user-defined solver that returns fewer than `m` pairs now gives a `BoundsError` at a retaining node.
+- For the owner, not built: a pairs-only second-order request (today `order = 2` runs the single-parameter pass for every `wrt` parameter); reuse of the `ShiftInvert` factorization; `show` methods for `Derivatives` and `NearDegenerateBlock`; `extra_terms` in `spectrum`; a clear error for differentiating twice through the rule.
+- Untested paths a user could reach: a `NaN` child column entering a parent's right-hand side through more than one level (one level, child to parent, is tested at a `Dense` and an iterative parent since the final review); a near-degenerate block at an augmented node; a pair that clashes only in a mixed second-order pass (no available circuit produces one); the terms routed below an augmented node are not checked against those of its bare solve (an `extra_terms` entry routed there would differentiate a different operator than the bare solve used).
+- Known limitations: a followed node or an undeclared `GivenSystem` cannot reach `spectrum` (it has no `previous` and takes a `Spec`), so the rules' pass-through of those errors is untested.
+  Fixed after the final review: `block_levels` on a block whose effective Hamiltonian is not finite throws an `ArgumentError` naming the cause instead of `eigen`'s "matrix contains Infs or NaNs", and a solver that returns fewer than `compute` pairs gives an `ArgumentError` in `_solve_node` instead of a `BoundsError`.
 - Devices: only a real iterative node is tested (above).
 
 **Tests.**
