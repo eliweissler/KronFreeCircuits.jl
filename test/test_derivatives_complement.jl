@@ -17,19 +17,31 @@ using KronFreeCircuits: _complement_solve, _full_diagonal, with_block_capacity, 
     # a known set that skips a lower state: H − E_3 is not positive on the complement, which holds state 2
     @test_throws "a state below or degenerate with the kept state was not computed (or was not retained)" _complement_solve(
         H, _full_diagonal(H), F.vectors[:, [1, 3, 4]], B[:, 1:3], F.values[[1, 3, 4]]; tol=1e-10, maxiter=5000)
+    # a right-hand side almost inside the known states (‖Q B_j‖ ≈ 1e-9 ‖B_j‖): `tol ‖Q B_j‖` is below round-off, so every
+    # column stops at the round-off floor (measured 7e-15 ‖B_j‖ on the real tree), and is still the derivative to 2.4e-6
+    Bf = Φ * randn(MersenneTwister(2), 6, 4) .+ 1e-9 .* (F.vectors[:, 7:64] * randn(MersenneTwister(3), eltype(M), 58, 4))
+    Xf, _, resf, fsf, atf, frf = _complement_solve(H, _full_diagonal(H), Φ, Bf, s; tol=1e-10, maxiter=5000)
+    @test isempty(fsf) && atf == 1:4 && all(iszero, resf) && maximum(frf) <= 1000 * eps()
+    for j in 1:4
+        ref = sum(F.vectors[:, l] * (F.vectors[:, l]' * Bf[:, j]) / (F.values[l] - s[j]) for l in 7:64)
+        @test norm(Xf[:, j] - ref) <= 1e-4 * norm(ref)
+    end
 end
 
 @testset "weak coupling: a child-internal parameter's right-hand side lies almost inside the known states" begin
-    # (∂H/∂E_J2) ψ_j ≈ (∂E_child) ψ_j: ‖Q R_j‖/‖R_j‖ ≈ 5e-5, and the solve converges against ‖R_j‖, not ‖Q R_j‖
+    # (∂H/∂E_J2) ψ_j ≈ (∂E_child) ψ_j: ‖Q R_j‖/‖R_j‖ ≈ 5e-5; each column converges to lintol on its own scale ‖Q R_j‖
     tw(solver) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lowest(6), g=0.03)
     di = derivatives(dc_solve(tw(LOBPCG(tol=1e-11))); wrt=:E_J2)
     dd = derivatives(dc_solve(tw(Dense())); wrt=:E_J2)
-    @test all(s -> s.residual <= 1e-9, di.linear_solves)                             # 10 · lintol, relative to ‖R_j‖
+    @test all(s -> s.residual <= 1e-9, di.linear_solves)                             # 10 · lintol, relative to ‖Q R_j‖
     @test energies(di, :E_J2) ≈ energies(dd, :E_J2) rtol=1e-8 atol=1e-9
     @test norm(eigenvectors(di, :E_J2) - eigenvectors(dd, :E_J2), Inf) <= 1e-6 * norm(eigenvectors(dd, :E_J2), Inf)
     for p in (nport(), expiphi(1.0))
         @test norm(port(di, :E_J2, :varphi_1, p) - port(dd, :E_J2, :varphi_1, p), Inf) <= 1e-6 * norm(port(dd, :E_J2, :varphi_1, p), Inf)
     end
+    # each state's derivative on its own scale (the matrix-wide comparison above cannot see a small column); columns
+    # whose dense derivative is below 1e-12 in norm are skipped (`percol_relerr`)
+    @test maximum(percol_relerr(eigenvectors(di, :E_J2), eigenvectors(dd, :E_J2))) <= 1e-7
 end
 
 @testset "a node that keeps every state of its space needs no solve and no re-diagonalization" begin

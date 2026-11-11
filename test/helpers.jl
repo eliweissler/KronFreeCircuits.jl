@@ -565,6 +565,10 @@ function dc_cos2phi(; n_g::Real=0.49, keep=lowest(4), basis=ChargeBasis(20), E_2
     return (; root, spec=load_spec(fixture("cos2phi.json")), θ=(E_C=1.0, n_g=n_g, E_1=0.0, E_2=E_2))
 end
 
+# Per kept column `j`, `‖a[:, j] − b[:, j]‖ / ‖b[:, j]‖` (the accuracy of one state's derivative `a` against a reference
+# `b`), over the columns whose reference has norm at least `floor`: a smaller derivative is round-off on both routes.
+percol_relerr(a, b; floor=1e-12) = [norm(a[:, j] - b[:, j]) / norm(b[:, j]) for j in axes(b, 2) if norm(b[:, j]) >= floor]
+
 # A circuit solved at θ with logging silenced, and the same memoized on θ: the finite differences of many quantities of
 # one circuit then share one set of solves, which is what keeps the tree tests fast.
 dc_solve(c, θ=c.θ) = quiet(() -> materialize(c.root, c.spec, θ))

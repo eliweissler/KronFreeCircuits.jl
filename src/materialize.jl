@@ -182,6 +182,8 @@ materialize(root::Node, terms::Vector{Term}, θ::NamedTuple; constant::Coefficie
 function materialize(root::Node, spec::Spec, θ::NamedTuple; previous::Union{Nothing,System}=nothing,
                      extra_terms::Vector{Term}=Term[], augmented::AbstractVector=AugmentedChild[],
                      _retain::Union{Nothing,Symbol}=nothing)
+    _retain in (nothing, :auto, :always, :never) ||
+        throw(ArgumentError("`_retain` must be nothing, :auto, :always or :never, got $(repr(_retain))"))
     modetypes = Dict{Symbol,Symbol}(m.name => m.type for m in spec.modes)
     _check_bases(root, modetypes)
     sys = _materialize_terms(root, vcat(circuit_terms(spec), extra_terms), θ, constant_term(spec), previous, modetypes;

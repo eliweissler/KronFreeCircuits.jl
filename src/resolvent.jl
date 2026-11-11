@@ -25,7 +25,7 @@ end
 
 The linear solve of an iterative node on the orthogonal complement of its known states (see [`_complement_solve`](@ref)).
 `H` is the node's forward operator on its solver's storage, `D` its real diagonal there, `basis` the known states (kept, then retained unkept) on that storage.
-`tol` and `maxiter` are the solver's limits, `log` is `nothing` or a vector that receives one record `(; modes, columns, iterations, residual, from_start)` per solve (see [`_apply_resolvent`](@ref)), and `modes` are the node's modes.
+`tol` and `maxiter` are the solver's limits, `log` is `nothing` or a vector that receives one record `(; modes, columns, iterations, residual, from_start, at_floor, floor_residual)` per solve (see [`_apply_resolvent`](@ref)), and `modes` are the node's modes.
 """
 struct _Complement
     H::KronFreeOperator
@@ -110,17 +110,38 @@ end
 # Re⟨A_j, B_j⟩ per column, on the host.
 _colredot(A::AbstractMatrix, B::AbstractMatrix) = vec(Array(real.(sum(conj.(A) .* B; dims=1))))
 
+# The round-off cap of the complement solve, in units of `eps ‖R_j‖`: the floors measured on the weak-coupling cases were
+# 2 to 180 eps ‖R_j‖ (5e-16 to 4e-14), so 1000 eps leaves a factor of 5 over the largest.
+const _FLOOR_CAP = 1000
+# Successive true-residual checks without an improvement by a factor of 2 before a column is accepted at the floor.
+const _FLOOR_PATIENCE = 5
+
 """
-    _complement_solve(H, D, basis, B, shifts; tol, maxiter, eta=0.01, scale=norms of B) -> (X, iterations, residuals, from_start)
+    _complement_solve(H, D, basis, B, shifts; tol, maxiter, eta=0.01, scale=norms of B)
+        -> (X, iterations, residuals, from_start, at_floor, floor_residuals)
 
 `X[:, j]` solves `Q (H − shifts[j]) Q x = Q B[:, j]` with `x ⟂` the columns of `basis`, `Q = 1 − basis basis'`, by a preconditioned conjugate gradient on all columns in lockstep, each with its own scalars, preconditioned by the Jacobi diagonal `1 / hypot(D − shifts[j], eta)`.
 `basis` (orthonormal columns) and `B` live on `H`'s storage, `D` is `H`'s real diagonal there, and `X` is returned on that storage.
 `B` is best given already on the complement (its known-state components subtracted by the caller, as `_apply_resolvent` does); it is projected again here.
-`scale[j]` is the norm of the whole right-hand side of column `j` before its known-state components were subtracted (`‖R_j‖`, the scale of the whole derivative); it defaults to the column norms of `B`.
-Convergence is measured against it: a column is converged when its recurrence residual is at most `tol scale[j]`, because the round-off of the projection (about `eps ‖R_j‖`) cannot go below a tolerance relative to `‖Q B_j‖` when `Q B_j` is a small part of `R_j`.
-A column with `‖Q B[:, j]‖ ≤ tol scale[j]` is converged from the start with `x_j = 0` exactly; `from_start` lists those columns.
-`residuals[j]` is the relative true residual `‖Q (H − shifts[j]) X[:, j] − Q B[:, j]‖ / scale[j]`, recomputed with a fresh application of `H` after the loop (for a column converged from the start, `‖Q B[:, j]‖ / scale[j]`, and `0` when `scale[j] = 0`), and must be at most `10 tol`.
-Throws an error containing "did not converge" when a column misses the tolerance (in the loop or in the final check), and one containing "not positive on the complement" when `H − shifts[j]` is not positive there on a column that has not converged.
+`scale[j]` is the norm of the whole right-hand side of column `j` before its known-state components were subtracted (`‖R_j‖`); it defaults to the column norms of `B`.
+
+Stopping rule. The target of column `j` is its own scale: a recurrence residual at most `tol ‖Q B_j‖`.
+A column that cannot reach it because of round-off is accepted at the round-off floor: the residual of the projection
+cannot go below about `eps ‖R_j‖`, which exceeds `tol ‖Q B_j‖` when `Q B_j` is a small part of `R_j` (a parameter
+internal to a weakly coupled child).
+Once a column's recurrence residual is at or below the round-off cap `$(_FLOOR_CAP) eps ‖R_j‖` without meeting its
+target, its true residual (recomputed with a fresh application of `H`) is checked at every iteration; when it has not
+improved by a factor of 2 over $(_FLOOR_PATIENCE) successive checks and is at most the cap, the column stops there and is
+listed in `at_floor`.
+The positivity check is not applied to a column whose recurrence residual is at or below the cap (round-off can make
+`⟨p, (H − s) p⟩` non-positive there); such a column stops, and its true residual must be at most the cap.
+A column with `‖Q B_j‖` at most the cap (zero included) is converged from the start with `x_j = 0` exactly, listed in `from_start`.
+After the loop every true residual is recomputed: a column that met its target must have one at most `10 tol ‖Q B_j‖`,
+or, failing that, at most the cap (it is then moved to `at_floor`); a column at the floor must have one at most the cap.
+`residuals[j]` is the true residual relative to `‖Q B_j‖` for a column that met its target (`0` for the others),
+`floor_residuals[j]` the true residual relative to `‖R_j‖` for a column at the floor (`0` for the others).
+Throws an error containing "did not converge" when a column misses both (in the loop, at `maxiter`, or in the final check),
+and one containing "not positive on the complement" when `H − shifts[j]` is not positive on a column above the cap.
 """
 function _complement_solve(H::KronFreeOperator, D::AbstractVector, basis::AbstractMatrix, B::AbstractMatrix,
                            shifts::Vector{Float64}; tol::Real, maxiter::Int, eta::Real=0.01,
@@ -134,64 +155,100 @@ function _complement_solve(H::KronFreeOperator, D::AbstractVector, basis::Abstra
     S = _to_storage(B, reshape(shifts, 1, :))
     Minv = 1 ./ hypot.(D .- S, eta)
     row(v) = _to_storage(B, reshape(v, 1, :))
-    goal = tol .* scale                         # the absolute residual each column must reach
+    cap = _FLOOR_CAP * eps(Float64) .* scale     # the round-off cap of each column
     QB = project!(copy(B))
     b = vec(Array(_colnorms(QB)))
-    converged = b .<= goal
-    from_start = findall(converged)
-    QB .*= row(Float64.(.!converged))           # x_j = 0 exactly for those columns
+    goal = tol .* b                              # each column's target, on its own scale
+    from_start = findall(b .<= cap)
+    met = falses(n)                              # met its target
+    atfloor = falses(n)                          # stopped at the round-off floor (or converged from the start)
+    atfloor[from_start] .= true
+    QB .*= row(Float64.(.!atfloor))                # x_j = 0 exactly for the columns converged from the start
     X = fill!(similar(B), 0)
     Rr = copy(QB)
     Z = project!(Minv .* Rr)
     P = copy(Z)
     ρ = _colredot(Rr, Z)
     AP = similar(B)
+    T = similar(B)
+    function true_residuals()                    # ‖Q (H − s) X − Q B‖ per column, with a fresh application of H
+        mul!(T, H, X)
+        T .-= X .* S
+        project!(T)
+        T .-= QB
+        return vec(Array(_colnorms(T)))
+    end
     rn = copy(b)
+    anchor = fill(Inf, n)                        # the true residual at the last improvement by a factor of 2
+    stalled = zeros(Int, n)                      # checks since then
+    done() = all(met .| atfloor)
     iterations = 0
-    while !all(converged) && iterations < maxiter
+    while !done() && iterations < maxiter
         iterations += 1
         mul!(AP, H, P)
         AP .-= P .* S
         project!(AP)
         κ = _colredot(P, AP)
         for j in 1:n
-            converged[j] || κ[j] > 0 ||
-                error("the linear solve on the complement is not positive on the complement at column $j " *
-                      "(⟨p, (H − s) p⟩ = $(κ[j]) after $iterations iterations, residual $(rn[j] / scale[j]) relative to " *
-                      "the right-hand side): a state below or degenerate with the kept state was not computed (or was " *
-                      "not retained); raise `compute` (or retain the node's computed states)")
+            (met[j] || atfloor[j] || κ[j] > 0) && continue
+            rn[j] <= cap[j] && (atfloor[j] = true; continue)     # round-off, not a missing state: checked below
+            error("the linear solve on the complement is not positive on the complement at column $j " *
+                  "(⟨p, (H − s) p⟩ = $(κ[j]) after $iterations iterations, residual $(rn[j] / b[j]) relative to " *
+                  "its complement part): a state below or degenerate with the kept state was not computed (or was " *
+                  "not retained); raise `compute` (or retain the node's computed states)")
         end
-        α = [converged[j] ? 0.0 : ρ[j] / κ[j] for j in 1:n]
+        active = .!(met .| atfloor)
+        α = [active[j] ? ρ[j] / κ[j] : 0.0 for j in 1:n]
         X .+= P .* row(α)
         Rr .-= AP .* row(α)
         rn = vec(Array(_colnorms(Rr)))
-        converged .|= rn .<= goal
-        all(converged) && break
+        met .|= active .& (rn .<= goal)
+        near = .!(met .| atfloor) .& (rn .<= cap)
+        if any(near)
+            tr = true_residuals()
+            for j in findall(near)
+                if tr[j] < anchor[j] / 2
+                    anchor[j], stalled[j] = tr[j], 0
+                else
+                    stalled[j] += 1
+                end
+                stalled[j] >= _FLOOR_PATIENCE && tr[j] <= cap[j] && (atfloor[j] = true)
+            end
+        end
+        done() && break
         Z .= Minv .* Rr
         project!(Z)
         ρn = _colredot(Rr, Z)
-        β = [converged[j] ? 0.0 : ρn[j] / ρ[j] for j in 1:n]
+        β = [met[j] || atfloor[j] ? 0.0 : ρn[j] / ρ[j] for j in 1:n]
         P .= Z .+ P .* row(β)
         ρ = ρn
     end
-    if !all(converged)
-        j = findfirst(!, converged)
-        error("the linear solve on the complement did not converge at column $j: residual $(rn[j] / scale[j]) " *
-              "relative to the right-hand side after $iterations iterations (tolerance $tol, at most $maxiter iterations)")
-    end
-    # the true residual, with a fresh application of H
-    mul!(AP, H, X)
-    AP .-= X .* S
-    project!(AP)
-    AP .-= QB
-    true_res = vec(Array(_colnorms(AP)))
-    residuals = [j in from_start ? (scale[j] == 0 ? 0.0 : b[j] / scale[j]) : true_res[j] / scale[j] for j in 1:n]
+    tr = true_residuals()
     for j in 1:n
-        residuals[j] <= 10 * tol ||
-            error("the linear solve on the complement did not converge at column $j: its true residual is " *
-                  "$(residuals[j]) relative to the right-hand side after $iterations iterations, above 10 × $tol")
+        met[j] || atfloor[j] || tr[j] > cap[j] || (atfloor[j] = true)      # at maxiter, but at the round-off floor
     end
-    return X, iterations, residuals, from_start
+    if !done()
+        j = findfirst(.!(met .| atfloor))
+        error("the linear solve on the complement did not converge at column $j: residual $(rn[j] / b[j]) relative to " *
+              "its complement part (true residual $(tr[j] / scale[j]) relative to the right-hand side) after " *
+              "$iterations iterations (tolerance $tol, at most $maxiter iterations)")
+    end
+    for j in 1:n
+        j in from_start && continue
+        if met[j] && tr[j] > 10 * goal[j]
+            met[j] = false
+            atfloor[j] = true                                      # the recurrence went below the true floor
+        end
+        atfloor[j] && tr[j] > cap[j] &&
+            error("the linear solve on the complement did not converge at column $j: its true residual is " *
+                  "$(tr[j] / b[j]) relative to its complement part after $iterations iterations, above 10 × $tol, " *
+                  "and $(tr[j] / scale[j]) relative to the right-hand side, above the round-off cap " *
+                  "$(_FLOOR_CAP) eps")
+    end
+    residuals = [met[j] ? tr[j] / b[j] : 0.0 for j in 1:n]
+    at_floor = [j for j in 1:n if atfloor[j] && !(j in from_start)]
+    floor_residuals = [j in at_floor ? tr[j] / scale[j] : 0.0 for j in 1:n]
+    return X, iterations, residuals, from_start, at_floor, floor_residuals
 end
 
 """
@@ -200,7 +257,7 @@ end
 `W[:, j] = Σ_l ψ_l ⟨ψ_l|R[:, j]⟩ / (shifts[j] − E_l)`, over every state `l` of the node's space except the kept states (column indices of `res.vectors`) listed in `exclude[j]`.
 At a node with a `complement`, the part on the orthogonal complement of the known states is the solution of `Q (H − shifts[j]) Q x = −Q R[:, j]` (see [`_complement_solve`](@ref)).
 Its right-hand side is formed on the host as `R[:, j]` minus its components on every known state (kept and other), from the overlaps the sum above already uses: one cancellation, not a projection of a nearly parallel vector, since for a parameter internal to a child `R[:, j]` lies almost inside the span of the known states.
-Its convergence is measured against `‖R[:, j]‖`; it is moved to the operator's storage for the solve and the result back to the host, and the solve is recorded in the complement's `log` as `(; modes, columns, iterations, residual, from_start)`: `residual` the largest true residual relative to `‖R[:, j]‖`, `from_start` the columns converged from the start (their complement part already below the tolerance, with no solve).
+Each column converges to `tol` on the complement's own scale `‖Q R[:, j]‖`, or, where round-off prevents that, to the round-off floor (at most `$(_FLOOR_CAP) eps ‖R[:, j]‖`; see [`_complement_solve`](@ref)); it is moved to the operator's storage for the solve and the result back to the host, and the solve is recorded in the complement's `log` as `(; modes, columns, iterations, residual, from_start, at_floor, floor_residual)`: `residual` the largest true residual relative to `‖Q R[:, j]‖` over the columns that met `tol`, `from_start` the columns converged from the start (their complement part at most the round-off cap, `x = 0`), `at_floor` the columns that stopped at the round-off floor and `floor_residual` their largest true residual relative to `‖R[:, j]‖`.
 A state `l` with `|shifts[j] − E_l| ≤ res.degenerate_tol` is left out of the sum when its overlap is zero, `|⟨ψ_l|R[:, j]⟩| ≤ 1e-10 ‖R[:, j]‖`, and is otherwise a clash of column `j`; every other term is included whatever its detuning.
 `clashes[j]` lists the clashing states of column `j`: a kept state by its column index, the other states (if any clash) by a single `0`.
 Column `j` is defined exactly when `clashes[j]` is empty and `R[:, j]` is finite; an undefined column of `W` is `NaN`.
@@ -253,14 +310,15 @@ function _apply_resolvent(res::Resolvent, R::AbstractMatrix, shifts::Vector{Floa
     if c !== nothing
         scale = [norm(view(R, :, j)) for j in 1:n]
         B = adapt(c.H.on, convert(Matrix{eltype(c.basis)}, -Rc))
-        X, iterations, residuals, from_start = try
+        X, iterations, residuals, from_start, at_floor, floor_residuals = try
             _complement_solve(c.H, c.D, c.basis, B, shifts; tol=c.tol, maxiter=c.maxiter, scale)
         catch e
             e isa ErrorException ? error("node on modes $(c.modes): " * e.msg) : rethrow()
         end
         W .+= Array(X)
         c.log === nothing ||
-            push!(c.log, (; modes=c.modes, columns=n, iterations, residual=maximum(residuals; init=0.0), from_start))
+            push!(c.log, (; modes=c.modes, columns=n, iterations, residual=maximum(residuals; init=0.0), from_start,
+                          at_floor, floor_residual=maximum(floor_residuals; init=0.0)))
     end
     for j in 1:n
         (isempty(clashes[j]) && !(j in nonfinite)) || (W[:, j] .= NaN)

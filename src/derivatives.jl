@@ -337,9 +337,11 @@ parameter of `wrt` and for `x ≠ λ` each pair of `mixed`, likewise nested, or 
 (`kept`, a column of the node's vectors) close to an unkept computed state (`unkept`, its index among the node's
 computed pairs), with `coupling` `NaN` when it was not computed; `parameter` is the parameter of a first-order pass,
 or the pair `_pairkey(x, λ)` of a second-order pass, which records only clashes (an exact degeneracy with a coupling).
-`linear_solves` holds one record `(; modes, columns, iterations, residual, from_start)` per linear solve on the
-complement of a node's computed states, with `residual` the largest true residual of its columns relative to the norm
-of each column's whole right-hand side, and `from_start` the columns converged from the start (no solve).
+`linear_solves` holds one record `(; modes, columns, iterations, residual, from_start, at_floor, floor_residual)` per
+linear solve on the complement of a node's computed states: `residual` the largest true residual, relative to the
+column's complement part `‖Q (∂H/∂x) ψ_j‖`, of the columns that met `lintol`; `from_start` the columns converged from
+the start (no solve); `at_floor` the columns that stopped at the round-off floor, and `floor_residual` their largest true
+residual relative to the whole right-hand side `‖(∂H/∂x) ψ_j‖`.
 """
 struct Derivatives
     sys::System
@@ -416,13 +418,15 @@ Keywords:
   node without its complete spectrum (an iterative node): the part of each state derivative orthogonal to the node's
   computed states solves `(E_j − H) w_j = (∂H/∂x) ψ_j` on their orthogonal complement by a Jacobi-preconditioned
   conjugate gradient.
-  Its right-hand side is `(∂H/∂x) ψ_j` with its components on the computed states subtracted, and its residual is
-  measured against `‖(∂H/∂x) ψ_j‖`, the norm of the whole right-hand side of that column (the scale of the whole
-  derivative): for a parameter internal to a weakly coupled child that right-hand side lies almost inside the computed
-  states, and a tolerance relative to its small complement part would be below round-off.
-  A column whose complement part is already below `lintol` times that norm is converged from the start (no solve).
-  Each solve's true residual is checked and recorded in `linear_solves` (`residual`, the largest true residual relative
-  to that norm, and `from_start`, the columns converged from the start); a solve that misses the tolerance is an error.
+  Its right-hand side is `(∂H/∂x) ψ_j` with its components on the computed states subtracted, and each column's
+  residual must reach `lintol` times that complement part's own norm `‖Q (∂H/∂x) ψ_j‖`.
+  For a parameter internal to a weakly coupled child that right-hand side lies almost inside the computed states, and
+  its complement part can be so small that this target is below round-off (about `eps ‖(∂H/∂x) ψ_j‖`): such a column
+  stops at the round-off floor, when its true residual has stopped decreasing and is at most `1000 eps` times the whole
+  right-hand side, and is recorded as such; a column whose complement part is already below that cap is converged from
+  the start (no solve).
+  Each solve's true residual is checked and recorded in `linear_solves` (`residual`, `from_start`, `at_floor`,
+  `floor_residual`); a column that misses both its target and the round-off cap is an error.
   The iteration count grows roughly linearly with a grid leaf's point count (measured: 744, 1505 and 3055 iterations
   at 3001, 6001 and 12001 points at the default settings), so `linmaxiter` may need raising for very fine grids.
   A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones, and

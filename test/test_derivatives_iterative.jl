@@ -71,9 +71,12 @@ end
 end
 
 @testset "weak coupling, first and second order: a child-internal parameter's right-hand side lies almost inside the known states" begin
-    # the complement solve converges against the whole right-hand side ‖R_j‖ (the parent's computed states hold all but
-    # ‖Q R_j‖/‖R_j‖ ≈ 1e-4 … 1e-7 of it); the same tolerances as the testsets above
-    for periodic in (false, true), g in (0.03, 0.003, 3e-4)
+    # the parent's computed states hold all but ‖Q R_j‖/‖R_j‖ ≈ 1e-4 … 1e-7 of the right-hand side; each column of the
+    # complement solve converges to lintol on its own scale ‖Q R_j‖, or stops at the round-off floor; the same
+    # matrix-wide tolerances as the testsets above
+    # Per state, each kept column's derivative against the dense route, relative to that column's own norm (columns
+    # whose dense derivative is below 1e-12 in norm are skipped, `percol_relerr`): 1e-7 at weak coupling, 1e-9 at g = 0.3.
+    for periodic in (false, true), g in (0.3, 0.03, 0.003, 3e-4)
         di_sys = dc_solve(tree(LOBPCG(tol=1e-11); periodic, g)); dd_sys = dc_solve(tree(Dense(); periodic, g))
         for x in (:E_J2, :E_C1, :g, :n_g1)
             di = derivatives(di_sys; wrt=x, order=2); dd = derivatives(dd_sys; wrt=x, order=2)
@@ -82,6 +85,9 @@ end
             @test norm(eigenvectors(di, x) - eigenvectors(dd, x), Inf) <= 1e-6 * norm(eigenvectors(dd, x), Inf)
             @test energies(di, x, x) ≈ energies(dd, x, x) rtol=1e-6 atol=1e-8
             @test norm(eigenvectors(di, x, x) - eigenvectors(dd, x, x), Inf) <= 1e-5 * norm(eigenvectors(dd, x, x), Inf)
+            percol = g == 0.3 ? 1e-9 : 1e-7
+            @test maximum(percol_relerr(eigenvectors(di, x), eigenvectors(dd, x))) <= percol
+            @test maximum(percol_relerr(eigenvectors(di, x, x), eigenvectors(dd, x, x))) <= percol
             for p in (nport(), expiphi(1.0))
                 @test norm(port(di, x, :varphi_1, p) - port(dd, x, :varphi_1, p), Inf) <= 1e-6 * norm(port(dd, x, :varphi_1, p), Inf)
                 @test norm(port(di, x, x, :varphi_1, p) - port(dd, x, x, :varphi_1, p), Inf) <= 1e-5 * norm(port(dd, x, x, :varphi_1, p), Inf)

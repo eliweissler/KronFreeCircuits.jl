@@ -21,6 +21,9 @@ using KronFreeCircuits: Retained, GivenSystem, Term, Factor, Coefficient, Port
     nv = materialize(Node([b]; solver=Dense(), compute=10, keep=lowest(4), retain=:never), spec, θ).root.retained
     @test nv.vectors === nothing && !nv.complete && nv.unkept == 5:10 && isapprox(nv.energies, full.energies[1:10]; atol=1e-10)
     @test_throws ArgumentError Node([b]; retain=:sometimes)
+    # the internal override of `materialize` (used by `bo_surface`) is validated like the keyword of `Node`
+    @test materialize(Node([b]; solver=Dense(), compute=10, keep=lowest(4)), spec, θ; _retain=:never).root.retained.vectors === nothing
+    @test_throws "`_retain` must be" materialize(Node([b]; solver=Dense(), keep=lowest(4)), spec, θ; _retain=:sometimes)
     # retention changes what is stored beside the kept states, not the kept states: the full decomposition of a retaining
     # compute-limited Dense node gives the same kept energies, vectors (with their fixed phases) and ports
     # (measured when the final review was written: at most 4e-13)

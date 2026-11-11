@@ -408,10 +408,11 @@ block_levels(b, (g=0.2,))           # their levels at g + 0.2, from the block's 
 ```
 
 The derivatives are those of the calculation as performed: the selection of kept states, every basis and grid, the coordinate frame, the solvers, each node's real or complex arithmetic and its discrete phase choice are held fixed.
-They agree with finite differences of `materialize` wherever those are themselves well defined (measured by the tests and by the final review's experiments on three-level, complex, augmented and iterative trees, to within the finite differences' own error), including weakly coupled children under an iterative parent (`test/test_derivatives_iterative.jl`, couplings 0.03 to 3e-4).
+They agree with finite differences of `materialize` wherever those are themselves well defined (measured by the tests and by the final review's experiments on three-level, complex, augmented and iterative trees, to within the finite differences' own error).
+At an iterative node they agree with the full-spectrum (`Dense`) route: for weakly coupled children (couplings 0.03 to 3e-4, `test/test_derivatives_iterative.jl`) each kept state's derivative to within 5e-10 of its own norm, at first and second order.
 Each node's `∂H/∂x` has three parts: the derivatives of its own coefficients, its children's port derivatives and its children's energy derivatives.
 At a node with its complete spectrum the sum over states is exact; at an iterative node (`LOBPCG`, `Lanczos`, `ShiftInvert`, `ChebyshevFilter`) the part outside the computed states comes from a preconditioned conjugate-gradient solve.
-Its true residual must be at most `10 lintol` (`lintol = 1e-10`) relative to `‖(∂H/∂x) ψ_j‖`, the whole right-hand side of the column, and is recorded in `d.linear_solves`.
+Each column converges to `lintol = 1e-10` relative to its own part outside the computed states, or, where that is below round-off, stops at the round-off floor (at most `1000 eps` of the whole right-hand side); the true residuals are recorded in `d.linear_solves`.
 
 `scale` gives a typical displacement `δx` for a parameter.
 A pair of kept states whose coupling `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx` exceeds `r = 0.1` times their detuning forms a near-degenerate block.
@@ -461,7 +462,7 @@ KRONFREE_SLOW_TESTS=1 julia --project=. -e 'using Pkg; Pkg.test()'             #
 julia --project=. -e 'using Pkg; Pkg.test(test_args=["test_bo.jl"])'           # only the named files
 ```
 
-The default runs the fast tier: the unit-level files, about 45 s on an M2 before the derivative files were added, now several minutes (26 minutes on a loaded ewdesktop, 2026-11-11).
+The default runs the fast tier: the unit-level files, about 45 s on an M2 before the derivative files were added, now several minutes (5m50s on ewdesktop at load average 5 to 6.6, 2026-11-11; 26 minutes earlier that day under heavier load).
 Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes in all on a loaded M2:
 - the apply, end-to-end, solver, catalogue, character, generated-spec and Born–Oppenheimer files (`SLOW_FILES` in `test/runtests.jl`);
 - two plan-3 real-versus-complex equivalence testsets gated inside those files;
