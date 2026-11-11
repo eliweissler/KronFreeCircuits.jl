@@ -413,11 +413,10 @@ _child_overlap(prev::MaterializedNode, cur::MaterializedNode) =
 # Kronecker product of per-axis vectors, axis 1 fastest.
 _kronaxes(vs) = foldl((acc, v) -> kron(v, acc), vs; init=[true])
 
-# ⟨v_i| ⊗ₐ Oₐ |v_j⟩ for the columns of V, with each Oₐ acting on its own axis a of the product basis (one operator per axis).
-# The operators are applied in increasing axis order, alternating two work blocks (apply_axis! forbids aliasing), and
-# contracted with V' once.
-# On real `V` it takes only real operators (the components the method below passes).
-function _port_matrix(V::NodeMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tuple{Int,LocalOp}})
+# `(⊗ₐ Oₐ) V` for the columns of V, with each Oₐ acting on its own axis a of the product basis of dimensions `dims` (one
+# operator per axis), in the shape of `V`.
+# The operators are applied in increasing axis order, alternating two work blocks (apply_axis! forbids aliasing).
+function _apply_ops(V::AbstractMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tuple{Int,LocalOp}})
     axes_ = [a for (a, _) in ops]
     allunique(axes_) || throw(ArgumentError("a joint port takes one operator per axis; got axes $axes_"))
     X = reshape(V, dims..., size(V, 2))
@@ -428,8 +427,12 @@ function _port_matrix(V::NodeMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tu
         apply_axis!(dest, op, X, a)
         X = dest
     end
-    return V' * reshape(X, size(V))
+    return reshape(X, size(V))
 end
+
+# ⟨v_i| ⊗ₐ Oₐ |v_j⟩ for the columns of V (`_apply_ops`, then one contraction with V').
+# On real `V` it takes only real operators (the components the method below passes).
+_port_matrix(V::NodeMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tuple{Int,LocalOp}}) = V' * _apply_ops(V, dims, ops)
 _port_matrix(V::NodeMatrix, dims::Vector{Int}, axis::Int, op::LocalOp) = _port_matrix(V, dims, [(axis, op)])
 
 # The port with operator `op` and conjugation character `ch` (spec Section 20f).
@@ -481,13 +484,22 @@ function _joint_port(node::Node, leaves, children, dims::Vector{Int}, V::Matrix{
                              for (a, op, _) in _axis_ops(node, children, K)]
     return _port_matrix(V, dims, ops)
 end
-function _joint_port(node::Node, leaves, children, dims::Vector{Int}, V::Matrix{Float64}, K::_FactorKey)
+_joint_port(node::Node, leaves, children, dims::Vector{Int}, V::Matrix{Float64}, K::_FactorKey) =
+    _real_sandwich(leaves, dims, V, V, K, _axis_ops(node, children, K))
+
+# `W† (⊗ₐ Oₐ) V` on real `W` and `V` over a real node's product basis of dimensions `dims`, for the sorted key `K` with
+# the operators `ops` (`(axis, op, sub-key)`, as `_axis_ops` returns them), in its natural type by the key's character:
+# `R = Re(⊗ₐ Oₐ)` and `I = Im(⊗ₐ Oₐ) = Re(−i ⊗ₐ Oₐ)` are each a sum of products of the operators' real and imaginary
+# components (`_real_expansion` with `s = 1`, on each group's own character), and the result is `W†RV` (`Matrix{Float64}`)
+# for a real key, `i W†IV` for an imaginary one and `W†RV + i W†IV` for a paired or general one (`Matrix{ComplexF64}`).
+function _real_sandwich(leaves, dims::Vector{Int}, W::Matrix{Float64}, V::Matrix{Float64}, K::_FactorKey,
+                        ops::AbstractVector{<:Tuple{Int,LocalOp,_FactorKey}})
     ch = _key_character(leaves, K)
-    fs = Tuple{Int,LocalOp,Symbol,Int}[(a, op, _key_character(leaves, Ka).kind, 1) for (a, op, Ka) in _axis_ops(node, children, K)]
+    fs = Tuple{Int,LocalOp,Symbol,Int}[(a, op, _key_character(leaves, Ka).kind, 1) for (a, op, Ka) in ops]
     function component(c)
-        X = zeros(size(V, 2), size(V, 2))
+        X = zeros(size(W, 2), size(V, 2))
         for r in _real_expansion(c, fs)
-            X .+= r.coeff .* _port_matrix(V, dims, r.factors)
+            X .+= r.coeff .* (W' * _apply_ops(V, dims, r.factors))
         end
         return X
     end

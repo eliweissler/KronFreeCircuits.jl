@@ -99,22 +99,6 @@ function _derivative_operator(mn::MaterializedNode, terms::Vector{Term}, θ::Nam
     return KronFreeOperator(mn.dims, axisterms; constant=c0, on)
 end
 
-# `(⊗ₐ Oₐ) V` on the product basis of dimensions `dims`, one operator per axis, applied in increasing axis order
-# (as `_port_matrix`, without the contraction).
-function _apply_ops(V::AbstractMatrix, dims::Vector{Int}, ops::AbstractVector{<:Tuple{Int,LocalOp}})
-    axes_ = [a for (a, _) in ops]
-    allunique(axes_) || throw(ArgumentError("a joint port takes one operator per axis; got axes $axes_"))
-    X = reshape(V, dims..., size(V, 2))
-    Y = similar(X)
-    Z = length(ops) > 1 ? similar(X) : Y
-    for (n, (a, op)) in enumerate(ops[sortperm(axes_)])
-        dest = isodd(n) ? Y : Z                    # V -> Y -> Z -> Y ...; V itself is never written
-        apply_axis!(dest, op, X, a)
-        X = dest
-    end
-    return reshape(X, size(V))
-end
-
 """
     _sandwich(mn, W, V, K, ops) -> NodeMatrix
 
@@ -123,27 +107,13 @@ key's natural type there: `Matrix{Float64}` for a real-character key of a real n
 `ops` has the form `_axis_ops(mn.node, mn.children, K)` returns, one `(axis, op, sub-key)` per child the key touches; a
 caller replaces an entry's `op` by `DenseOp` of a child's derivative to differentiate the operator.
 With `W = V = mn.vectors` it is the stored port or joint port of `K`.
-On a real node `W` and `V` are real, and the real and imaginary components are formed separately, as `_joint_port` does.
+On a real node `W` and `V` are real, and the real and imaginary components are formed separately (`_real_sandwich`, which also forms a real node's joint ports).
 """
 function _sandwich(mn::MaterializedNode, W::AbstractMatrix, V::AbstractMatrix, K::_FactorKey,
                    ops::Vector{Tuple{Int,LocalOp,_FactorKey}})
     if !(mn isa MaterializedNode{Float64})
         cops = Tuple{Int,LocalOp}[(a, op isa DenseOp ? DenseOp(convert(Matrix{ComplexF64}, op.M)) : op) for (a, op, _) in ops]
-        return Matrix{ComplexF64}(W)' * _apply_ops(Matrix{ComplexF64}(V), mn.dims, cops)
+        return convert(Matrix{ComplexF64}, W)' * _apply_ops(convert(Matrix{ComplexF64}, V), mn.dims, cops)
     end
-    Wr, Vr = Matrix{Float64}(W), Matrix{Float64}(V)
-    leaves = _mode_leaves(mn.node)
-    fs = Tuple{Int,LocalOp,Symbol,Int}[(a, op, _key_character(leaves, Ka).kind, 1) for (a, op, Ka) in ops]
-    function component(c)
-        X = zeros(size(Wr, 2), size(Vr, 2))
-        for r in _real_expansion(c, fs)
-            X .+= r.coeff .* (Wr' * _apply_ops(Vr, mn.dims, r.factors))
-        end
-        return X
-    end
-    kind = _key_character(leaves, K).kind
-    kind === :real && return component(1.0)
-    Im = component(-im)
-    kind === :imaginary && return complex.(zero(Im), Im)
-    return complex.(component(1.0), Im)
+    return _real_sandwich(_mode_leaves(mn.node), mn.dims, convert(Matrix{Float64}, W), convert(Matrix{Float64}, V), K, ops)
 end

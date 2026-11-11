@@ -20,6 +20,29 @@ using KronFreeCircuits: _derivative_operator, _sandwich, _axis_ops, operator, ro
     end
 end
 
+@testset "_sandwich on a joint key of a complex node, against a dense product" begin
+    # `dc_abc` with the two-mode child on periodic grids: the child is complex (its `n` is imaginary), with joint ports.
+    ab = Node([:a => PeriodicGrid(24; order=8), :b => PeriodicGrid(24; order=8)]; solver=Dense(), keep=lowest(8))
+    root = Node([ab, Node([:c => ChargeBasis(5)]; solver=Dense(), keep=lowest(5))]; solver=Dense(), keep=lowest(6))
+    sys = quiet(() -> materialize(root, KronFreeCircuits.parse_spec(abc_deriv_json), dc_abc().θ))
+    mn = materialized(sys, ab); V = mn.vectors
+    @test mn isa KronFreeCircuits.MaterializedNode{ComplexF64} && !isempty(mn.joint_ports)
+    W = randn(MersenneTwister(5), ComplexF64, size(V))
+    for (K, P) in mn.joint_ports
+        ops = _axis_ops(ab, mn.children, K)
+        S = _sandwich(mn, V, V, K, ops)
+        @test typeof(S) === typeof(P)
+        @test S ≈ P atol=1e-12
+        mats = Matrix{ComplexF64}[Matrix{ComplexF64}(I, d, d) for d in mn.dims]
+        for (a, op, _) in ops
+            mats[a] = Matrix(KronFreeCircuits.dense(op))
+        end
+        A = foldl((acc, M) -> kron(M, acc), mats; init=ones(ComplexF64, 1, 1))     # axis 1 fastest
+        @test _sandwich(mn, W, V, K, ops) ≈ W' * A * V atol=1e-10
+        @test _sandwich(mn, V, W, K, ops) ≈ V' * A * W atol=1e-10
+    end
+end
+
 @testset "∂H/∂x at a leaf equals the finite difference of the forward operator" begin
     for (c, xs) in ((dc_transmon(), (:n_g, :E_J, :E_C)), (dc_transmon(periodic=true), (:n_g, :E_J)),
                     (dc_fluxonium(), (:varphi_ext, :E_L, :E_J)))
