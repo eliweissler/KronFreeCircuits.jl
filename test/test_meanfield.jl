@@ -47,3 +47,29 @@ using Test, KronFreeCircuits
     bad = Node([A, :b => grid, :c => grid]; solver=Dense(), compute=2, keep=lowest(2))
     @test_throws "Node" straddling_terms(bad, terms)
 end
+
+@testset "mean-field child and product energy" begin
+    spec = coupled_oscillators_spec()
+    grid = PhaseGrid(-10.0, 10.0, 161)
+    S = Node([:s => grid]; solver=Dense(), compute=6, keep=lowest(6))
+    F = Node([:f => grid]; solver=Dense(), compute=6, keep=lowest(6))
+    root = Node([S, F]; solver=Dense(), compute=4, keep=lowest(4))
+    # uncoupled: the product state is exact, so one mean-field solve gives the exact ground energy
+    θ0 = (a=1.0, b=4.0, c=0.0, E_Cf=1.0, E_Cs=0.5); terms = circuit_terms(spec)
+    bs, bf = bare_child(root, terms, θ0, S), bare_child(root, terms, θ0, F)
+    es = expectations(bs, child_keys(root, terms, S)); ef = expectations(bf, child_keys(root, terms, F))
+    E = product_energy(root, terms, θ0, IdDict(S => bs.energies[1], F => bf.energies[1]), IdDict(S => es, F => ef))
+    @test E ≈ energies(materialize(root, spec, θ0))[1] rtol=1e-10
+    # coupled: a mean-field child is the bare child plus a linear term, and the product energy is an upper bound
+    θ = (a=1.0, b=4.0, c=0.8, E_Cf=1.0, E_Cs=0.5)
+    shifted = IdDict{Node,Expectations}(F => pinned_expectations(child_keys(root, terms, F), Dict(:f => 0.4)))
+    ms = mean_field_child(root, terms, θ, S, bare_child(root, terms, θ, S), shifted)
+    @test ms.solved.energies[1] ≈ 0.5 * sqrt(8 * 0.5 * 1.0) - (0.8 * 0.4)^2 / (2 * 1.0) atol=1e-6   # ½ω − (c φ_f)²/2a
+    @test ms.expectations[[(:s, phiport())]] ≈ -0.8 * 0.4 / 1.0 atol=1e-6
+    @test ms.bare_energy ≈ ms.solved.energies[1] - 0.8 * 0.4 * real(ms.expectations[[(:s, phiport())]]) atol=1e-9
+    exact = energies(materialize(Node([:s => grid, :f => grid]; solver=LOBPCG(), compute=2, keep=lowest(2)), spec, θ))[1]
+    mf = mean_field_child(root, terms, θ, F, bare_child(root, terms, θ, F), IdDict{Node,Expectations}(S => ms.expectations))
+    Ep = product_energy(root, terms, θ, IdDict(S => ms.bare_energy, F => mf.bare_energy),
+                        IdDict(S => ms.expectations, F => mf.expectations))
+    @test Ep >= exact - 1e-9
+end

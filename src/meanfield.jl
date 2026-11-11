@@ -186,3 +186,99 @@ function mean_field_terms(parent::Node, terms::Vector{Term}, θ::NamedTuple, chi
     end
     return out
 end
+
+"""
+    MeanFieldChild
+
+One child of a node solved with its bare terms plus the mean-field terms of its siblings.
+`node` is the child and `solved` holds the kept states of its mean-field operator, with the ports and joint ports of `child_keys`.
+The energies of `solved` are mean-field energies: eigenvalues of the bare operator plus the mean-field terms, not energies of the child's own operator.
+`terms` are the mean-field terms that were added, with constant coefficients.
+`bare_energy` is the expectation value of the child's bare operator in the state that `expectations` were taken in (or their weighted average).
+`expectations` holds the value of every key of `child_keys` in that state.
+"""
+struct MeanFieldChild
+    node::Node
+    solved::MaterializedNode
+    terms::Vector{Term}
+    bare_energy::Float64
+    expectations::Expectations
+end
+
+# The keys of `child_keys` split into the ports (one factor) and the joint ports (more) that `_solve_node` forms.
+function _split_keys(keys::Vector{_FactorKey})
+    ports = Tuple{Symbol,Port}[only(K) for K in keys if length(K) == 1]
+    joint = _FactorKey[K for K in keys if length(K) > 1]
+    return ports, joint
+end
+
+# The real part of a sum `z` that should be real, or an error when its imaginary part is not negligible: `what` is the
+# sum, and `terms` the terms that are then not Hermitian.
+function _real_sum(z::Number, what, terms)
+    abs(imag(z)) <= 1e-8 * max(1.0, abs(real(z))) ||
+        error("$what has imaginary part $(imag(z)) (real part $(real(z))): $terms are not Hermitian")
+    return real(z)
+end
+
+"""
+    bare_child(parent, terms, θ, child) -> MaterializedNode
+
+The bare solve of `child`: the node as the root of its own tree, on its own terms only, with every node complex.
+It forms the ports and joint ports of `child_keys(parent, terms, child)`, so that its kept states can serve as a table.
+A branch child's own children are solved here once, and every `mean_field_child` of it reuses them.
+"""
+function bare_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node)
+    return _solve_subtree(child, terms, θ; keys=child_keys(parent, terms, child), complex=true)
+end
+
+"""
+    mean_field_child(parent, terms, θ, child, bare, others; state=1, weights=nothing) -> MeanFieldChild
+
+One mean-field solve of `child`: its own node on its bare terms plus `mean_field_terms(parent, terms, θ, child, others)`, in complex arithmetic.
+The children of `child` are taken from `bare` (from `bare_child`) and are not solved again.
+The expectations and the bare energy are taken in the `state`-th kept state, or averaged with `weights`, as in `expectations`.
+"""
+function mean_field_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node, bare::MaterializedNode,
+                          others::AbstractDict{Node,Expectations}; state::Int=1,
+                          weights::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    bare.node === child || throw(ArgumentError("`bare` is not a solution of `child`"))
+    keys = child_keys(parent, terms, child)
+    mf = mean_field_terms(parent, terms, θ, child, others)
+    ports, joint_ports = _split_keys(keys)
+    solved = _solve_node(child, bare.children, vcat(_terms_at(child, terms), mf), θ; ports, joint_ports, real=false)
+    table = expectations(solved, keys; state, weights)
+    E = weights === nothing ? solved.energies[state] : sum(weights[i] * solved.energies[i] for i in eachindex(weights))
+    shift = sum((t.coeff((;)) * table[_factor_key(t)] for t in mf); init=0.0 + 0.0im)
+    s = _real_sum(shift, "the expectation of the mean-field terms of the child on modes $(modes(child))",
+                  "the mean-field terms (the tables in `others` are inconsistent)")
+    return MeanFieldChild(child, solved, mf, E - s, table)
+end
+
+"""
+    product_energy(parent, terms, θ, bare_energies, tables; constant=0.0) -> Float64
+
+The expectation value of the operator of `parent` in the product of its children's states, with no double counting.
+It is `constant` plus the bare energy of each child plus, for each straddling term, its coefficient at `θ` times each touched child's expectation of its key.
+`bare_energies` and `tables` must have an entry for every child of `parent`, and each table every key the straddling terms need.
+A term with a factor outside `parent` is not part of its operator and is not counted.
+"""
+function product_energy(parent::Node, terms::Vector{Term}, θ::NamedTuple, bare_energies::AbstractDict{Node,Float64},
+                        tables::AbstractDict{Node,Expectations}; constant::Number=0.0)
+    _check_node_children(parent)
+    for ch in parent.children
+        haskey(bare_energies, ch) || throw(ArgumentError("`bare_energies` has no entry for the child on modes $(modes(ch))"))
+        haskey(tables, ch) || throw(ArgumentError("`tables` has no table for the child on modes $(modes(ch))"))
+    end
+    z = 0.0 + 0.0im
+    for t in straddling_terms(parent, terms)
+        w = ComplexF64(t.coeff(θ))
+        for ch in parent.children
+            key = _key_in(t, Set(modes(ch)))
+            isempty(key) || (w *= _lookup(tables[ch], key, "the child on modes $(modes(ch))"))
+        end
+        z += w
+    end
+    coupling = _real_sum(z, "the straddling terms' expectation at the node on modes $(modes(parent))",
+                         "the straddling terms with these tables")
+    return Float64(real(constant)) + sum(bare_energies[ch] for ch in parent.children) + coupling
+end

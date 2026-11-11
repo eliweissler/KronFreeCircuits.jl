@@ -25,7 +25,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        PortCharacter, character, arithmetic,
        circuit_quantization, QuantizedCircuit, record_json, save_record, load_record,
        Expectations, straddling_terms, child_keys, expectations, pinned_expectations, delocalized_expectations,
-       mean_field_terms
+       mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy
 
 include("parameters.jl")
 include("spec.jl")
