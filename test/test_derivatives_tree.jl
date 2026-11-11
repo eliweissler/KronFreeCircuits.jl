@@ -86,20 +86,22 @@ end
     @test all(isfinite, energies(derivatives(s0; wrt=:n_g), :n_g))
 end
 
-@testset "trees the first-order pass does not yet cover are refused" begin
-    # an augmented child (its stored basis is data; Task 10 adds it)
+@testset "trees with stored-data children, and nodes without their complete spectrum" begin
+    # an augmented child is differentiated at its fixed stored basis (Task 10; test_derivatives_stored.jl checks values)
     c = dc_two_transmons(); terms = circuit_terms(c.spec); B = c.leaves[2]
     bareB = bare_child(c.root, terms, c.θ, B)
     augB = augment(c.root, terms, c.θ, B, bareB, Matrix{ComplexF64}(bareB.vectors), UnionReport(["bare"], [4], [0]))
     sa = quiet(() -> materialize(c.root, c.spec, c.θ; augmented=[augB]))
-    @test_throws "[:varphi_2]" derivatives(sa; wrt=:g)
-    # a `GivenSystem` child (its energies and operators are numbers of unknown dependence; Task 10 adds it)
+    @test all(isfinite, energies(derivatives(sa; wrt=:g), :g))
+    # a `GivenSystem` child (its energies and operators are numbers of unknown dependence) is refused unless declared
+    # parameter-independent (Task 10)
     X = ComplexF64[0 1 0; 1 0 √2; 0 √2 0]
     ga = GivenSystem(:a; energies=[0.0, 1.0, 2.5], operators=Dict(:x => X))
     gb = GivenSystem(:b; energies=[0.0, 0.8], operators=Dict(:x => X[1:2, 1:2]))
     top = Node([ga, gb]; solver=Dense(), keep=lowest(6))
     sg = materialize(top, [Term(Coefficient("g", [:g]), [Factor(:a, Port(:x, 0)), Factor(:b, Port(:x, 0))])], (g=0.1,))
     @test_throws "GivenSystem :a" derivatives(sg; wrt=:g)
+    @test all(isfinite, energies(derivatives(sg; wrt=:g, given_independent=true), :g))
     # a node without its complete spectrum is no longer refused: the sum over states is completed by a linear solve on
     # the complement of its computed states (Task 6), recorded with its true residual
     si = dc_solve(dc_two_transmons(solver=Lanczos(tol=1e-12), compute=8))

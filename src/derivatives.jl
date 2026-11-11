@@ -360,8 +360,23 @@ Keywords:
   solves `(E_j − H) w_j = (∂H/∂x) ψ_j` on their orthogonal complement by a preconditioned conjugate gradient, whose true residual
   is checked and recorded in `linear_solves`; a solve that misses the tolerance is an error.
   A node with `retain = :never` projects out its kept states alone, which must then be its lowest computed ones.
-- `given_independent`: declares the `GivenSystem` children independent of the parameters; a tree with a
-  `GivenSystem` child is an `ArgumentError` in this version whatever its value, as is a tree with an augmented child.
+- `given_independent`: declares the `GivenSystem` children independent of every parameter.
+  Their energies and operators are numbers whose dependence on the parameters is unknown, so without it a tree with a
+  `GivenSystem` child is an `ArgumentError`; with it they have no derivative data, like a basis, and read as zeros.
+
+An augmented child (see [`augment`](@ref)) is differentiated as its bare operator projected on its fixed stored basis.
+Its stored states are the whole spectrum of that projected problem, so its resolvent is the sum over them, with no
+linear solve, no re-diagonalization and no selection boundary.
+Its `∂H/∂x` is the derivative of its bare operator: of the coefficients of its stored bare terms (not of the terms the
+tree routes to it) and, when its children are nodes, their port and energy derivatives, computed by the ordinary pass
+on the terms the tree routes to them; its gauge is its own phase rule, and the basis coefficients do not move.
+This is the derivative of the calculation with the basis held fixed, not of a re-run of the mean-field loop that chose it.
+An augmented child built at a `θ` that differs from `sys.θ` in a parameter that a term inside it depends on (its bare
+terms or the terms of any node below it) is an `ArgumentError`.
+
+A Born–Oppenheimer reduced spec is an ordinary spec: a `slow_spec` carries no dependence on the fast parameters, and a
+`fit_surfaces` spec carries the fitted-over parameters through its fit model, so derivatives with respect to them are
+derivatives of the fit.
 
 A node whose phases followed a previous solution (`phase = :follow` with `previous`) is an `ArgumentError`.
 """
@@ -379,8 +394,8 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
             throw(ArgumentError("`scale` for :$k must be a positive finite number, got $v"))
     end
     r > 0 || throw(ArgumentError("`r` must be positive, got $r"))
-    _check_differentiable(sys)
-    routed = route(sys.root.node, sys.terms)
+    _check_differentiable(sys; given_independent)
+    routed = _derivative_terms(sys)
     resolvents = IdDict{Any,Resolvent}()
     first = Dict{Symbol,Any}()
     boundary, linear_solves = Any[], Any[]
@@ -436,18 +451,18 @@ function _check_wrt(wrt, θ::NamedTuple)
     return unique(Symbol[x for x in names])
 end
 
-# The tree may hold no node the pass cannot differentiate: a node whose phases followed a previous solution, a
-# `GivenSystem` child or an augmented child.
-function _check_differentiable(sys::System)
-    isempty(sys.augmented) ||
-        throw(ArgumentError("the node on modes $(modes(first(sys.augmented).node)) is an augmented child; derivatives " *
-                            "of a tree with an augmented child are not available yet"))
+# The tree may hold no node the pass cannot differentiate: a node whose phases followed a previous solution, or a
+# `GivenSystem` child unless `given_independent` declares it independent of the parameters.
+function _check_differentiable(sys::System; given_independent::Bool)
     stack = MaterializedNode[sys.root]
     while !isempty(stack)
         mn = pop!(stack)
-        mn.node isa GivenSystem &&
-            throw(ArgumentError("the tree has the child GivenSystem :$(mn.node.mode); derivatives of a tree with a " *
-                                "GivenSystem child are not available yet"))
+        if mn.node isa GivenSystem
+            given_independent && continue
+            throw(ArgumentError("the tree has the child GivenSystem :$(mn.node.mode), whose energies and operators are " *
+                                "numbers with no known dependence on the parameters; pass `given_independent = true` " *
+                                "to declare them independent of every parameter (their derivatives are then zero)"))
+        end
         mn.retained.followed &&
             throw(ArgumentError("the phases of the node on modes $(modes(mn.node)) followed a previous solution, " *
                                 "which cannot be differentiated; re-materialize at this point without `previous`"))
@@ -455,6 +470,30 @@ function _check_differentiable(sys::System)
     end
     return nothing
 end
+
+# The terms of each node of the tree for the passes: those `route` places there, except at an augmented node, whose
+# terms are the bare terms stored in its `AugmentedChild` (its states diagonalize them projected on its stored basis).
+# Each augmented child must have been built at `sys.θ` in every parameter that a term inside its subtree depends on
+# (its own bare terms and the routed terms of every node below it): `materialize` checks only its own.
+function _derivative_terms(sys::System)
+    routed = route(sys.root.node, sys.terms)
+    for a in sys.augmented
+        below = [routed[n] for n in _all_nodes(a.node) if n !== a.node]
+        for t in Iterators.flatten((a.terms, below...)), p in t.coeff.deps
+            haskey(a.θ, p) && haskey(sys.θ, p) && a.θ[p] == sys.θ[p] && continue
+            built = haskey(a.θ, p) ? repr(a.θ[p]) : "(absent)"
+            now = haskey(sys.θ, p) ? repr(sys.θ[p]) : "(absent)"
+            throw(ArgumentError("the augmented child on modes $(modes(a.node)) was built at $p = $built, but the system " *
+                                "has $p = $now, and a term inside the augmented child depends on $p; rebuild the " *
+                                "augmented child (and its bare solve) at the system's θ"))
+        end
+        routed[a.node] = a.terms
+    end
+    return routed
+end
+
+# The children the passes visit: nodes, not bases nor `GivenSystem`s (which have no derivative data).
+_visited_child(c) = c isa MaterializedNode && !(c.node isa GivenSystem)
 
 # The first-order pass along `x`: every node whose subtree depends on `x`, children first; the root's `NodeDerivative`,
 # or `nothing`.  `resolvents` caches one `Resolvent` per node across parameters; `lin` holds the keywords of the linear
@@ -468,11 +507,11 @@ function _first_order_pass(sys::System, routed, x::Symbol, resolvents::IdDict{An
     function dependent(mn::MaterializedNode)
         haskey(depends, mn.node) && return depends[mn.node]
         here = any(t -> x in t.coeff.deps, routed[mn.node]) || (mn.node === root && x in sys.constant.deps)
-        return depends[mn.node] = here || any(dependent(c) for c in mn.children if c isa MaterializedNode)
+        return depends[mn.node] = here || any(dependent(c) for c in mn.children if _visited_child(c))
     end
     function visit(mn::MaterializedNode)
         dependent(mn) || return nothing
-        dx = Any[c isa MaterializedNode ? visit(c) : nothing for c in mn.children]
+        dx = Any[_visited_child(c) ? visit(c) : nothing for c in mn.children]
         constant = mn.node === root ? sys.constant : Coefficient(0)
         res = get!(() -> _node_resolvent(sys, mn; degenerate_tol, lin...), resolvents, mn.node)
         on = res.complement === nothing ? Array : res.complement.H.on
@@ -496,7 +535,7 @@ function _second_order_pass(sys::System, routed, x::Symbol, λ::Symbol, dX, dΛ,
     function visit(mn::MaterializedNode, nx, nλ)
         (nx === nothing || nλ === nothing) && return nothing
         dx, dλ = nx.children, nλ.children
-        dxλ = Any[c isa MaterializedNode ? visit(c, dx[a], dλ[a]) : nothing for (a, c) in enumerate(mn.children)]
+        dxλ = Any[_visited_child(c) ? visit(c, dx[a], dλ[a]) : nothing for (a, c) in enumerate(mn.children)]
         res = resolvents[mn.node]
         Hx, Hλ, Hxλ = _pair_operators(sys, routed, mn, res, x, λ, dx, dλ, dxλ; parts)
         report = search === nothing ? nothing :
@@ -525,7 +564,10 @@ end
 # The resolvent of `mn`, with its forward operator rebuilt only when `_resolvent` needs it: a node without its complete
 # spectrum that does not keep every state of its space (a Dense one to re-diagonalize, any other for its linear solve,
 # unless `truncate` leaves the solve out).
+# An augmented node's stored states are the whole spectrum of its bare operator projected on its stored basis: its
+# resolvent is the sum over them (`projected`), with no complement and no re-diagonalization.
 function _node_resolvent(sys::System, mn::MaterializedNode; degenerate_tol, lintol, linmaxiter, log, truncate)
+    any(a -> a.node === mn.node, sys.augmented) && return _resolvent(mn; degenerate_tol, projected=true)
     dense = _resolve_node_solver(mn.node, mn.children) isa Dense
     needs_H = !mn.retained.complete && size(mn.vectors, 2) < prod(mn.dims) && (dense || !truncate)
     return _resolvent(mn, needs_H ? operator(sys, mn.node) : nothing; degenerate_tol, lintol, linmaxiter, log, truncate)

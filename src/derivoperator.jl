@@ -170,8 +170,9 @@ _first_replacements(axes::Vector{Int}, d::Vector{Any}) =
     [[(g, d[a])] for (g, a) in enumerate(axes) if d[a] !== nothing]
 # Second order: one entry replaced by its axis's data in `dxλ`, and two distinct entries `g ≠ h` (every ordered pair)
 # replaced by the data of `dx` and of `dλ`.
+# The data of different axes can differ in element type (a complex child beside a real one).
 function _second_replacements(axes::Vector{Int}, dx::Vector{Any}, dλ::Vector{Any}, dxλ::Vector{Any})
-    sets = [[(g, dxλ[a])] for (g, a) in enumerate(axes) if dxλ[a] !== nothing]
+    sets = Vector{Tuple{Int,NodeDerivative}}[[(g, dxλ[a])] for (g, a) in enumerate(axes) if dxλ[a] !== nothing]
     for (g, a) in enumerate(axes), (h, b) in enumerate(axes)
         g != h && dx[a] !== nothing && dλ[b] !== nothing && push!(sets, [(g, dx[a]), (h, dλ[b])])
     end
