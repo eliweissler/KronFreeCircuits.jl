@@ -53,6 +53,12 @@ end
     d = differentiate(big_product, :x)
     @test d(θ) ≈ 1.8446744073709552e19
     check_fd(d(θ), fd_derivative(t -> big_product(t), θ, :x; h=2e-3); rtol=1e-8, atol=1e-10)
+    wide = Coefficient("x * 4294967296 * 4294967296 * y", [:x, :y])                # number factors are folded together, exactly
+    @test differentiate(wide, :x)((x=0.3, y=0.5)) ≈ 9.223372036854776e18
+    @test differentiate(wide, :y)((x=0.5, y=0.3)) ≈ 9.223372036854776e18
+    @test differentiate(Coefficient("2.5 * x * 4.0", [:x, :y]), :x)(θ) === 10.0 + 0.0im
+    wide_sum = Coefficient("4611686018427387904 * x + 4611686018427387904 * x + x * y", [:x, :y])  # 2^62 + 2^62 wraps in Int64
+    @test differentiate(wide_sum, :x)((x=0.3, y=0.5)) ≈ 2.0^63 + 0.5
     big_power = Coefficient("x * 4294967296^2", [:x, :y])
     check_fd(differentiate(big_power, :x)(θ), fd_derivative(t -> big_power(t), θ, :x; h=2e-3); rtol=1e-8, atol=1e-10)
     @test_throws ArgumentError KronFreeCircuits._diff(Expr(:ref, :x, 1), :x)        # an unexpected node names itself

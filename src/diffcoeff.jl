@@ -40,6 +40,19 @@ function _fold(f::Symbol, args)
     return v
 end
 
+# The arguments of the `+` or `*` call `args` with its number arguments folded, exactly, into one placed first; unchanged when
+# there are fewer than two or a fold would change a value.
+function _fold_numbers(f::Symbol, args)
+    nums, rest = filter(a -> a isa Number, collect(Any, args)), filter(a -> !(a isa Number), collect(Any, args))
+    length(nums) < 2 && return collect(Any, args)
+    acc = nums[1]
+    for n in nums[2:end]
+        acc = _fold(f, (acc, n))
+        acc === nothing && return collect(Any, args)
+    end
+    return Any[acc; rest]
+end
+
 # The call `f(args...)`, simplified: the only place where simplification happens.
 # The zero rules come first, so a zero factor or numerator is never lost to a fold.
 function _build(f::Symbol, args...)
@@ -51,7 +64,7 @@ function _build(f::Symbol, args...)
         return Expr(:call, f, args...)
     end
     if f === :+
-        ts = filter(!_dzero, collect(Any, args))
+        ts = filter(!_dzero, _fold_numbers(:+, args))
         isempty(ts) && return 0
         length(ts) == 1 && return ts[1]
         return Expr(:call, :+, ts...)
@@ -59,7 +72,9 @@ function _build(f::Symbol, args...)
         _dzero(args[2]) && return args[1]
         _dzero(args[1]) && return _build(:-, args[2])
     elseif f === :*
-        fs = filter(!_done, collect(Any, args))
+        fs = _fold_numbers(:*, args)
+        any(_dzero, fs) && return 0
+        fs = filter(!_done, fs)
         isempty(fs) && return 1
         length(fs) == 1 && return fs[1]
         return Expr(:call, :*, fs...)
