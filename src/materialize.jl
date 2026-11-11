@@ -133,30 +133,63 @@ end
 # The term-list form: the spec form delegates here with the spec's terms and constant.
 function _materialize_terms(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, previous,
                             modetypes::Dict{Symbol,Symbol})
-    _check_real_parameters(θ)
-    _check_bases(root, modetypes)
-    _check_periodic_harmonics(root, terms)
-    routed = route(root, terms)
-    _check_duplicate_modes(routed)
-    realnodes = classify(root, routed, constant, θ)
-    needed = required_ports(root, routed)
-    needed_joint = required_joint_ports(root, routed)
+    routed, realnodes, needed, needed_joint = _plan(root, terms, θ, constant, modetypes)
     c = constant(θ)
     prev = previous === nothing ? nothing : previous.root
     mroot = _materialize(root, θ, routed, needed, needed_joint, c, prev, realnodes)
     return System(mroot, nothing, terms, θ, constant)
 end
 
-# Every `PeriodicGrid` child against the harmonics `k` of every `expiphi(k)` factor on its mode, over the
-# whole term list (the spec's cosines and any extra terms alike): each `k` must be an integer and divide
+# Everything `_materialize` needs for the tree under `root` solved on `terms`, after the checks (real parameters, bases
+# against `modetypes`, periodic harmonics of the terms and of `keys`, duplicate modes): the routed terms, each node's
+# arithmetic (`classify` on `constant`, or complex for every node when `complex`), and the ports and joint ports each node
+# forms.
+# `keys` are factor keys inside `root` that a caller outside the tree needs (`_add_keys!`).
+function _plan(root::Node, terms::Vector{Term}, θ::NamedTuple, constant::Coefficient, modetypes::Dict{Symbol,Symbol};
+               keys::Vector{_FactorKey}=_FactorKey[], complex::Bool=false)
+    _check_real_parameters(θ)
+    _check_bases(root, modetypes)
+    _check_periodic_harmonics(root, Iterators.flatten((((f.mode, f.port) for t in terms for f in t.factors),
+                                                       (f for K in keys for f in K))))
+    routed = route(root, terms)
+    _check_duplicate_modes(routed)
+    realnodes = complex ? IdDict{Node,Bool}(n => false for n in _all_nodes(root)) : classify(root, routed, constant, θ)
+    needed = required_ports(root, routed)
+    needed_joint = required_joint_ports(root, routed)
+    _add_keys!(needed, needed_joint, root, keys)
+    return routed, realnodes, needed, needed_joint
+end
+
+# Add to the ports and joint ports of the tree under `root` those that the factor keys `keys` (inside `root`) need, as a
+# term of a strict ancestor of `root` with those factors would (`required_ports`, `required_joint_ports`): at each node,
+# a key's factors inside it make a port when there is one, a joint port when there are two or more.
+function _add_keys!(needed::IdDict, needed_joint::IdDict, root::Node, keys::Vector{_FactorKey})
+    inside = Set(modes(root))
+    for K in keys
+        ms = [m for (m, _) in K]
+        !isempty(K) && all(in(inside), ms) && allunique(ms) ||
+            throw(ArgumentError("a requested key must have one or more factors on distinct modes of the node on modes " *
+                                "$(modes(root)); got $(_key_string(K))"))
+        for node in _all_nodes(root)
+            here = Set(modes(node))
+            Kn = _sortkey!(filter(((m, _),) -> m in here, K))
+            length(Kn) == 1 && only(Kn) ∉ needed[node] && push!(needed[node], only(Kn))
+            length(Kn) >= 2 && Kn ∉ needed_joint[node] && push!(needed_joint[node], Kn)
+        end
+    end
+    return nothing
+end
+
+# Every `PeriodicGrid` child against the harmonics `k` of every `expiphi(k)` factor `(mode, port)` on its mode, over
+# the whole term list (the spec's cosines and any extra terms alike): each `k` must be an integer and divide
 # the grid size ([`check_sectors`](@ref)).
-function _check_periodic_harmonics(root::Node, terms::Vector{Term})
+function _check_periodic_harmonics(root::Node, factors)
     for (mode, b) in _tree_bases(root)
         b isa PeriodicGrid || continue
         harmonics = Int[]
-        for t in terms, f in t.factors
-            f.mode === mode && f.port.kind === :expiphi || continue
-            k = f.port.k
+        for (m, p) in factors
+            m === mode && p.kind === :expiphi || continue
+            k = p.k
             abs(k - round(k)) <= 1e-12 ||
                 throw(ArgumentError("mode :$mode: a term has the factor expiphi($k), but a PeriodicGrid needs an " *
                                     "integer harmonic k (the grid is 2π-periodic)"))
@@ -557,31 +590,49 @@ end
 _solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
 _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
 
+# The recursion: each child materialized first (a node child on its routed terms, its ports and joint ports, no
+# constant, and its previous solution at the same tree position), then this node on them (`_solve_node`).
 function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, constant, prev, realnodes)
     children = Any[]
     for (i, ch) in enumerate(node.children)
         push!(children, ch isa Node ? _materialize(ch, θ, routed, needed, needed_joint, 0.0, _prev_child(prev, i), realnodes) :
                         ch isa GivenSystem ? _materialize_given(ch) : ch.second)
     end
-    dims = Int[_childdim(c) for c in children]
-    # Only the :follow phase convention and the follow rule (whose previous vectors take precedence
-    # over an explicit reference) consume `prev` here; elsewhere a changed child kept count must not
-    # make `previous` unusable for the whole tree.
+    return _solve_node(node, children, routed[node], θ; constant, ports=needed[node], joint_ports=needed_joint[node],
+                       real=realnodes[node], prev)
+end
+
+# The previous kept vectors in the current product basis (`_transport_previous`), so that the follow rule and the
+# :follow phase compare physical overlaps when the children were re-diagonalized (this also checks that the basis
+# children, here and below, are unchanged); `nothing` without a previous solution or when the node uses none.
+# Only the :follow phase convention and the follow rule (whose previous vectors take precedence over an explicit
+# reference) consume `prev` here; elsewhere a changed child kept count must not make `previous` unusable for the whole
+# tree.
+function _previous_reference(node::Node, prev, children, dims::Vector{Int})
     uses_prev = node.phase === :follow || node.keep isa Follow
     prev === nothing || !uses_prev || prev.dims == dims ||
         throw(ArgumentError("previous solution at this tree position has dims $(prev.dims), expected $dims"))
-    # The previous kept vectors in the current product basis, so that the follow rule and the :follow
-    # phase compare physical overlaps when the children were re-diagonalized (this also checks that the
-    # basis children, here and below, are unchanged).  The LOBPCG initial block stays raw.
-    reference = prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
+    return prev === nothing || !uses_prev ? nothing : _transport_previous(prev, children, dims)
+end
+
+# One node on `children` that are already materialized (bases, given systems' or nodes' `MaterializedNode`s, which are
+# neither re-solved nor modified): its operator on `terms`, the terms acting at this node (which are never routed down)
+# plus `constant`, in real arithmetic when `real`; diagonalization (warm-started from `prev` on LOBPCG); the ports its
+# selection rule inspects, on all computed vectors; the selection; then `_assemble_node` on the kept vectors, forming
+# `ports` and `joint_ports`.
+# `prev` is the node's previous solution (same tree position) or `nothing`, as in `materialize`.
+function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ::NamedTuple; constant::Number=0.0,
+                     ports::Vector{Tuple{Symbol,Port}}=Tuple{Symbol,Port}[], joint_ports::Vector{_FactorKey}=_FactorKey[],
+                     real::Bool=false, prev=nothing)
+    dims = Int[_childdim(c) for c in children]
+    # The LOBPCG initial block stays raw; the selection and the phase compare transported vectors.
+    reference = _previous_reference(node, prev, children, dims)
 
     # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
     # A node classified real (whose child nodes are then all real) runs in real arithmetic; its operator takes the
     # children's ports by their components (spec Section 20f, "The real operator").
     solver = _resolve_node_solver(node, children)
-    isleaf = all(c -> c isa Basis, children)
-    realnode = realnodes[node]
-    H = _node_operator(node, solver, children, routed[node], θ, constant; real=realnode)
+    H = _node_operator(node, solver, children, terms, θ, constant; real)
 
     # (4) Diagonalize.
     _dense_too_large(solver, prod(dims)) &&
@@ -595,14 +646,38 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
     # (5)-(7) Ports the selection rule inspects, on all computed vectors; select; slice.
     # Selection rules see only moduli (port elements, overlaps), so phases are fixed on the kept
     # vectors only (fixing them on every computed vector would cost a pass over all of them and
-    # warn for high states with no weight on the mask), and the selection ports are rotated to match.
-    ports = Dict{Tuple{Symbol,Port},NodeMatrix}()
+    # warn for high states with no weight on the mask), and `_assemble_node` rotates the selection ports to match.
+    selports = Dict{Tuple{Symbol,Port},NodeMatrix}()
     leaves = _mode_leaves(node)
     for (mode, p) in ports_needed(node.keep)
-        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
+        selports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
     end
-    idx = validate_selection(select(node.keep, SelectionContext(E, V, ports, prev, reference)), size(V, 2), node.keep)
-    E, V = E[idx], V[:, idx]
+    idx = validate_selection(select(node.keep, SelectionContext(E, V, selports, prev, reference)), size(V, 2), node.keep)
+    formed = Dict{Tuple{Symbol,Port},NodeMatrix}(k => P[idx, idx] for (k, P) in selports)
+    return _assemble_node(node, children, E[idx], view(V, :, idx); ports, joint_ports, real, reference,
+                          kept=collect(Int, idx), formed)
+end
+
+# A `MaterializedNode` for the kept `vectors` (columns on the node's product basis over its materialized `children`,
+# with one energy per column) whether solved for or given: phase fixing, peak amplitudes, the ports `ports` and joint
+# ports `joint_ports`, the PhaseGrid edge warning and the element-type check of a node classified `real`.
+# `vectors` are copied, never written, and must have the element type of the node's arithmetic.
+# `reference` (the transported previous kept vectors, by default from `prev`) drives the :follow phase; `kept` are the
+# columns' indices among the computed eigenpairs (default: every given column); `formed` are ports already formed on
+# the unphased columns (the selection ports of `_solve_node`), rotated to the fixed phases.
+function _assemble_node(node::Node, children::Vector{Any}, energies::Vector{Float64}, vectors::AbstractMatrix;
+                        ports::Vector{Tuple{Symbol,Port}}=Tuple{Symbol,Port}[], joint_ports::Vector{_FactorKey}=_FactorKey[],
+                        real::Bool=false, prev=nothing,
+                        reference=_previous_reference(node, prev, children, Int[_childdim(c) for c in children]),
+                        kept::Vector{Int}=collect(1:size(vectors, 2)),
+                        formed::AbstractDict=Dict{Tuple{Symbol,Port},NodeMatrix}())
+    dims = Int[_childdim(c) for c in children]
+    size(vectors, 1) == prod(dims) && size(vectors, 2) == length(energies) == length(kept) ||
+        throw(ArgumentError("node on modes $(modes(node)): $(size(vectors, 1)) × $(size(vectors, 2)) vectors, " *
+                            "$(length(energies)) energies and $(length(kept)) kept indices for a product dimension $(prod(dims))"))
+    V = Matrix(vectors)
+    isleaf = all(c -> c isa Basis, children)
+    leaves = _mode_leaves(node)
 
     # :follow makes each physical overlap with the previous kept vector real and positive; with no previous
     # solution, :positive_sector is used instead.  :positive_sector makes, at a leaf, the largest
@@ -618,9 +693,9 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
     sector = findall(mask)
     peaks = [_sector_peak(view(V0, :, j), sector) for j in axes(V0, 2)]
     peak = Int[first(pk) for pk in peaks]
-    if node.phase === :follow && prev !== nothing
-        size(prev.vectors) == size(V) ||
-            throw(ArgumentError("phase :follow: the previous solution keeps $(size(prev.vectors, 2)) states, this one $(size(V, 2))"))
+    if node.phase === :follow && reference !== nothing
+        size(reference) == size(V) ||
+            throw(ArgumentError("phase :follow: the previous solution keeps $(size(reference, 2)) states, this one $(size(V, 2))"))
         fix_phases!(V, :follow, mask, reference)
     elseif isleaf
         fix_phases!(V, :positive_sector, mask, nothing)
@@ -643,9 +718,7 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
         end
     end
     ph = [dot(view(V0, :, j), view(V, :, j)) for j in axes(V, 2)]    # V[:, j] = ph[j] V0[:, j]
-    for k in keys(ports)
-        ports[k] = conj.(ph) .* ports[k][idx, idx] .* transpose(ph)
-    end
+    nodeports = Dict{Tuple{Symbol,Port},NodeMatrix}(k => conj.(ph) .* P .* transpose(ph) for (k, P) in formed)
 
     # Exact full-space amplitudes of the kept states at each kept state's peak point.
     if isleaf
@@ -660,13 +733,13 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
     end
 
     # (8) The remaining required ports, then the joint ports, on the phase-fixed kept vectors.
-    for (mode, p) in needed[node]
-        haskey(ports, (mode, p)) && continue
-        ports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
+    for (mode, p) in ports
+        haskey(nodeports, (mode, p)) && continue
+        nodeports[(mode, p)] = _node_port(node, leaves, children, dims, V, mode, p)
     end
-    joint_ports = Dict{_FactorKey,NodeMatrix}()
-    for K in needed_joint[node]
-        joint_ports[K] = _joint_port(node, leaves, children, dims, V, K)
+    nodejoint = Dict{_FactorKey,NodeMatrix}()
+    for K in joint_ports
+        nodejoint[K] = _joint_port(node, leaves, children, dims, V, K)
     end
 
     # (9) Grid edge support of the kept states.
@@ -677,9 +750,32 @@ function _materialize(node::Node, θ::NamedTuple, routed, needed, needed_joint, 
         isempty(bad) || @warn "PhaseGrid on mode :$(node.children[a].first) is too small: kept states $bad have edge support up to $(maximum(s)) > $_EDGE_TOL; enlarge the grid" maxlog=10
     end
 
-    T = _check_eltype(node, realnode, V, peak_amps, ports, joint_ports, leaves)
-    return MaterializedNode{T}(node, dims, E, V, collect(Int, idx), ports, joint_ports, children, peak, peak_amps)
+    T = _check_eltype(node, real, V, peak_amps, nodeports, nodejoint, leaves)
+    return MaterializedNode{T}(node, dims, copy(energies), V, kept, nodeports, nodejoint, children, peak, peak_amps)
 end
+
+# `node` as the root of its own tree, solved on the terms of `terms` whose modes all lie inside it (a term with no
+# factors, a constant, belongs to the whole tree's root and is left out), routed with `route(node, ·)`, with no
+# constant and no previous solution.
+# `keys` are factor keys inside `node` that a caller outside it needs: a one-factor key becomes a port of `node`, a
+# longer one a joint port, and the nodes below form whatever those need (`_add_keys!`).
+# With `complex` every node of the subtree runs in complex arithmetic, else each as `classify` decides; `modetypes` as
+# in `materialize`.
+function _solve_subtree(node::Node, terms::Vector{Term}, θ::NamedTuple; keys::Vector{_FactorKey}=_FactorKey[],
+                        complex::Bool=false, modetypes::Dict{Symbol,Symbol}=Dict{Symbol,Symbol}())
+    routed, realnodes, needed, needed_joint = _plan(node, _terms_inside(node, terms), θ, Coefficient(0), modetypes;
+                                                    keys, complex)
+    return _materialize(node, θ, routed, needed, needed_joint, 0.0, nothing, realnodes)
+end
+
+# The terms of `terms` with one or more factors, all on modes inside `node`.
+function _terms_inside(node::Node, terms::Vector{Term})
+    inside = Set(modes(node))
+    return Term[t for t in terms if !isempty(t.factors) && all(in(inside), modes(t))]
+end
+
+# The terms of `terms` that `route` places at `node` itself when `node` is the root of its own tree (`_solve_subtree`).
+_terms_at(node::Node, terms::Vector{Term}) = route(node, _terms_inside(node, terms))[node]
 
 # The element type a node is stored in, its classification's (`Float64` when `real`, else `ComplexF64`), asserted
 # against the data (vectors, peak amplitudes, every port and every joint port: `Float64` for a real-character port or

@@ -938,3 +938,33 @@ end
     @test_throws ErrorException _check_eltype(mn.node, true, mn.vectors, mn.peak_amplitudes, Dict(key => zeros(2, 2)),
                                               Dict(jkey => zeros(ComplexF64, 2, 2)), leaves)
 end
+
+@testset "a subtree solved on its own terms equals the same node inside the full tree" begin
+    K = KronFreeCircuits
+    spec = load_spec(fixture("zero_pi.json")); θ = zero_pi_params()
+    A = Node([:theta => ChargeBasis(6)]; solver=Dense(), compute=6, keep=lowest(6))
+    B = Node([:phi => PhaseGrid(-12π, 12π, 201; order=6)]; solver=Dense(), compute=6, keep=lowest(6))
+    root = Node([A, B]; solver=Dense(), compute=4, keep=lowest(4))
+    # A holds only the charging term: its states on negative charges have no weight on the phase mask (a warning)
+    sys = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any materialize(root, spec, θ)
+    terms = circuit_terms(spec)
+    keys = [[(:phi, expiphi(1.0))], [(:phi, phiport())]]
+    b = K._solve_subtree(B, terms, θ; keys, complex=true)
+    @test b.energies ≈ materialized(sys, B).energies rtol=1e-12
+    @test all(haskey(b.ports, only(k)) for k in keys)
+    # one node on given children, with an extra term appended at the node
+    extra = Term(Coefficient(0.3 - 0.2im), [Factor(:phi, expiphi(1.0))])
+    extra_c = Term(Coefficient(0.3 + 0.2im), [Factor(:phi, expiphi(-1.0))])
+    at = K._terms_at(B, terms)
+    c = K._solve_node(B, b.children, vcat(at, [extra, extra_c]), θ; ports=[only(k) for k in keys])
+    H = primitive_hamiltonian(vcat(at, [extra, extra_c]), θ, [:phi => PhaseGrid(-12π, 12π, 201; order=6)])
+    @test c.energies ≈ eigvals(Hermitian(Matrix(H)))[1:6] rtol=1e-10
+    # given vectors: the same kept vectors come back with the same ports
+    d = K._assemble_node(B, b.children, b.energies, b.vectors; ports=[only(k) for k in keys])
+    @test d.ports[(:phi, phiport())] ≈ b.ports[(:phi, phiport())]
+    # a longer key is a joint port of the subtree's root, and the nodes below form the ports it needs
+    jk = [(:phi, phiport()), (:theta, nport())]
+    r = @test_logs (:warn, r"no weight on the phase mask") match_mode=:any K._solve_subtree(root, terms, θ; keys=[jk])
+    @test haskey(r.joint_ports, jk) && haskey(r.children[1].ports, (:theta, nport())) && haskey(r.children[2].ports, (:phi, phiport()))
+    @test r.energies .+ constant_term(spec)(θ) ≈ energies(sys) rtol=1e-12      # the constant belongs to the whole tree
+end
