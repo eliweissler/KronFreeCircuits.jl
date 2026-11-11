@@ -404,3 +404,72 @@ function only_warnings(rx, f)
     isempty(unexpected) || foreach(m -> println(stderr, "unexpected log: ", first(string(m), 200)), unexpected)
     return val
 end
+
+# --- finite-difference helpers (derivative tests) ---
+
+# Runs `f()` with logging silenced.
+quiet(f) = Base.CoreLogging.with_logger(f, Base.CoreLogging.NullLogger())
+
+# `θ` with its entry `x` moved by `δ`.
+shifted(θ::NamedTuple, x::Symbol, δ::Real) = merge(θ, NamedTuple{(x,)}((θ[x] + δ,)))
+
+# The largest absolute element of a number or an array.
+_maxabs(v) = maximum(abs, v)
+
+# `(value, err)` from the plain difference `D(s)` at the steps `s`, `s/2`, `s/4`: with `R(s) = (4 D(s/2) − D(s)) / 3`
+# its Richardson extrapolation, `value = R(s/2)` and `err = ‖R(s) − R(s/2)‖∞`.
+function _richardson(D, s::Real)
+    D1, D2, D4 = D(s), D(s / 2), D(s / 4)
+    R1 = (4 .* D2 .- D1) ./ 3
+    R2 = (4 .* D4 .- D2) ./ 3
+    return (R2, _maxabs(R1 .- R2))
+end
+
+"""
+    fd_derivative(f, θ, x; h) -> (value, err)
+
+The first derivative of `f(θ)` (a number or an array) in `x`, from the central difference `(f(θ + s) − f(θ − s)) / 2s`
+Richardson-extrapolated over the steps `h`, `h/2`, `h/4`: `value = R(h/2)`, `err = ‖R(h) − R(h/2)‖∞`.
+"""
+fd_derivative(f, θ::NamedTuple, x::Symbol; h::Real) =
+    _richardson(s -> (f(shifted(θ, x, s)) .- f(shifted(θ, x, -s))) ./ (2s), h)
+
+"""
+    fd_second(f, θ, x; h) -> (value, err)
+
+The second derivative of `f(θ)` in `x`, from `(f(θ + s) − 2 f(θ) + f(θ − s)) / s²`, extrapolated as in `fd_derivative`.
+"""
+function fd_second(f, θ::NamedTuple, x::Symbol; h::Real)
+    f0 = f(θ)
+    return _richardson(s -> (f(shifted(θ, x, s)) .- 2 .* f0 .+ f(shifted(θ, x, -s))) ./ s^2, h)
+end
+
+"""
+    fd_mixed(f, θ, x, λ; hx, hλ) -> (value, err)
+
+The mixed derivative of `f(θ)` in `x` and `λ`, from `(f(+,+) − f(+,−) − f(−,+) + f(−,−)) / (4 s² hx hλ)` at the
+displacements `±s·hx` of `x` and `±s·hλ` of `λ`, extrapolated over `s = 1, 1/2, 1/4`: `value = R(1/2)`, `err = ‖R(1) − R(1/2)‖∞`.
+"""
+function fd_mixed(f, θ::NamedTuple, x::Symbol, λ::Symbol; hx::Real, hλ::Real)
+    at(a, b) = f(shifted(shifted(θ, x, a), λ, b))
+    D(s) = (at(s * hx, s * hλ) .- at(s * hx, -s * hλ) .- at(-s * hx, s * hλ) .+ at(-s * hx, -s * hλ)) ./ (4 * s^2 * hx * hλ)
+    return _richardson(D, 1)
+end
+
+# The second derivative in `x` and `λ`, diagonal or mixed.
+fd_pair(f, θ, x::Symbol, λ::Symbol; hx::Real, hλ::Real = hx) =
+    x === λ ? fd_second(f, θ, x; h=hx) : fd_mixed(f, θ, x, λ; hx, hλ)
+
+"""
+    check_fd(analytic, fd; rtol=1e-6, atol=0)
+
+Two `@test`s against the finite difference `fd = (value, err)`: `err ≤ rtol·‖value‖∞ + atol` (the difference is trustworthy)
+and `‖analytic − value‖∞ ≤ rtol·‖value‖∞ + atol`, with `‖·‖∞` the largest absolute element.
+"""
+function check_fd(analytic, fd::Tuple; rtol::Real = 1e-6, atol::Real = 0.0)
+    value, err = fd
+    tol = rtol * _maxabs(value) + atol
+    @test err <= tol
+    @test _maxabs(analytic .- value) <= tol
+    return nothing
+end
