@@ -1,0 +1,7 @@
+[deps]
+ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
+ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+KronFreeCircuits = "6ef25c9c-5ef5-4b26-8a4c-126bf0368fad"
+
+[sources]
+KronFreeCircuits = {path = "../../.."}
