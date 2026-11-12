@@ -303,8 +303,19 @@ carried apart from the `Float64` `f`:
 The recurrence runs from the region where the elements are exponentially small into the one where they oscillate, the
 direction in which it is stable, and an element below the `Float64` range comes out as zero. A finite `|α| ≥ 2^20` gives
 the zero matrix (every element is below the range for any `N` that fits in memory) and a non-finite `α` gives NaN.
+
+The evaluation is in `Float64`: an `α` of another type is converted first, a real one to `Float64` and any other to
+`ComplexF64`, so that `displacement(N, α)` is the matrix of the converted argument for every numeric type (an integer, a
+rational, an irrational constant, single or extended precision) and a real or an imaginary `α` keeps its exact phases.
+A finite `α` beyond the `Float64` range gives the zero matrix, as any other `|α| ≥ 2^20`.
 """
 function displacement(N::Int, α::Number)
+    z = α isa Real ? Float64(α) : ComplexF64(α)
+    isfinite(z) || !isfinite(α) || return zeros(ComplexF64, N, N)      # finite, but not as a Float64: |α| ≥ 2^20
+    return displacement(N, z)
+end
+
+function displacement(N::Int, α::Union{Float64,ComplexF64})
     D = zeros(ComplexF64, N, N)
     if iszero(α)
         for i in 1:N; D[i, i] = 1; end

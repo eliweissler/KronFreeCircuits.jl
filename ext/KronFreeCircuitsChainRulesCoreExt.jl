@@ -74,17 +74,21 @@ function ChainRulesCore.frule((_, _, _, Δθ), ::typeof(spectrum), root::Node, s
     sys = materialize(root, spec, θ)
     y = KronFreeCircuits._spectrum_output(sys, ports)
     Δθ = unthunk(Δθ)
-    Ė = zero(y.energies)
     if all(x -> _allzero(_component(Δθ, x)), keys(θ))
         # a zero tangent: zeros, without the derivative pass
-        return y, Tangent{typeof(y)}(; energies=Ė, ports=[zero(P) for P in y.ports])
+        return y, Tangent{typeof(y)}(; energies=zero(y.energies), ports=[zero(P) for P in y.ports])
     end
     J = KronFreeCircuits._spectrum_derivatives(sys, ports, derivative_options)
-    # the tangent of a port has the promoted element type of the port and of its derivative
-    Ṗ = [zeros(promote_type(eltype(P), (eltype(dy.ports[p]) for dy in values(J))...), size(P)) for (p, P) in enumerate(y.ports)]
-    for (x, dy) in J
-        δ = _component(Δθ, x)
-        _allzero(δ) && continue             # a structural or a numeric zero: the parameter's derivatives are not used
+    # The parameters whose derivatives are used, each with its tangent component: a structural or a numeric zero
+    # leaves its parameter out, and with it both the parameter's derivatives and the component's type.
+    active = filter(((δ, _),) -> !_allzero(δ), [(_component(Δθ, x), dy) for (x, dy) in J])
+    # The tangent of an output has the promoted element type of the output, of the numbers that multiply its
+    # derivatives (a complex or a wider tangent of θ gives a complex or a wider tangent of a real output) and, for a
+    # port, of its derivative; a real `Float64` tangent leaves the energies' `Float64`.
+    Tδ = promote_type(Union{}, (typeof(δ) for (δ, _) in active if δ isa Number)...)
+    Ė = zeros(promote_type(eltype(y.energies), Tδ), length(y.energies))
+    Ṗ = [zeros(promote_type(eltype(P), Tδ, (eltype(dy.ports[p]) for dy in values(J))...), size(P)) for (p, P) in enumerate(y.ports)]
+    for (δ, dy) in active
         Ė .+= δ .* dy.energies
         for p in eachindex(Ṗ)
             Ṗ[p] .+= δ .* dy.ports[p]

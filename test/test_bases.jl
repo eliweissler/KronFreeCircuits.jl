@@ -283,3 +283,55 @@ end
     end
     @test dense(localop(F, exp2pin(-6))) == T'
 end
+
+@testset "Bases: displacement of an argument that is not a Float64 or a ComplexF64" begin
+    # The argument is converted once, a real one to Float64 and any other to ComplexF64, so that every numeric type gives
+    # exactly (`isequal`, elementwise) the matrix of its conversion. Integers, rationals, `Bool` and irrational constants
+    # used to throw a `MethodError` (no `frexp`), and single precision used to carry its own round-off into `|α|²`.
+    reals = (1, -2, 7, 1//2, -7//3, true, big(3), 1.1f0, -2.5f0, Float16(1.1), big"1.1", big(π), π, ℯ, -0.0f0)
+    for α in reals
+        Dα = displacement(6, α)
+        @test Dα isa Matrix{ComplexF64}
+        @test isequal(Dα, displacement(6, Float64(α)))
+        @test all(iszero ∘ imag, Dα)                             # a real α gives a real matrix
+        @test displacement(6, -α) == Dα'                         # D(-α) = D(α)', exactly
+    end
+    @test isequal(displacement(6, 0x02), displacement(6, 2.0))   # unsigned (its negation wraps around: no D(-α) here)
+    complexes = (2 + 3im, 3im, -3im, 3 + 0im, 1//2 + 3//4 * im, -3//4 * im, 1.5f0 - 0.25f0im, 1.1f0im, -1.1f0 + 0.0f0im,
+                 Complex{BigFloat}(big"1.1", big"-0.3"), Complex{Bool}(false, true), Complex{Bool}(true, true))
+    for α in complexes
+        Dα = displacement(6, α)
+        @test Dα isa Matrix{ComplexF64}
+        @test isequal(Dα, displacement(6, ComplexF64(α)))
+        if iszero(real(α)) || iszero(imag(α))                    # the exact phases of a real or an imaginary α
+            @test displacement(6, -α) == Dα'
+            @test all(iszero(iszero(real(α)) && isodd(i - j) ? real(Dα[i, j]) : imag(Dα[i, j])) for i in 1:6, j in 1:6)
+        else
+            @test displacement(6, -α) ≈ Dα' atol=1e-14
+        end
+    end
+    # the values themselves, on two levels: e^{-|α|²/2} [1 -α*; α 1-|α|²]
+    for α in (1, -2, 1//2, true, π, 2 - 1im, 3//4 * im, 1.1f0)
+        z = ComplexF64(α)
+        @test displacement(2, α) ≈ exp(-abs2(z) / 2) * [1 -conj(z); z 1-abs2(z)] rtol=1e-13
+    end
+    # where the factors leave the Float64 range, with an integer and a rational argument
+    @test isequal(displacement(400, 40), displacement(400, 40.0)) && isequal(displacement(400, -40im), displacement(400, -40.0im))
+    @test displacement(400, -77//2 * im) == displacement(400, 77//2 * im)'
+    # a zero of any type is the identity, and so is a nonzero argument below the Float64 range
+    for α in (0, false, 0//1, 0.0f0, big(0), big"0.0", 0 + 0im, 0//1 + 0//1 * im, big"1e-400", -big"1e-400" * im)
+        @test displacement(4, α) == I(4)
+    end
+    # a finite |α| ≥ 2^20 gives the zero matrix, also beyond the Float64 range; a non-finite α gives NaN
+    for α in (2^20, -2^20, typemax(Int), typemin(Int), 2^40 * im, 3 * 2^20 // 2, 1.0f20, big"1e400", -big"1e400", big(10)^400,
+              big(10)^400 // 3, Complex{BigFloat}(1, big"-1e400"))
+        Dα = displacement(3, α)
+        @test Dα isa Matrix{ComplexF64} && all(iszero, Dα)
+    end
+    for α in (1//0, -1//0, Inf32, -Inf32, NaN32, Float16(NaN), big(Inf), -big(Inf), big(NaN), complex(NaN32, 1.0f0),
+              complex(0.0f0, -Inf32), Complex{BigFloat}(1, Inf), (1//0) * im)
+        Dα = displacement(3, α)
+        @test Dα isa Matrix{ComplexF64} && all(isnan, Dα)
+    end
+    @test displacement(0, 5) isa Matrix{ComplexF64} && size(displacement(0, 1//2)) == (0, 0)
+end

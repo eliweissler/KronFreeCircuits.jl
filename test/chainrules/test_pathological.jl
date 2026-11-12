@@ -97,4 +97,70 @@ end
     # the lengths must agree, as for `dot`
     @test_throws DimensionMismatch dotnz([1.0, 2.0], [1.0])
 end
+
+@testset "frule of spectrum: complex and non-Float64 tangents" begin
+    key = [(:phi, nport()), (:phi, expiphi(1.0))]
+    root = Node([:phi => ChargeBasis(2)]; solver=Dense(), ports=key)
+    spec = load_spec(joinpath(@__DIR__, "..", "fixtures", "cos2phi.json"))
+    θ = (E_C=1.0, E_1=0.2, E_2=0.1, n_g=0.0)
+    no = CRC.NoTangent()
+    fwd(Δ; ports=key, kw...) = CRC.frule((no, no, no, Δ), spectrum, root, spec, θ; ports, kw...)[2]
+    y = spectrum(root, spec, θ; ports=key)
+    @test all(P -> P isa Matrix{Float64}, y.ports)                    # a real tree: real ports, with real derivatives
+
+    # a real tangent: real tangents of the energies and of the real ports, as before
+    a, b = (E_C=0.3, E_1=-1.2, E_2=0.7, n_g=0.25), (E_C=-0.5, E_1=0.4, E_2=0.0, n_g=1.5)
+    ẏa, ẏb = fwd(a), fwd(b)
+    @test ẏa.energies isa Vector{Float64} && all(P -> P isa Matrix{Float64}, ẏa.ports)
+    @test ẏb.energies isa Vector{Float64} && all(P -> P isa Matrix{Float64}, ẏb.ports)
+    @test norm(ẏa.energies) > 1e-2 && norm(ẏb.energies) > 1e-2 && all(P -> norm(P) > 1e-2, ẏa.ports) && all(P -> norm(P) > 1e-2, ẏb.ports)
+    # a complex tangent: complex tangents of both (it used to throw an `InexactError`, the tangent of the energies being
+    # a `Vector{Float64}` and that of a real port a `Matrix{Float64}`), linear in the tangent: ẏ(a + ib) = ẏ(a) + i ẏ(b)
+    ẏc = fwd(map(complex, a, b))
+    @test ẏc.energies isa Vector{ComplexF64} && all(P -> P isa Matrix{ComplexF64}, ẏc.ports)
+    @test ẏc.energies ≈ ẏa.energies + im * ẏb.energies rtol=1e-13
+    for p in eachindex(key)
+        @test ẏc.ports[p] ≈ ẏa.ports[p] + im * ẏb.ports[p] rtol=1e-13
+    end
+    # without ports (the energies alone), along one parameter, and through a `Tangent`
+    ẏ1 = fwd((E_C=1.0 + 0.5im,); ports=Tuple{Symbol,KronFreeCircuits.Port}[])
+    @test ẏ1.energies isa Vector{ComplexF64} && isempty(ẏ1.ports)
+    @test ẏ1.energies ≈ (1.0 + 0.5im) * fwd((E_C=1.0,)).energies rtol=1e-13
+    ẏt = fwd(CRC.Tangent{typeof(θ)}(; E_1=2.0im))
+    @test ẏt.energies ≈ 2.0im * fwd((E_1=1.0,)).energies rtol=1e-13
+    # the port side on its own: an imaginary tangent times the real derivative of a real port
+    ẏi = fwd((E_1=1.0im,))
+    for p in eachindex(key)
+        @test ẏi.ports[p] isa Matrix{ComplexF64}
+        @test ẏi.ports[p] ≈ im * fwd((E_1=1.0,)).ports[p] rtol=1e-13
+    end
+
+    # no widening by a real tangent of another type, nor by a component that is zero (it is skipped, whatever its type)
+    ẏ0 = fwd((E_C=1.0,))
+    for Δ in ((E_C=1,), (E_C=1.0f0,), (E_C=1//1,), (E_C=true,), (E_C=1.0, n_g=0.0 + 0.0im), (E_C=1.0, E_1=0.0im, E_2=big"0.0"))
+        ẏ = fwd(Δ)
+        @test ẏ.energies isa Vector{Float64} && all(P -> P isa Matrix{Float64}, ẏ.ports)
+        @test ẏ.energies == ẏ0.energies && ẏ.ports == ẏ0.ports
+    end
+    # a tangent of a wider real type carries its type through
+    ẏbig = fwd((E_C=big"1.0", E_1=0.5))
+    @test ẏbig.energies isa Vector{BigFloat} && all(P -> P isa Matrix{BigFloat}, ẏbig.ports)
+    @test ẏbig.energies ≈ fwd((E_C=1.0, E_1=0.5)).energies rtol=1e-13
+    # a complex tangent that is zero: zeros without the derivative pass (whose options here would be refused), and a
+    # nonzero one along a parameter the spectrum does not depend on gives zeros as well
+    ẏz = fwd((E_C=0.0 + 0.0im, E_1=complex(-0.0, 0.0)); derivative_options=(; lintol=-1.0))
+    @test ẏz.energies isa Vector{Float64} && all(iszero, ẏz.energies) && all(P -> all(iszero, P), ẏz.ports)
+    _, ẏu = CRC.frule((no, no, no, (unused=1.0 + 2.0im,)), spectrum, root, spec, merge(θ, (unused=42.0,)); ports=key)
+    @test all(iszero, ẏu.energies) && all(P -> all(iszero, P), ẏu.ports)
+
+    # undefined derivatives with a complex tangent: NaN only where a nonzero component selects it
+    θd = (E_C=1.0, E_1=0.0, E_2=0.0, n_g=0.0)                         # the degenerate, coupled pair of the first testset
+    rootd = Node([:phi => ChargeBasis(1)]; solver=Dense())
+    pushd(Δ) = CRC.frule((no, no, no, Δ), spectrum, rootd, spec, θd)[2].energies
+    @test pushd((E_C=1.0im, E_2=0.0)) ≈ [0.0, 4.0im, 4.0im] atol=1e-12
+    @test pushd((E_C=1.0im, E_2=0.0 + 0.0im)) ≈ [0.0, 4.0im, 4.0im] atol=1e-12
+    along = pushd((E_C=0.0, E_2=1.0im))
+    @test along isa Vector{ComplexF64} && along[1] == 0 && all(isnan, along[2:3])
+    @test all(isnan, pushd((E_C=complex(0.0, NaN),)))
+end
 end

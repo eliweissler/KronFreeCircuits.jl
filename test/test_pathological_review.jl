@@ -4,11 +4,12 @@ module PathologicalReview
 using Test, LinearAlgebra, KronFreeCircuits
 
 @testset "Fock displacement: non-float numeric arguments (integers, rationals, extreme values)" begin
-    # Ordinary integers and rationals: `displacement(N::Int, α::Number)` is typed for all `Number`,
-    # but internally `r, x, θ = abs(α), abs2(α), angle(α)` leaves `r` as `Int` or `Rational`.
-    # Julia Base only defines `frexp` for `Union{Float16, Float32, Float64, BigFloat}`,
-    # so calling `displacement` on nonzero integers or rationals throws `MethodError: no method matching frexp(...)`.
-    # (Note: `iszero(α)` short-circuits at line 309, so `displacement(N, 0)` passes).
+    # Ordinary integers and rationals: `displacement(N::Int, α::Number)` is typed for all `Number`.
+    # It used to compute `r, x, θ = abs(α), abs2(α), angle(α)` on the argument as given, leaving `r` an `Int` or a
+    # `Rational`; Julia Base only defines `frexp` for `Union{Float16, Float32, Float64, BigFloat}`, so nonzero integers
+    # and rationals threw `MethodError: no method matching frexp(...)` (`displacement(N, 0)` passed through the
+    # `iszero(α)` short-circuit). The argument is now converted to `Float64` or `ComplexF64` first; the values for
+    # these and other numeric types are tested in test_bases.jl.
     
     # Passing float cases:
     @test all(isfinite, KronFreeCircuits.displacement(3, 1.0))
@@ -16,10 +17,10 @@ using Test, LinearAlgebra, KronFreeCircuits
     @test all(isfinite, KronFreeCircuits.displacement(3, 1 + 2im))   # abs(1+2im) is Float64
     @test KronFreeCircuits.displacement(3, 0) == I(3)               # iszero short-circuit
     
-    # Failing integer and rational cases (currently broken due to frexp MethodError):
-    @test_broken KronFreeCircuits.displacement(3, 1) isa Matrix{ComplexF64}
-    @test_broken KronFreeCircuits.displacement(3, -2) isa Matrix{ComplexF64}
-    @test_broken KronFreeCircuits.displacement(3, 1//2) isa Matrix{ComplexF64}
+    # Integer and rational cases (formerly a frexp MethodError):
+    @test KronFreeCircuits.displacement(3, 1) isa Matrix{ComplexF64}
+    @test KronFreeCircuits.displacement(3, -2) isa Matrix{ComplexF64}
+    @test KronFreeCircuits.displacement(3, 1//2) isa Matrix{ComplexF64}
 
     # Boundary and extreme arguments:
     # Dimension 0:
@@ -62,13 +63,12 @@ end
         θ = (E_C=1.0, E_1=0.2, E_2=0.1, n_g=0.0)
         no = CRC.NoTangent()
 
-        # Complex forward tangent: in `frule`, `Ė` is initialized as `zero(y.energies)` which is `Vector{Float64}`.
-        # Adding `δ .* dy.energies` in-place throws InexactError when `δ` has an imaginary part.
-        # (Compare with `Ṗ`, which uses `promote_type(eltype(P), ...)` to accommodate promoted tangent types).
-        @test_broken begin
-            _, ydot = CRC.frule((no, no, no, (E_C=1.0 + 0.5im,)), spectrum, root, spec, θ)
-            ydot.energies isa Vector{ComplexF64}
-        end
+        # Complex forward tangent: in `frule`, `Ė` used to be initialized as `zero(y.energies)`, a `Vector{Float64}`,
+        # so that adding `δ .* dy.energies` in place threw an InexactError when `δ` had an imaginary part.
+        # The element types of `Ė` and of `Ṗ` are now promoted with the types of the tangent components in use
+        # (values, linearity and the port side are tested in test/chainrules/test_pathological.jl).
+        _, ydot = CRC.frule((no, no, no, (E_C=1.0 + 0.5im,)), spectrum, root, spec, θ)
+        @test ydot.energies isa Vector{ComplexF64}
 
         # Pullback and pushforward with unused parameters in θ:
         θ_unused = merge(θ, (unused=42.0,))
