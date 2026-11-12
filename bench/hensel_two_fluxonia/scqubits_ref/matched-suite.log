@@ -1,0 +1,54 @@
+quiet at Thu Nov 12 12:00:59 AM PST 2026, load 1.75 3.68 4.60
+== ours shear jacobi kM 120
+Φc = 0.0:  0.709 s (first 1.175)  E1-E0 = 0.000859  M 0.423 s, root 0.060 s
+Φc = 0.1:  0.739 s (first 0.803)  E1-E0 = 0.379069  M 0.414 s, root 0.093 s
+Φc = 0.2:  0.768 s (first 0.800)  E1-E0 = 0.837706  M 0.477 s, root 0.076 s
+Φc = 0.3:  0.701 s (first 0.707)  E1-E0 = 1.075980  M 0.401 s, root 0.076 s
+Φc = 0.4:  0.712 s (first 0.721)  E1-E0 = 0.918544  M 0.420 s, root 0.087 s
+Φc = 0.5:  0.666 s (first 0.679)  E1-E0 = 0.000458  M 0.402 s, root 0.056 s
+== ours shear ritz kM 120
+Φc = 0.0:  0.737 s (first 1.344)  E1-E0 = 0.000859  M 0.467 s, root 0.044 s
+Φc = 0.1:  0.832 s (first 0.834)  E1-E0 = 0.379069  M 0.525 s, root 0.082 s
+Φc = 0.2:  0.758 s (first 0.710)  E1-E0 = 0.837706  M 0.541 s, root 0.059 s
+Φc = 0.3:  0.869 s (first 0.819)  E1-E0 = 1.075980  M 0.637 s, root 0.089 s
+Φc = 0.4:  0.858 s (first 0.891)  E1-E0 = 0.918544  M 0.573 s, root 0.093 s
+Φc = 0.5:  0.819 s (first 0.777)  E1-E0 = 0.000458  M 0.617 s, root 0.052 s
+== ours shear jacobi kM 240
+Φc = 0.0:  1.172 s (first 1.625)  E1-E0 = 0.000859  M 0.895 s, root 0.096 s
+Φc = 0.1:  1.205 s (first 1.213)  E1-E0 = 0.379071  M 0.888 s, root 0.179 s
+Φc = 0.2:  1.254 s (first 1.233)  E1-E0 = 0.837736  M 0.926 s, root 0.147 s
+Φc = 0.3:  1.252 s (first 1.252)  E1-E0 = 1.075983  M 0.931 s, root 0.137 s
+Φc = 0.4:  1.231 s (first 1.231)  E1-E0 = 0.918547  M 0.904 s, root 0.165 s
+Φc = 0.5:  1.134 s (first 1.135)  E1-E0 = 0.000458  M 0.881 s, root 0.101 s
+== ours shear ritz kM 240
+Φc = 0.0:  1.526 s (first 1.988)  E1-E0 = 0.000859  M 1.247 s, root 0.097 s
+Φc = 0.1:  1.679 s (first 1.661)  E1-E0 = 0.379071  M 1.338 s, root 0.159 s
+Φc = 0.2:  1.587 s (first 1.576)  E1-E0 = 0.837736  M 1.289 s, root 0.125 s
+Φc = 0.3:  1.704 s (first 1.692)  E1-E0 = 1.075983  M 1.398 s, root 0.133 s
+Φc = 0.4:  1.821 s (first 1.803)  E1-E0 = 0.918547  M 1.477 s, root 0.190 s
+Φc = 0.5:  1.846 s (first 1.793)  E1-E0 = 0.000458  M 1.522 s, root 0.103 s
+== scqubits shear lobpcg kM 120
+scqubits 4.3.1, frame shear, kM 120, solver lobpcg: setup 7.4 s
+Φc = 0.0:  14.19 s (solves   8.42 s, rest   5.77 s)  E1-E0 = 0.000859  lobpcg n=3600: 5.68, lobpcg n=7200: 1.96, dense n=800: 0.72, dense n=400: 0.07
+Φc = 0.1:  19.12 s (solves   9.30 s, rest   9.81 s)  E1-E0 = 0.379069  lobpcg n=3600: 4.35, lobpcg n=7200: 4.17, dense n=800: 0.71, dense n=400: 0.08
+Φc = 0.2:  19.74 s (solves   9.88 s, rest   9.86 s)  E1-E0 = 0.837706  lobpcg n=3600: 6.22, lobpcg n=7200: 2.88, dense n=800: 0.72, dense n=400: 0.07
+Φc = 0.3:  17.26 s (solves   7.55 s, rest   9.71 s)  E1-E0 = 1.075980  lobpcg n=3600: 3.83, lobpcg n=7200: 3.04, dense n=800: 0.62, dense n=400: 0.07
+Φc = 0.4: 118.28 s (solves 108.66 s, rest   9.62 s)  E1-E0 = 0.918544  lobpcg n=3600: 104.53, lobpcg n=7200: 3.43, dense n=800: 0.64, dense n=400: 0.07
+Φc = 0.5:  20.29 s (solves  12.82 s, rest   7.47 s)  E1-E0 = 0.000458  lobpcg n=3600: 8.49, lobpcg n=7200: 3.56, dense n=800: 0.69, dense n=400: 0.08
+== scqubits shear lobpcg kM 240
+scqubits 4.3.1, frame shear, kM 240, solver lobpcg: setup 22.3 s
+Φc = 0.0:  42.00 s (solves  21.17 s, rest  20.83 s)  E1-E0 = 0.000859  lobpcg n=3600: 12.02, lobpcg n=14400: 8.39, dense n=800: 0.68, dense n=400: 0.08
+Φc = 0.1:  63.20 s (solves  27.17 s, rest  36.02 s)  E1-E0 = 0.379071  lobpcg n=14400: 17.33, lobpcg n=3600: 9.04, dense n=800: 0.73, dense n=400: 0.07
+Φc = 0.2: 158.39 s (solves 122.01 s, rest  36.38 s)  E1-E0 = 0.837736  lobpcg n=3600: 109.90, lobpcg n=14400: 11.32, dense n=800: 0.71, dense n=400: 0.08
+Φc = 0.3:  56.84 s (solves  20.27 s, rest  36.57 s)  E1-E0 = 1.075983  lobpcg n=14400: 11.27, lobpcg n=3600: 8.20, dense n=800: 0.72, dense n=400: 0.08
+Φc = 0.4:  59.16 s (solves  22.79 s, rest  36.38 s)  E1-E0 = 0.918547  lobpcg n=14400: 14.20, lobpcg n=3600: 7.84, dense n=800: 0.68, dense n=400: 0.07
+Φc = 0.5:  43.20 s (solves  21.77 s, rest  21.43 s)  E1-E0 = 0.000458  lobpcg n=3600: 12.00, lobpcg n=14400: 8.95, dense n=800: 0.74, dense n=400: 0.07
+== scqubits shear arpack kM 240
+scqubits 4.3.1, frame shear, kM 240, solver arpack: setup 22.2 s
+Φc = 0.0:  56.69 s (solves  35.61 s, rest  21.08 s)  E1-E0 = 0.000859  arpack n=3600: 21.11, arpack n=14400: 13.79, dense n=800: 0.63, dense n=400: 0.08
+Φc = 0.1:  85.26 s (solves  49.26 s, rest  36.00 s)  E1-E0 = 0.379071  arpack n=14400: 26.68, arpack n=3600: 21.81, dense n=800: 0.69, dense n=400: 0.07
+Φc = 0.2:  86.31 s (solves  49.84 s, rest  36.47 s)  E1-E0 = 0.837736  arpack n=14400: 29.47, arpack n=3600: 19.60, dense n=800: 0.69, dense n=400: 0.07
+Φc = 0.3:  85.35 s (solves  48.83 s, rest  36.51 s)  E1-E0 = 1.075983  arpack n=14400: 29.03, arpack n=3600: 19.05, dense n=800: 0.67, dense n=400: 0.08
+Φc = 0.4:  89.00 s (solves  52.75 s, rest  36.25 s)  E1-E0 = 0.918547  arpack n=14400: 28.40, arpack n=3600: 23.64, dense n=800: 0.63, dense n=400: 0.07
+Φc = 0.5:  56.42 s (solves  34.31 s, rest  22.12 s)  E1-E0 = 0.000458  arpack n=3600: 18.87, arpack n=14400: 14.70, dense n=800: 0.67, dense n=400: 0.07
+done at Thu Nov 12 12:25:21 AM PST 2026, load 4.51 4.48 5.06

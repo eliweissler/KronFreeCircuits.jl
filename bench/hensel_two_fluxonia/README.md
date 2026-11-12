@@ -34,6 +34,34 @@ the class, it is 1.83 s per point (about 450× and 80×). Against the same machi
 GPU (2.4 min per point, itself 1.04 MHz from the converged answer, just outside the class), the 1 MHz tree is about
 170× faster and the GPU is not needed.
 
+## Same tree in scqubits (`scqubits_ref/`)
+
+The like-for-like reference: scqubits 4.3.1 (conda env `scqubits-bench`; it needs `qutip<5.2` and `scipy<1.15`, see
+`scqubits_ref/requirements-pinned.txt`) on the same circuit (a scqubits YAML of `circuit.jl`'s elements), the same
+sheared frame (the full transformation in one `configure` call, fluxes on the junction branches), the same binary
+tree (`system_hierarchy`), the same truncations, the same bases (`STENCIL = 9` is our order-8 grid; f2 and f3 get
+22 Fock levels because scqubits keeps at most dim − 2, whose lowest 20 are our 20 of 20) and the same solvers: dense
+at the pair nodes, scqubits' own at the leaves, and at M and the root scipy's LOBPCG with our settings (m + 4 guard
+columns, product-state start, shifted Jacobi 1/(D − min D + 1), tol 1e-6) or scqubits' default ARPACK. Every point is
+cold on both sides (no warm start), 8 threads each, 2026-11-12 on ewdesktop, one job at a time on an otherwise idle
+machine. The levels agree to 3×10⁻⁸ GHz at every flux.
+
+| tree | ours, shifted Jacobi | ours, default (per-Ritz) | scqubits, scipy LOBPCG | scqubits, ARPACK |
+|---|---|---|---|---|
+| kM 120 (accurate at 1 MHz) | **0.71 s** (0.67–0.77) | 0.83 s | **19.4 s** (14–118); setup 7.4 s | |
+| kM 240 (accurate at 10 kHz) | **1.22 s** (1.13–1.25) | 1.69 s | **58 s** (42–158); setup 22 s | 85 s (56–89) |
+
+Median per point (range); scqubits' one-off `Circuit` and `configure` setup is listed separately.
+Same tree, same solver: about **27×** at kM 120 and **48×** at kM 240 (70× against scqubits' default ARPACK).
+Where scqubits' time goes, median per point: at kM 240, 22 s in the eigensolves and 36 s in everything else (building
+the subsystem Hamiltonians and the interaction operators in the kept bases as sparse matrices); at kM 120, 9.6 and
+9.7 s. scqubits' non-solve work alone is 14× (kM 120) to 30× (kM 240) our whole time per point.
+Its solves are also slower than ours on the same nodes with the same preconditioner (the M node: 4 to 12 s against
+0.4 to 0.9 s), for two visible reasons: scqubits does not fix the phases of a subsystem's eigenvectors, so its nodes
+are complex Hermitian at most fluxes (ours stay real), and scipy's LOBPCG converged slowly on single points (the
+104 s and 110 s M solves behind the 118 s and 158 s outliers); the rest is the implementation.
+On these trees our shifted-Jacobi preconditioner is 15 to 30 % faster than our default per-Ritz one.
+
 ## The ladder
 
 Binary tree in local coordinates with f2, f3 sheared onto the junctions; k1 = kept states of the fluxonium / Fock
