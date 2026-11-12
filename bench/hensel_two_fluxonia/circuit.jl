@@ -156,7 +156,10 @@ end
 # Root and branch nodes: LOBPCG at `tol` GHz on eigenvalue residuals (default 1e-6 = 1 kHz, ten times below the
 # strictest target), four guard columns.
 const TOL = parse(Float64, get(ENV, "HENSEL_TOL", "1e-6"))
-root_solver(; tol=TOL, guard=4) = LOBPCG(; tol, maxiter=3000, guard, on=ON)
+# HENSEL_PRECOND: the LOBPCG preconditioner, ritz (the package default) or jacobi (the shifted Jacobi of the scqubits
+# comparison).
+const PRECOND = Symbol(get(ENV, "HENSEL_PRECOND", "ritz"))
+root_solver(; tol=TOL, guard=4) = LOBPCG(; tol, maxiter=3000, guard, preconditioner=PRECOND, on=ON)
 
 """
 Flat tree in local coordinates: fluxonium leaves q1, q2 on `grid` keeping `kq`; the coupler leaf (c, f1) on Fock bases

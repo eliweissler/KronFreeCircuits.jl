@@ -54,3 +54,18 @@ def circuit(frame="local", **kwargs):
     jj = [b for b in circ.branches if b.type == "JJ"]
     circ.configure(transformation_matrix=transformation(frame), closure_branches=jj)
     return circ
+
+
+def binary_tree(c, k1q=40, k1f=20, k2=60, kM=240):
+    """The binary tree of circuit.jl's `binary_root` on a local-frame circuit `c`: root over M = [P(c, f1), P(q1, f3)]
+    and P(q2, f2); fluxonium leaves on a 181-point grid over ±3π (set scq.settings.STENCIL = 9 for our order 8), c and f1
+    on 30 Fock levels, f2 and f3 on 22 (scqubits keeps at most dim − 2: the lowest 20 of 22 harmonic levels are our 20
+    of 20). Kept: fluxonium leaves k1q, Fock leaves k1f, pair nodes k2, M kM; the root is solved for what the caller asks."""
+    hierarchy = [[[[3], [4]], [[1], [6]]], [[2], [5]]]
+    trunc = [[kM, [[k2, [k1f, k1f]], [k2, [k1q, k1f]]]], [k2, [k1q, k1f]]]
+    basis = [[["harmonic", "harmonic"], ["discretized", "harmonic"]], ["discretized", "harmonic"]]
+    for i, n in ((1, 181), (2, 181), (3, 30), (4, 30), (5, 22), (6, 22)):
+        setattr(c, f"cutoff_ext_{i}", n)
+    c.set_discretized_phi_range((1, 2), (-3 * np.pi, 3 * np.pi))
+    c.configure(system_hierarchy=hierarchy, subsystem_trunc_dims=trunc, ext_basis=basis)
+    return c
