@@ -1,0 +1,148 @@
+{
+    "runs": [
+        {
+            "flat_dim": "2948490000",
+            "points": [
+                {
+                    "bytes_allocated": 23356942296,
+                    "first_seconds": 633.532660939,
+                    "gc_seconds": 2.780340366,
+                    "energies": [
+                        -12.417191452050588,
+                        -10.007401641455907,
+                        -9.820968937110607,
+                        -9.007229739939131,
+                        -8.973785571941587,
+                        -7.718832935949218,
+                        -7.466015873917268,
+                        -7.319482164998007
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                181,
+                                300
+                            ],
+                            "n_matvec": null,
+                            "dim": 54300,
+                            "kept": 154,
+                            "operator_seconds": 0.000456383,
+                            "modes": [
+                                "theta1",
+                                "phi1"
+                            ],
+                            "compute": 300,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.174698283,
+                            "solve_seconds": 22.994735271,
+                            "solver": "ShiftInvert"
+                        },
+                        {
+                            "dims": [
+                                181,
+                                300
+                            ],
+                            "n_matvec": null,
+                            "dim": 54300,
+                            "kept": 155,
+                            "operator_seconds": 0.000652391,
+                            "modes": [
+                                "theta2",
+                                "phi2"
+                            ],
+                            "compute": 300,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.315290224,
+                            "solve_seconds": 22.741135057,
+                            "solver": "ShiftInvert"
+                        },
+                        {
+                            "dims": [
+                                154,
+                                155,
+                                1,
+                                1
+                            ],
+                            "n_matvec": null,
+                            "dim": 23870,
+                            "kept": 1000,
+                            "operator_seconds": 0.000558958,
+                            "modes": [
+                                "theta1",
+                                "phi1",
+                                "theta2",
+                                "phi2",
+                                "zeta1",
+                                "zeta2"
+                            ],
+                            "compute": 1000,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 5.552152703,
+                            "solve_seconds": 551.698715698,
+                            "solver": "Dense"
+                        }
+                    ],
+                    "seconds": 603.479583303,
+                    "root_dim": 23870,
+                    "root_seconds_per_matvec": null,
+                    "transitions": [
+                        2.409789810594681,
+                        2.5962225149399814,
+                        3.409961712111457,
+                        3.443405880109001,
+                        4.69835851610137,
+                        4.95117557813332,
+                        5.097709287052581
+                    ],
+                    "point": 0,
+                    "memory": {
+                        "maxrss_bytes": 8329121792,
+                        "system_bytes": 460447768
+                    },
+                    "repeat_seconds": [
+                        603.479583303
+                    ]
+                }
+            ],
+            "label": "two-level tree, connected leaves, 1000 levels",
+            "settings": {
+                "ntotal": 1000,
+                "thresh": 1.0e-5,
+                "tree": "root over two (theta, phi) leaves",
+                "trunc": 300
+            }
+        }
+    ],
+    "environment": {
+        "commit": "66ba443aafa93cde998530e59cf22a4e5a2c4e80",
+        "date": "2026-11-12T13:22:47.475",
+        "smoke": false,
+        "baseline_maxrss_bytes": 720396288,
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+        "threads": 8,
+        "blas_threads": 8,
+        "host": "eliweissler-Precision-3650-Tower",
+        "repeats": 1,
+        "julia": "1.13.2",
+        "device": "cpu",
+        "settings": {
+            "nphi": 300,
+            "ntotal": 1000,
+            "thresh": 1.0e-5,
+            "trunc": 300,
+            "ncut": 90
+        },
+        "dirty": false,
+        "cores": 16,
+        "case": "coupled_zero_pi",
+        "package_version": "0.1.0"
+    },
+    "summaries": [
+    ]
+}
