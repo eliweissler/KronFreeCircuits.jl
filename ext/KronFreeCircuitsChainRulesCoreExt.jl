@@ -6,7 +6,6 @@ module KronFreeCircuitsChainRulesCoreExt
 
 using KronFreeCircuits: KronFreeCircuits, Node, Port, Spec, spectrum, materialize
 using ChainRulesCore: ChainRulesCore, AbstractZero, NoTangent, Tangent, ZeroTangent, unthunk
-using LinearAlgebra: dot
 
 # The component `name` of a cotangent or tangent of a `NamedTuple`, unthunked; a zero (or `nothing`) when absent.
 _component(::Union{Nothing,AbstractZero}, ::Symbol) = ZeroTangent()
@@ -17,16 +16,33 @@ _iszero(x) = x isa AbstractZero
 # A cotangent or tangent component that is zero: a structural zero, or numbers that are all zero.
 _allzero(x) = _iszero(x) || (x isa Number && iszero(x)) || (x isa AbstractArray && all(_allzero, x))
 
-# `Σ_i Ē_i ∂E_i/∂x + Σ_p Re Σ_{ij} conj(P̄_p[i, j]) ∂P_p[i, j]/∂x` for one parameter's derivatives `dy`.
-function _contract(Ē, P̄, dy)
+# `Re Σ_i conj(w_i) d_i` over the entries whose weight `w_i` is not zero: `real(dot(w, d))` with the zero-weight
+# entries left out, so that an undefined (`NaN`) entry of `d` contributes only where its weight selects it.
+# A weight is zero when it is a structural zero (or `nothing`) or a number with `iszero` (`-0.0` and a complex zero
+# included); a `NaN` weight is not zero and gives `NaN`, as does a nonzero weight on a `NaN` entry.
+# A structural zero for the whole of `w` gives `0.0`; otherwise `w` and `d` must have the same length, as for `dot`.
+function _dot_nonzero(w, d)
+    _iszero(w) && return 0.0
+    length(w) == length(d) ||
+        throw(DimensionMismatch("a cotangent has $(length(w)) entries, the output it belongs to $(length(d))"))
     s = 0.0
-    _iszero(Ē) || (s += real(dot(Ē, dy.energies)))
+    for (wi, di) in zip(w, d)
+        wi = _unzero(wi)
+        (_iszero(wi) || iszero(wi)) && continue
+        s += real(conj(wi) * di)
+    end
+    return s
+end
+
+# `Σ_i Ē_i ∂E_i/∂x + Σ_p Re Σ_{ij} conj(P̄_p[i, j]) ∂P_p[i, j]/∂x` for one parameter's derivatives `dy`, each sum
+# over the entries whose cotangent is not zero (`_dot_nonzero`).
+function _contract(Ē, P̄, dy)
+    s = _dot_nonzero(Ē, dy.energies)
     _iszero(P̄) && return s
     length(P̄) == length(dy.ports) ||
         throw(DimensionMismatch("the cotangent of `ports` has $(length(P̄)) entries, the output $(length(dy.ports))"))
     for (p, Pp) in enumerate(P̄)
-        Pp = _unzero(unthunk(Pp))
-        _iszero(Pp) || (s += real(dot(Pp, dy.ports[p])))
+        s += _dot_nonzero(_unzero(unthunk(Pp)), dy.ports[p])
     end
     return s
 end
@@ -68,7 +84,7 @@ function ChainRulesCore.frule((_, _, _, Δθ), ::typeof(spectrum), root::Node, s
     Ṗ = [zeros(promote_type(eltype(P), (eltype(dy.ports[p]) for dy in values(J))...), size(P)) for (p, P) in enumerate(y.ports)]
     for (x, dy) in J
         δ = _component(Δθ, x)
-        _iszero(δ) && continue
+        _allzero(δ) && continue             # a structural or a numeric zero: the parameter's derivatives are not used
         Ė .+= δ .* dy.energies
         for p in eachindex(Ṗ)
             Ṗ[p] .+= δ .* dy.ports[p]
