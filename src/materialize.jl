@@ -668,6 +668,39 @@ end
 _solve(s::Solver, H, m, prev, dims) = solve(s, H, m)
 _solve(s::LOBPCG, H, m, prev, dims) = solve(s, H, m; X0=_initial_block(prev, dims, m, eltype(H)))
 
+# `_solve` plus the solver's work, for `node_timings`: `(E, V, stats)` with `stats` a named tuple
+# `(; iterations, n_matvec, warm)` for LOBPCG (the same call as `solve`, keeping its result) and `nothing` otherwise.
+_solve_stats(s::Solver, H, m, prev, dims) = (_solve(s, H, m, prev, dims)..., nothing)
+function _solve_stats(s::LOBPCG, H, m, prev, dims)
+    X0 = _initial_block(prev, dims, m, eltype(H))
+    E, V, res = lobpcg_solve(s, H, m; X0)
+    return E, V, (; iterations=size(res.residual_history, 2) - 1, n_matvec=res.n_matvec, warm=X0 !== nothing)
+end
+
+# Per-node records of `node_timings`: `nothing` outside it (no cost), else the vector the nodes are pushed to.
+const _NODE_LOG = Base.ScopedValues.ScopedValue{Union{Nothing,Vector{Any}}}(nothing)
+
+"""
+    node_timings(f) -> (result, records)
+
+Run `f()` (typically a `materialize` call) and return its result with one record per node solved inside it, in
+the order solved (children before their parent, so the root is last).
+Each record is a named tuple:
+`modes` (the node's modes), `dims` (its product-basis axis sizes), `dim` (their product), `compute` (eigenpairs
+asked for), `kept`, `solver` (the resolved solver's type name), `real` (real arithmetic),
+`operator_seconds` (building the node's operator from its children's ports and its terms),
+`solve_seconds` (the eigensolve), `assemble_seconds` (selection, phase fixing, and forming the ports and joint
+ports its ancestors need), and `iterations`, `n_matvec` and `warm` (a warm-started initial block) for a `LOBPCG`
+node, `nothing` otherwise.
+Given systems and basis children are not solved and have no record.
+Times are wall clock (`time_ns`); a device solve returns host arrays, so its time includes the device work.
+"""
+function node_timings(f)
+    log = Any[]
+    result = Base.ScopedValues.with(f, _NODE_LOG => log)
+    return result, log
+end
+
 # The recursion: each child materialized first (a node child on its routed terms, its ports and joint ports, no
 # constant, and its previous solution at the same tree position), then this node on them (`_solve_node`).
 # A node child found in `augmented` (node => solved node, from `_augmented_nodes!`) is taken from there, not solved.
@@ -720,8 +753,10 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     # (2)-(3) The node's operator, built for the resolved solver (Auto() picks one by the node's shape).
     # A node classified real (whose child nodes are then all real) runs in real arithmetic; its operator takes the
     # children's ports by their components (spec Section 20f, "The real operator").
+    t0 = time_ns()
     solver = _resolve_node_solver(node, children)
     H = _node_operator(node, solver, children, terms, θ, constant; real)
+    t1 = time_ns()
 
     # (4) Diagonalize.
     _dense_too_large(solver, prod(dims)) &&
@@ -733,7 +768,9 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     m = _compute_count(node, dims)
     N = prod(dims)
     retain = _retains(node, solver, N, retain)
-    Eall, Vall = retain && solver isa Dense && m < N ? solve(Dense(), H, 0) : _solve(solver, H, m, prev, dims)
+    Eall, Vall, stats = retain && solver isa Dense && m < N ? (solve(Dense(), H, 0)..., nothing) :
+                                                              _solve_stats(solver, H, m, prev, dims)
+    t2 = time_ns()
     size(Vall, 2) >= m && length(Eall) >= m ||
         throw(ArgumentError("the solver $(typeof(solver)) of the node on modes $(modes(node)) returned " *
                             "$(min(size(Vall, 2), length(Eall))) eigenpairs, fewer than the $m it was asked to compute"))
@@ -753,8 +790,18 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     unkept = setdiff(1:length(Eall), idx)                     # increasing
     retained = (; energies=Eall, unkept, vectors=retain ? Vall[:, unkept] : nothing,
                 complete=retain && length(Eall) == N)
-    return _assemble_node(node, children, E[idx], view(V, :, idx); ports, joint_ports, real, reference,
-                          kept=collect(Int, idx), formed, retained)
+    mn = _assemble_node(node, children, E[idx], view(V, :, idx); ports, joint_ports, real, reference,
+                        kept=collect(Int, idx), formed, retained)
+    log = _NODE_LOG[]
+    if log !== nothing
+        t3 = time_ns()
+        push!(log, (; modes=modes(node), dims, dim=N, compute=m, kept=length(idx), solver=nameof(typeof(solver)), real,
+                    operator_seconds=(t1 - t0) / 1e9, solve_seconds=(t2 - t1) / 1e9, assemble_seconds=(t3 - t2) / 1e9,
+                    iterations=stats === nothing ? nothing : stats.iterations,
+                    n_matvec=stats === nothing ? nothing : stats.n_matvec,
+                    warm=stats === nothing ? nothing : stats.warm))
+    end
+    return mn
 end
 
 # A `MaterializedNode` for the kept `vectors` (columns on the node's product basis over its materialized `children`,
