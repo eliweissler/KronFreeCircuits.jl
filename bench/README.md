@@ -49,7 +49,9 @@ One JSON file per case run (`results.json`), with one record per (setting, param
    root solve time / root matvecs. In a sweep each point is warm-started from the previous one, as a user would;
    the first point is the cold one.
 5. **Memory**: the process's peak RSS after the run (a high-water mark: it only grows within a process, so the
-   headline setting is also run alone in a fresh process for its memory figure), bytes allocated during the warm
+   headline setting is also run alone in a fresh process for its memory figure; the record also holds the RSS
+   after loading the packages, `baseline_maxrss_bytes`, so a figure net of the baseline, as Hensel et al. report, can
+   be formed; it still includes the compiled code), bytes allocated during the warm
    call, and the stored system's size (`Base.summarysize`). On the GPU, the device memory in use after the run.
 6. **Reference side**: the same fields where we run the reference ourselves; for a published reference, only what
    the paper reports, with its hardware.

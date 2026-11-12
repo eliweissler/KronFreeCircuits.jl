@@ -13,7 +13,8 @@
 #              Expensive: 2 to 6 min per point on the A4500, 24 to 43 min on 8 CPU cores.
 #
 # Knobs: those of ../common.jl, and HENSEL_TOL (LOBPCG tolerance, GHz, default 1e-6), HENSEL_FLUXES (comma list of
-# Φ_c/Φ_0, default the paper's grid 0, 0.1, …, 0.5).
+# Φ_c/Φ_0, default the paper's grid 0, 0.1, …, 0.5), HENSEL_RUNGS (comma list of ladder rungs to run, 1-based: one
+# rung alone in a fresh process gives its own peak RSS).
 
 include(joinpath(@__DIR__, "..", "common.jl"))
 include(joinpath(@__DIR__, "circuit.jl"))
@@ -51,6 +52,7 @@ if "ladder" in STAGES
     nfock = SMOKE ? Dict(:c => 12, :f1 => 12, :f2 => 8, :f3 => 8) : Dict(:c => 30, :f1 => 30, :f2 => 20, :f3 => 20)
     rungs = SMOKE ? [(8, 6, 10, 20), (8, 6, 10, 30), (10, 8, 12, 30)] :
             [(40, 20, 60, 120), (40, 20, 60, 240), (60, 30, 100, 240), (60, 30, 100, 480)]
+    haskey(ENV, "HENSEL_RUNGS") && (rungs = rungs[parse.(Int, split(ENV["HENSEL_RUNGS"], ","))])   # e.g. "1" for one rung alone
     ladder = Any[]
     for (k1q, k1f, k2, kM) in rungs
         root = binary_root(; grid=GRID, nfock, k1q, k1f, k2, kM, compute=NLEVELS, B)

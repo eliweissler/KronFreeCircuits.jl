@@ -44,7 +44,8 @@ function environment(case::AbstractString)
         "device" => DEVICE, "julia" => string(VERSION), "threads" => Threads.nthreads(),
         "blas_threads" => BLAS.get_num_threads(), "package_version" => string(pkgversion(KronFreeCircuits)),
         "commit" => _git("rev-parse", "HEAD"), "dirty" => !isempty(_git("status", "--porcelain", "--", "src")),
-        "date" => string(now()), "smoke" => SMOKE, "repeats" => REPEATS)
+        "date" => string(now()), "smoke" => SMOKE, "repeats" => REPEATS,
+        "baseline_maxrss_bytes" => Sys.maxrss())          # after loading the packages, before any solve
     DEVICE == "gpu" && (env["gpu"] = CUDA.name(CUDA.device()))
     return env
 end
