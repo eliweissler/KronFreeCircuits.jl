@@ -48,12 +48,27 @@ def transformation(frame="local"):
     raise ValueError(frame)
 
 
-def circuit(frame="local", **kwargs):
-    """The circuit with fluxes on the three junction branches, in the given frame."""
+def circuit(frame="local", rebuild=None, **kwargs):
+    """The circuit with fluxes on the three junction branches, in the given frame (the full 7 × 7 transformation, one
+    `configure` call).
+
+    `rebuild` (default: for every frame but "local") builds the returned Circuit from the Hamiltonian that scqubits
+    generates for this transformation from the numeric branch parameters
+    (`generate_symbolic_hamiltonian(substitute_params=True, reevaluate_lagrangian=True)`). In scqubits 4.3.1 the
+    Hamiltonian a Circuit stores is built from the potential with the parameters still symbolic; in the sheared frame,
+    with the fluxes on the junction branches, that potential carries terms in the free (global) variable θ7, which the
+    harmonic-oscillator shift (`_shift_harmonic_oscillator_potential`) then moves into the junction cosines. The
+    numeric-parameter Hamiltonian has no θ7 term, as it must: θ7 is the global phase."""
     circ = scq.Circuit(yaml(), from_file=False, ext_basis="discretized", **kwargs)
     jj = [b for b in circ.branches if b.type == "JJ"]
     circ.configure(transformation_matrix=transformation(frame), closure_branches=jj)
-    return circ
+    if rebuild is None:
+        rebuild = frame != "local"
+    if not rebuild:
+        return circ
+    H = circ.symbolic_circuit.generate_symbolic_hamiltonian(substitute_params=True, reevaluate_lagrangian=True)
+    assert "θ7" not in str(H), "the free variable entered the Hamiltonian"
+    return scq.Circuit(symbolic_hamiltonian=H, ext_basis="discretized", **kwargs)
 
 
 def binary_tree(c, k1q=40, k1f=20, k2=60, kM=240):

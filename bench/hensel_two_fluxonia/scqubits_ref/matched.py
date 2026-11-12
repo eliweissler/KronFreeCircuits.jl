@@ -7,7 +7,8 @@ on the lowest diagonal entries), shifted Jacobi preconditioner 1/(D − min D + 
 arithmetic when the node's matrix is real, complex otherwise (scqubits leaves eigenvector phases unfixed). Every solver call is timed, so a point's time splits into solves and the rest
 (scqubits' Hamiltonian and operator assembly). Threads: OMP/OPENBLAS/MKL_NUM_THREADS (set to 8 by the caller).
 
-   python matched.py [kM] [solver: lobpcg | arpack]   (arpack: scqubits' default sparse eigsh at M and the root)
+   python matched.py [kM] [solver: lobpcg | arpack] [frame: shear | local]
+   (arpack: scqubits' default sparse eigsh at M and the root; shear, the default, is the benchmark's frame)
 """
 
 import json
@@ -25,6 +26,7 @@ from hensel_scq import binary_tree, circuit
 scq.settings.STENCIL = 9
 KM = int(sys.argv[1]) if len(sys.argv) > 1 else 240
 SOLVER = sys.argv[2] if len(sys.argv) > 2 else "lobpcg"
+FRAME = sys.argv[3] if len(sys.argv) > 3 else "shear"
 FLUXES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
 GUARD, TOL, MAXITER = 4, 1e-6, 3000
 LOG = []
@@ -99,10 +101,10 @@ def install(sys_, depth):
 
 
 t0 = time.perf_counter()
-c = binary_tree(circuit("local"), kM=KM)
+c = binary_tree(circuit(FRAME), kM=KM)
 install(c, 0)
 setup = time.perf_counter() - t0
-print(f"scqubits {scq.__version__}, kM {KM}, solver {SOLVER}: setup {setup:.1f} s", flush=True)
+print(f"scqubits {scq.__version__}, frame {FRAME}, kM {KM}, solver {SOLVER}: setup {setup:.1f} s", flush=True)
 
 points = []
 for fc in FLUXES:
@@ -120,5 +122,5 @@ for fc in FLUXES:
     print(f"Φc = {fc}: {total:6.2f} s (solves {solves:6.2f} s, rest {total - solves:6.2f} s)  E1-E0 = {E[1] - E[0]:.6f}  "
           + ", ".join(f"{k}: {v:.2f}" for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:4]), flush=True)
 
-json.dump(dict(scqubits=scq.__version__, kM=KM, solver=SOLVER, setup_seconds=setup, points=points),
-          open(f"matched-scqubits-kM{KM}-{SOLVER}.json", "w"), indent=1)
+json.dump(dict(scqubits=scq.__version__, frame=FRAME, kM=KM, solver=SOLVER, setup_seconds=setup, points=points),
+          open(f"matched-scqubits-{FRAME}-kM{KM}-{SOLVER}.json", "w"), indent=1)
