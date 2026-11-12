@@ -301,19 +301,21 @@ carried apart from the `Float64` `f`:
   degree with the normalization absorbed, in which `f_{m-1}` and `f_{m-2}` share one exponent and are rescaled together.
 
 The recurrence runs from the region where the elements are exponentially small into the one where they oscillate, the
-direction in which it is stable, and an element below the `Float64` range comes out as zero. A finite `|α| ≥ 2^20` gives
-the zero matrix (every element is below the range for any `N` that fits in memory) and a non-finite `α` gives NaN.
+direction in which it is stable, and an element below the `Float64` range comes out as zero. A `|α| ≥ 2^20` that is a
+finite `Float64` gives the zero matrix (every element is below the range for any `N` that fits in memory).
 
 The evaluation is in `Float64`: an `α` of another type is converted first, a real one to `Float64` and any other to
 `ComplexF64`, so that `displacement(N, α)` is the matrix of the converted argument for every numeric type (an integer, a
 rational, an irrational constant, single or extended precision) and a real or an imaginary `α` keeps its exact phases.
-A finite `α` beyond the `Float64` range gives the zero matrix, as any other `|α| ≥ 2^20`.
+
+An `α` whose modulus is not a finite `Float64` gives the matrix with every element `NaN + NaN im`, the same one whether
+`α` is not finite as given (`Inf`, `NaN`, `complex(Inf, 1.0)`), has finite parts whose modulus overflows
+(`complex(1.7e308, 1.7e308)`) or leaves the `Float64` range when it is converted (`big"1e400"`), while a representable
+`|α| ≥ 2^20`, however large (`1e300`, `complex(1e300, 1e300)`, `big"1e300"`), gives the zero matrix, which is the
+correctly rounded result. An unrepresentable argument of the Fock operators that call this (`e^{ikφ̂}`, `e^{2πik n̂}`) is
+a unit error or a diverged optimization, and a zero matrix would silently delete the term where `NaN` fails loudly.
 """
-function displacement(N::Int, α::Number)
-    z = α isa Real ? Float64(α) : ComplexF64(α)
-    isfinite(z) || !isfinite(α) || return zeros(ComplexF64, N, N)      # finite, but not as a Float64: |α| ≥ 2^20
-    return displacement(N, z)
-end
+displacement(N::Int, α::Number) = displacement(N, α isa Real ? Float64(α) : ComplexF64(α))   # out of the Float64 range: ±Inf, so NaN
 
 function displacement(N::Int, α::Union{Float64,ComplexF64})
     D = zeros(ComplexF64, N, N)
@@ -322,7 +324,7 @@ function displacement(N::Int, α::Union{Float64,ComplexF64})
         return D
     end
     r, x, θ = abs(α), abs2(α), angle(α)
-    isfinite(r) || return fill!(D, complex(NaN, NaN))
+    isfinite(r) || return fill!(D, complex(NaN, NaN))        # a non-finite α, or finite parts whose modulus overflows
     r < 0x1p20 || return D
     exact = iszero(imag(α)) || iszero(real(α))
     k = round(-x / 2 / log(2.0))                             # e^{-x/2} = g · 2^e with g = e^{-x/2 - k log 2} in [1/√2, √2]

@@ -322,16 +322,30 @@ end
     for α in (0, false, 0//1, 0.0f0, big(0), big"0.0", 0 + 0im, 0//1 + 0//1 * im, big"1e-400", -big"1e-400" * im)
         @test displacement(4, α) == I(4)
     end
-    # a finite |α| ≥ 2^20 gives the zero matrix, also beyond the Float64 range; a non-finite α gives NaN
-    for α in (2^20, -2^20, typemax(Int), typemin(Int), 2^40 * im, 3 * 2^20 // 2, 1.0f20, big"1e400", -big"1e400", big(10)^400,
-              big(10)^400 // 3, Complex{BigFloat}(1, big"-1e400"))
+    # A |α| ≥ 2^20 that is a finite Float64 gives the zero matrix, the correctly rounded result, however large and of
+    # whatever type: also a BigFloat or a BigInt within the Float64 range, and a complex α whose modulus does not overflow.
+    fmax = floatmax(Float64)
+    for α in (2.0^20, -2.0^20, 2.0^20 * im, 1e300, -1e300, 1e300im, complex(1e300, 1e300), complex(1.2e308, -1.2e308), fmax, -fmax,
+              complex(0.0, fmax), 2^20, -2^20, typemax(Int), typemin(Int), 2^40 * im, 3 * 2^20 // 2, 1.0f20, floatmax(Float32),
+              big"1e300", -big"1e300", big(10)^300, big(10)^300 // 3, Complex{BigFloat}(big"1e300", big"-1e300"), big(fmax), BigInt(fmax))
         Dα = displacement(3, α)
-        @test Dα isa Matrix{ComplexF64} && all(iszero, Dα)
+        @test Dα isa Matrix{ComplexF64} && size(Dα) == (3, 3) && all(iszero, Dα)
     end
-    for α in (1//0, -1//0, Inf32, -Inf32, NaN32, Float16(NaN), big(Inf), -big(Inf), big(NaN), complex(NaN32, 1.0f0),
-              complex(0.0f0, -Inf32), Complex{BigFloat}(1, Inf), (1//0) * im)
+    # An α whose modulus is not a finite Float64 gives the matrix with every entry NaN + NaN im, the same matrix whether α
+    # is not finite as given, has finite parts whose modulus overflows, or leaves the Float64 range when it is converted.
+    # (Such an argument is a unit error or a diverged optimization; a zero matrix would silently delete the operator.)
+    allnan = fill(complex(NaN, NaN), 3, 3)
+    nonfinite = (Inf, -Inf, NaN, complex(Inf, 1.0), complex(1.0, -Inf), complex(NaN, 1.0), complex(1.0, NaN), complex(NaN, Inf),
+                 1//0, -1//0, Inf32, -Inf32, NaN32, Float16(NaN), big(Inf), -big(Inf), big(NaN), complex(NaN32, 1.0f0),
+                 complex(0.0f0, -Inf32), Complex{BigFloat}(1, Inf), (1//0) * im)
+    overflowing = (complex(1.7e308, 1.7e308), complex(-1.7e308, 1.7e308), complex(1.3e308, -1.3e308), complex(fmax, fmax))
+    converted = (big"1e400", -big"1e400", big"1e400" * im, big(10)^400, big(10)^400 // 3, Complex{BigFloat}(1, big"-1e400"),
+                 Complex{BigFloat}(big"1e400", 0), 2 * big(fmax), big(2)^1024, big(2.0)^1024)
+    for α in (nonfinite..., overflowing..., converted...)
         Dα = displacement(3, α)
-        @test Dα isa Matrix{ComplexF64} && all(isnan, Dα)
+        @test Dα isa Matrix{ComplexF64} && isequal(Dα, allnan)
     end
+    @test all(isfinite, overflowing) && all(isfinite, converted)        # finite arguments, all of them
+    @test isequal(displacement(400, big"1e400"), fill(complex(NaN, NaN), 400, 400))
     @test displacement(0, 5) isa Matrix{ComplexF64} && size(displacement(0, 1//2)) == (0, 0)
 end
