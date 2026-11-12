@@ -7,8 +7,15 @@ on the lowest diagonal entries), shifted Jacobi preconditioner 1/(D − min D + 
 arithmetic when the node's matrix is real, complex otherwise (scqubits leaves eigenvector phases unfixed). Every solver call is timed, so a point's time splits into solves and the rest
 (scqubits' Hamiltonian and operator assembly). Threads: OMP/OPENBLAS/MKL_NUM_THREADS (set to 8 by the caller).
 
-   python matched.py [kM] [solver: lobpcg | arpack] [frame: shear | local]
-   (arpack: scqubits' default sparse eigsh at M and the root; shear, the default, is the benchmark's frame)
+   python matched.py [kM] [solver: lobpcg | arpack | torch | torch-cuda | default] [frame: shear | local]
+
+solver: lobpcg = scipy's LOBPCG at M and the root; arpack = scipy's sparse eigsh there (scqubits' default solver for
+those nodes, with the pair nodes forced dense); torch / torch-cuda = torch.lobpcg on the CPU / the GPU there, same
+settings, with torch's relative test (residual / (‖AX‖/‖X‖ + |E|), _lobpcg.py) given the tolerance that implies our
+absolute 1e-6 GHz residual; torch.lobpcg returns wrong values on complex Hermitian input, so a complex node (scqubits
+leaves eigenvector phases unfixed; here at Φc = 0 and 0.5) falls back to scipy's LOBPCG, and each call records which ran;
+default = scqubits exactly as shipped: no solver installed anywhere, only the total time per point is measured.
+frame: shear (the default) is the benchmark's frame.
 """
 
 import json
@@ -79,6 +86,36 @@ def lobpcg_evals(matrix, evals_count, **kw):
     return lobpcg_esys(matrix, evals_count, **kw)[0]
 
 
+def torch_esys(matrix, evals_count, device="cpu", **kw):
+    import torch
+    A = _matrix(matrix)
+    if np.iscomplexobj(A.data):                              # torch.lobpcg is wrong on complex Hermitian input
+        E, V = lobpcg_esys(matrix, evals_count)
+        LOG[-1]["kind"] = "lobpcg (complex, torch fallback)"
+        return E, V
+    t = time.perf_counter()
+    n, k = A.shape[0], evals_count
+    b = k + GUARD
+    D = A.diagonal()
+    C = A.tocoo()
+    At = torch.sparse_coo_tensor(np.vstack([C.row, C.col]), C.data, (n, n), dtype=torch.float64, device=device).coalesce()
+    inv = 1.0 / (D - (D.min() - 1.0))
+    iK = torch.sparse_coo_tensor(np.vstack([np.arange(n)] * 2), inv, (n, n), dtype=torch.float64, device=device).coalesce()
+    X = torch.zeros(n, b, dtype=torch.float64, device=device)
+    sel = np.argsort(D, kind="stable")[:b]
+    X[sel, np.arange(b)] = 1.0
+    A_norm = float(torch.linalg.vector_norm(torch.sparse.mm(At, X))) / float(torch.linalg.vector_norm(X))
+    rel_tol = TOL / (A_norm + float(np.abs(D[sel]).max()))  # implies |r| < TOL for every column
+    w, V = torch.lobpcg(At, k=b, X=X, iK=iK, largest=False, tol=rel_tol, niter=MAXITER)
+    if device == "cuda":
+        torch.cuda.synchronize()
+    w, V = w.cpu().numpy(), V.cpu().numpy()
+    o = np.argsort(w)[:k]
+    LOG.append(dict(kind=f"torch-{device}", n=n, k=k, seconds=time.perf_counter() - t, complex=False))
+    E, V = w[o], V[:, o]
+    return (E, diag._convert_evecs_to_qobjs(V, matrix) if isinstance(matrix, scq.utils.misc.qt.Qobj) else V)
+
+
 def install(sys_, depth):
     """Dense at the pair nodes (depth 2; P(q2, f2) sits at depth 1 but is a pair node), the chosen iterative solver at
     the root (0) and M (1). The single-variable leaves keep scqubits' default solvers: overriding them makes scqubits
@@ -87,10 +124,14 @@ def install(sys_, depth):
     subs = getattr(sys_, "subsystems", []) or []
     for i, sub in enumerate(subs):
         install(sub, depth + 1 if not (depth == 0 and i == 1) else 2)
-    if not subs:
+    if not subs or SOLVER == "default":
         return
     if depth <= 1:
-        if SOLVER == "lobpcg":
+        if SOLVER in ("torch", "torch-cuda"):
+            dev = "cuda" if SOLVER == "torch-cuda" else "cpu"
+            sys_.esys_method = lambda m, k, **kw: torch_esys(m, k, device=dev)
+            sys_.evals_method = lambda m, k, **kw: torch_esys(m, k, device=dev)[0]
+        elif SOLVER == "lobpcg":
             sys_.evals_method, sys_.esys_method = lobpcg_evals, lobpcg_esys
         else:
             sys_.evals_method = timed(diag.evals_scipy_sparse, "arpack")

@@ -58,7 +58,7 @@ the subsystem Hamiltonians and the interaction operators in the kept bases as sp
 9.7 s. scqubits' non-solve work alone is 14× (kM 120) to 30× (kM 240) our whole time per point.
 Its solves are also slower than ours on the same nodes with the same preconditioner (the M node: 4 to 12 s against
 0.4 to 0.9 s), for two visible reasons: scqubits does not fix the phases of a subsystem's eigenvectors, so its nodes
-are complex Hermitian at most fluxes (ours stay real), and scipy's LOBPCG converged slowly on single points (the
+are complex Hermitian at Φ_c = 0 and 0.5 (ours stay real), and scipy's LOBPCG converged slowly on single points (the
 104 s and 110 s M solves behind the 118 s and 158 s outliers); the rest is the implementation.
 On these trees our shifted-Jacobi preconditioner is 15 to 30 % faster than our default per-Ritz one.
 
