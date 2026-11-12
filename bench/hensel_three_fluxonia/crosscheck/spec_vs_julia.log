@@ -1,0 +1,14 @@
+normal modes ω_μ/2π (GHz): [2.268, 3.685, 4.271, 4.935, 5.236, 8.381, 9.151, 17.173, 17.35, 21.166, 21.559]
+none     frame-mode scale factors |d| 0.5 0.5 0.5 0.5 0.5 0.5;  max |ΔE_L| 1.0e-10 GHz (of 37.2), max |ΔE_C| 4.2e-15 GHz (of 1.55)
+full     frame-mode scale factors |d| 0.5 0.5 0.5 0.5 0.5 0.5;  max |ΔE_L| 1.4e-14 GHz (of 37.2), max |ΔE_C| 6.8e-11 GHz (of 7.97)
+rule     frame-mode scale factors |d| 0.5 0.5 0.5 0.5 0.5 0.5;  max |ΔE_L| 5.1e-11 GHz (of 37.2), max |ΔE_C| 3.0e-11 GHz (of 2.46)
+   cosines in the spec: KronFreeCircuits.CosineSpec(Coefficient(:(37 // 10), Symbol[], RuntimeGeneratedFunctions.RuntimeGeneratedFunction{(Symbol("#θarg"),), KronFreeCircuits.var"#_RGF_ModTag", KronFreeCircuits.var"#_RGF_ModTag", (0xc941ee07, 0xfffe2466, 0x2fa3878a, 0xdd9c8daa, 0x3fc73e25), Expr}(quote
+    #= /home/eweissler/src/KronFreeCircuits-bench/src/parameters.jl:50 =#
+    #= /home/eweissler/src/KronFreeCircuits-bench/src/parameters.jl:51 =#
+    #= /home/eweissler/src/KronFreeCircuits-bench/src/parameters.jl:52 =#
+    (ComplexF64)(37 // 10)
+end)), [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], Coeffi
+   small tree from the spec:  0.421737 0.707509 0.817029 1.039744 1.224541 1.479886 1.783273
+   small tree from Julia:     0.421737 0.707509 0.817029 1.039744 1.224541 1.479886 1.783273
+   max |Δ transition| 8.60e-13 GHz, |ΔE0| 1.04e-12 GHz
+archive  frame-mode scale factors |d| 0.5 0.5 0.5 0.5 0.5 0.5;  max |ΔE_L| 3.3e-11 GHz (of 37.2), max |ΔE_C| 1.4e-11 GHz (of 2.34)
