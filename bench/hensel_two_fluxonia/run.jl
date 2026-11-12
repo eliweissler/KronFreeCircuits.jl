@@ -14,7 +14,8 @@
 #
 # Knobs: those of ../common.jl, and HENSEL_TOL (LOBPCG tolerance, GHz, default 1e-6), HENSEL_FLUXES (comma list of
 # Φ_c/Φ_0, default the paper's grid 0, 0.1, …, 0.5), HENSEL_RUNGS (comma list of ladder rungs to run, 1-based: one
-# rung alone in a fresh process gives its own peak RSS).
+# rung alone in a fresh process gives its own peak RSS), HENSEL_GRID ("a,N": fluxonium grid ±aπ with N points,
+# default 3,181).
 
 include(joinpath(@__DIR__, "..", "common.jl"))
 include(joinpath(@__DIR__, "circuit.jl"))
@@ -34,7 +35,9 @@ const PUBLISHED = [("exact HD, Lanczos, m = 14 (7.5 M states)", 68 * 60 / 5, 16.
 REC.record["published"] = [Dict("solver" => s, "seconds_per_point" => t, "peak_GB" => m,
                                 "source" => "arXiv:2611.05627v1 Table tab:cost, sum over grid points 2-6 / 5") for (s, t, m) in PUBLISHED]
 
-const GRID = SMOKE ? PhaseGrid(-3π, 3π, 121; order=8) : PhaseGrid(-3π, 3π, 181; order=8)
+const GRID = haskey(ENV, "HENSEL_GRID") ?                         # "a,N": PhaseGrid(-aπ, aπ, N; order=8)
+             (g = parse.(Float64, split(ENV["HENSEL_GRID"], ",")); PhaseGrid(-g[1] * π, g[1] * π, Int(g[2]); order=8)) :
+             SMOKE ? PhaseGrid(-3π, 3π, 121; order=8) : PhaseGrid(-3π, 3π, 181; order=8)
 gridname(g) = "PhaseGrid($(g.a / π)π, $(g.b / π)π, $(g.N); order=$(g.order))"
 
 runs = Dict{String,Any}()

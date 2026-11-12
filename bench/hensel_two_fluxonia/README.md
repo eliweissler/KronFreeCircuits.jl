@@ -66,8 +66,10 @@ the flat million-state reference (8.0 vs 36.7 s) and the paper's 7.5 M space.
 - Each sweep point is warm-started from the previous one; the paper's published times are cold solves (its seeded
   chains mostly failed its checks). The first point of each sweep is cold and costs about the same here (0.73 s for the
   1 MHz rung once compiled), so this does not change the comparison.
-- The ladder does not vary the fluxonium phase grid (±3π, 181 points, every rung); kept leaf states above about the
-  tenth reach its edge (warnings in the logs). The 2026-11-06 study found no change of the levels at 1 kHz resolution
-  with ±4π or 241 points, but this run did not repeat that check.
+- The ladder keeps one fluxonium phase grid (±3π, 181 points), on which kept leaf states above about the tenth reach
+  the edge (warnings in the logs). The grid check (`HENSEL_GRID`, rungs 1 and 2, `results/cpu-grid-*`) moves every
+  transition among the lowest eight levels by at most 1.6×10⁻¹⁰ GHz on ±3π with 241 points, 3×10⁻¹¹ on ±4π / 241 and
+  8×10⁻¹² on ±5π / 301 (where no kept state reaches the edge): the edge states are high in the leaf spectrum and do not
+  reach the low levels.
 - The paper-space GPU run keeps six columns and no guard (memory), as in the 2026-11-06 study; the host CPU solve of
   that space (24 to 43 min per point on 8 cores, 2026-11-06) was not repeated.
