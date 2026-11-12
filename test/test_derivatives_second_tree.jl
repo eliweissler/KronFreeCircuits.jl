@@ -72,7 +72,14 @@ end
     d = derivatives(sys; wrt=(:E_J, :varphi_ext), order=2, mixed=((:E_J, :varphi_ext),))
     f01(E) = E[2] - E[1]
     @test f01(energies(d, :E_J, :varphi_ext)) ≈ -0.053526672 rtol=1e-6          # measured by finite differences when the plan was written
-    check_fd(f01(energies(d, :E_J, :varphi_ext)), fd_mixed(θ -> f01(energies(at(θ))), c.θ, :E_J, :varphi_ext; hx=1e-2, hλ=1e-2); rtol=1e-6)
+    # Steps 4e-2, not 1e-2: the reference, not the analytic value, was at its round-off floor.  f_01 of the 601-point grid
+    # Hamiltonian (norm 6e3) carries round-off of 5e-13 rms (measured), and the mixed difference at the smallest step s of
+    # the extrapolation divides it by s²: at 1e-2 (s = 2.5e-3) that is 5e-8, the size of the tolerance 5.4e-8.  Measured
+    # at 1e-2 (err, |analytic − value|): Apple ARM64 6.8e-8, 7.8e-8, both assertions failing; x86_64 Linux (OpenBLAS)
+    # 1.2e-8, 1.0e-8 at θ, but failing at 9 of 40 base points displaced by up to 5e-5.  At 4e-2: ARM64 2.4e-9, 9.5e-10;
+    # x86_64 5.5e-9, 3.3e-9, and at worst 0.16 of the tolerance over the 40 points.  At 2e-2 the worst of the 40 is 0.74
+    # of it, and at 8e-2 truncation takes over (err 4.9e-8).  The tolerance is unchanged.
+    check_fd(f01(energies(d, :E_J, :varphi_ext)), fd_mixed(θ -> f01(energies(at(θ))), c.θ, :E_J, :varphi_ext; hx=4e-2, hλ=4e-2); rtol=1e-6)
     @test haskey(d.second, (:E_J, :E_J)) && haskey(d.second, (:E_J, :varphi_ext)) && haskey(d.second, (:varphi_ext, :varphi_ext))
     @test_throws ArgumentError energies(derivatives(sys; wrt=(:E_J, :varphi_ext), order=2), :E_J, :varphi_ext)   # pair not requested
     @test_throws ArgumentError derivatives(sys; wrt=:E_J, order=2, mixed=((:E_J, :varphi_ext),))                 # not in wrt
