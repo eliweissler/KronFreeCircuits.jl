@@ -1,0 +1,45 @@
+quiet at Thu Nov 12 10:08:15 AM PST 2026, load 1.88 5.52 6.71
+== scqubits shear default kM 120
+scqubits 4.3.1, frame shear, kM 120, solver default: setup 7.4 s
+Φc = 0.0:  14.55 s (solves   0.00 s, rest  14.55 s)  E1-E0 = 0.000859  
+Φc = 0.1:  25.26 s (solves   0.00 s, rest  25.26 s)  E1-E0 = 0.379069  
+Φc = 0.2:  27.11 s (solves   0.00 s, rest  27.11 s)  E1-E0 = 0.837706  
+Φc = 0.3:  25.97 s (solves   0.00 s, rest  25.97 s)  E1-E0 = 1.075980  
+Φc = 0.4:  24.97 s (solves   0.00 s, rest  24.97 s)  E1-E0 = 0.918544  
+Φc = 0.5:  14.56 s (solves   0.00 s, rest  14.56 s)  E1-E0 = 0.000458  
+== scqubits shear default kM 240
+scqubits 4.3.1, frame shear, kM 240, solver default: setup 22.2 s
+Φc = 0.0:  55.33 s (solves   0.00 s, rest  55.33 s)  E1-E0 = 0.000859  
+Φc = 0.1:  85.04 s (solves   0.00 s, rest  85.04 s)  E1-E0 = 0.379071  
+Φc = 0.2:  89.80 s (solves   0.00 s, rest  89.80 s)  E1-E0 = 0.837736  
+Φc = 0.3:  87.15 s (solves   0.00 s, rest  87.15 s)  E1-E0 = 1.075983  
+Φc = 0.4:  91.09 s (solves   0.00 s, rest  91.09 s)  E1-E0 = 0.918547  
+Φc = 0.5:  54.47 s (solves   0.00 s, rest  54.47 s)  E1-E0 = 0.000458  
+== scqubits shear torch-cuda kM 120
+scqubits 4.3.1, frame shear, kM 120, solver torch-cuda: setup 7.3 s
+Φc = 0.0:  15.43 s (solves   8.73 s, rest   6.71 s)  E1-E0 = 0.000859  lobpcg (complex, torch fallback) n=3600: 5.78, lobpcg (complex, torch fallback) n=7200: 2.21, dense n=800: 0.67, dense n=400: 0.08
+Φc = 0.1:  23.93 s (solves  13.87 s, rest  10.06 s)  E1-E0 = 0.379069  torch-cuda n=7200: 7.50, torch-cuda n=3600: 5.59, dense n=800: 0.70, dense n=400: 0.08
+Φc = 0.2:  23.24 s (solves  13.16 s, rest  10.08 s)  E1-E0 = 0.837706  torch-cuda n=3600: 8.28, torch-cuda n=7200: 4.11, dense n=800: 0.69, dense n=400: 0.08
+Φc = 0.3:  22.98 s (solves  12.97 s, rest  10.01 s)  E1-E0 = 1.075980  torch-cuda n=7200: 7.05, torch-cuda n=3600: 5.16, dense n=800: 0.69, dense n=400: 0.07
+Φc = 0.4:  22.25 s (solves  12.25 s, rest  10.00 s)  E1-E0 = 0.918544  torch-cuda n=3600: 6.14, torch-cuda n=7200: 5.33, dense n=800: 0.72, dense n=400: 0.08
+Φc = 0.5:  20.56 s (solves  12.87 s, rest   7.69 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 8.52, lobpcg (complex, torch fallback) n=7200: 3.57, dense n=800: 0.71, dense n=400: 0.08
+== scqubits shear torch-cuda kM 240
+scqubits 4.3.1, frame shear, kM 240, solver torch-cuda: setup 22.2 s
+Φc = 0.0:  42.44 s (solves  20.36 s, rest  22.07 s)  E1-E0 = 0.000859  lobpcg (complex, torch fallback) n=3600: 11.65, lobpcg (complex, torch fallback) n=14400: 8.03, dense n=800: 0.61, dense n=400: 0.08
+Φc = 0.1:  89.24 s (solves  52.06 s, rest  37.19 s)  E1-E0 = 0.379071  torch-cuda n=14400: 31.93, torch-cuda n=3600: 19.43, dense n=800: 0.63, dense n=400: 0.07
+Φc = 0.2: 250.93 s (solves 213.47 s, rest  37.46 s)  E1-E0 = 0.837736  torch-cuda n=3600: 196.96, torch-cuda n=14400: 15.83, dense n=800: 0.61, dense n=400: 0.07
+Φc = 0.3: 447.49 s (solves 410.00 s, rest  37.49 s)  E1-E0 = 1.075983  torch-cuda n=3600: 387.58, torch-cuda n=14400: 21.72, dense n=800: 0.63, dense n=400: 0.07
+Φc = 0.4: 110.28 s (solves  72.88 s, rest  37.40 s)  E1-E0 = 0.918547  torch-cuda n=3600: 47.95, torch-cuda n=14400: 24.20, dense n=800: 0.65, dense n=400: 0.08
+Φc = 0.5:  43.11 s (solves  21.42 s, rest  21.69 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 11.86, lobpcg (complex, torch fallback) n=14400: 8.77, dense n=800: 0.72, dense n=400: 0.08
+== scqubits shear torch kM 120
+scqubits 4.3.1, frame shear, kM 120, solver torch: setup 7.4 s
+Φc = 0.0:  15.07 s (solves   8.35 s, rest   6.72 s)  E1-E0 = 0.000859  lobpcg (complex, torch fallback) n=3600: 5.40, lobpcg (complex, torch fallback) n=7200: 2.19, dense n=800: 0.68, dense n=400: 0.07
+Φc = 0.1: 296.48 s (solves 286.51 s, rest   9.97 s)  E1-E0 = 0.379069  torch-cpu n=7200: 249.44, torch-cpu n=3600: 36.36, dense n=800: 0.64, dense n=400: 0.07
+Φc = 0.2: 173.21 s (solves 163.05 s, rest  10.16 s)  E1-E0 = 0.837706  torch-cpu n=7200: 97.45, torch-cpu n=3600: 64.82, dense n=800: 0.71, dense n=400: 0.08
+Φc = 0.3: 274.41 s (solves 264.33 s, rest  10.08 s)  E1-E0 = 1.075980  torch-cpu n=7200: 227.05, torch-cpu n=3600: 36.51, dense n=800: 0.69, dense n=400: 0.07
+Φc = 0.4: 202.45 s (solves 192.47 s, rest   9.98 s)  E1-E0 = 0.918544  torch-cpu n=7200: 147.90, torch-cpu n=3600: 43.85, dense n=800: 0.65, dense n=400: 0.07
+Φc = 0.5:  18.57 s (solves  10.96 s, rest   7.61 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 6.98, lobpcg (complex, torch fallback) n=7200: 3.32, dense n=800: 0.60, dense n=400: 0.07
+== scqubits shear torch kM 240
+scqubits 4.3.1, frame shear, kM 240, solver torch: setup 22.1 s
+Φc = 0.0:  42.88 s (solves  20.82 s, rest  22.06 s)  E1-E0 = 0.000859  lobpcg (complex, torch fallback) n=3600: 11.96, lobpcg (complex, torch fallback) n=14400: 8.17, dense n=800: 0.62, dense n=400: 0.07
+done at Thu Nov 12 11:04:00 AM PST 2026, load 1.07 1.47 1.83

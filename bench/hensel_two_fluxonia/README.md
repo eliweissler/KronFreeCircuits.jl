@@ -46,13 +46,27 @@ columns, product-state start, shifted Jacobi 1/(D − min D + 1), tol 1e-6) or s
 cold on both sides (no warm start), 8 threads each, 2026-11-12 on ewdesktop, one job at a time on an otherwise idle
 machine. The levels agree to 3×10⁻⁸ GHz at every flux.
 
-| tree | ours, shifted Jacobi | ours, default (per-Ritz) | scqubits, scipy LOBPCG | scqubits, ARPACK |
-|---|---|---|---|---|
-| kM 120 (accurate at 1 MHz) | **0.71 s** (0.67–0.77) | 0.83 s | **19.4 s** (14–118); setup 7.4 s | |
-| kM 240 (accurate at 10 kHz) | **1.22 s** (1.13–1.25) | 1.69 s | **58 s** (42–158); setup 22 s | 85 s (56–89) |
+| solver at M and the root (both codes: dense below) | kM 120 (accurate at 1 MHz) | kM 240 (accurate at 10 kHz) |
+|---|---|---|
+| **ours**, LOBPCG, shifted Jacobi | **0.71 s** (0.67–0.77) | **1.22 s** (1.13–1.25) |
+| ours, LOBPCG, default per-Ritz preconditioner | 0.83 s (0.74–0.87) | 1.69 s (1.53–1.85) |
+| **scqubits**, scipy LOBPCG, our settings | **19.4 s** (14–118) | **58 s** (42–158) |
+| scqubits as shipped (no solver set anywhere) | 25.1 s (14.5–27.1) | 86 s (54–91) |
+| scqubits, ARPACK, pair nodes dense | | 85 s (56–89) |
+| scqubits, torch.lobpcg on the GPU (four real points) | 23.1 s (22.3–23.9) | 181 s (89–447) |
+| scqubits, torch.lobpcg on the CPU (four real points) | 238 s (173–296) | stopped (over an hour) |
+| scqubits, dense at M, ARPACK at the root (Φ_c = 0.3 only) | 21.2 s | |
 
-Median per point (range); scqubits' one-off `Circuit` and `configure` setup is listed separately.
-Same tree, same solver: about **27×** at kM 120 and **48×** at kM 240 (70× against scqubits' default ARPACK).
+Median per point over the six fluxes (range); the torch rows over the four fluxes torch solved (Φ_c = 0.1 to 0.4: at
+0 and 0.5 scqubits' nodes are complex, and torch.lobpcg returns wrong values on complex Hermitian input, so those
+points fell back to scipy's LOBPCG and are left out). scqubits' one-off setup (`Circuit` and `configure`): 7.4 s at
+kM 120, 22 s at kM 240. At Φ_c = 0.3, kM 120, the other scqubits rows took 17.3 s (scipy LOBPCG) and 26.0 s (as
+shipped); our tree 0.70 s. Every row's levels agree with ours to 3×10⁻⁸ GHz.
+Same tree, same solver: about **27×** at kM 120 and **48×** at kM 240; against scqubits as shipped, 35× and 70×.
+No solver choice in scqubits closes the gap: dense at M (it needs 120 of 3600 states) is as fast there as LOBPCG
+(3.6 against 3.8 s at Φ_c = 0.3), torch.lobpcg on the GPU is no faster than scipy's on these node sizes (its M solves
+also stalled at two kM 240 points), and on the CPU it is 10× slower; to meet our absolute 1e-6 GHz residual its
+relative test needs a tolerance near 3×10⁻⁸.
 Where scqubits' time goes, median per point: at kM 240, 22 s in the eigensolves and 36 s in everything else (building
 the subsystem Hamiltonians and the interaction operators in the kept bases as sparse matrices); at kM 120, 9.6 and
 9.7 s. scqubits' non-solve work alone is 14× (kM 120) to 30× (kM 240) our whole time per point.

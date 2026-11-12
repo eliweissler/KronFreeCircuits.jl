@@ -14,7 +14,9 @@ those nodes, with the pair nodes forced dense); torch / torch-cuda = torch.lobpc
 settings, with torch's relative test (residual / (‖AX‖/‖X‖ + |E|), _lobpcg.py) given the tolerance that implies our
 absolute 1e-6 GHz residual; torch.lobpcg returns wrong values on complex Hermitian input, so a complex node (scqubits
 leaves eigenvector phases unfixed; here at Φc = 0 and 0.5) falls back to scipy's LOBPCG, and each call records which ran;
-default = scqubits exactly as shipped: no solver installed anywhere, only the total time per point is measured.
+default = scqubits exactly as shipped: no solver installed anywhere, only the total time per point is measured;
+dense-M = dense eigh at M (it computes 120 to 240 of its 3600 states) and ARPACK at the root: scqubits' likely best setting.
+MATCHED_FLUXES (comma list) runs only those coupler fluxes.
 frame: shear (the default) is the benchmark's frame.
 """
 
@@ -34,7 +36,8 @@ scq.settings.STENCIL = 9
 KM = int(sys.argv[1]) if len(sys.argv) > 1 else 240
 SOLVER = sys.argv[2] if len(sys.argv) > 2 else "lobpcg"
 FRAME = sys.argv[3] if len(sys.argv) > 3 else "shear"
-FLUXES = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+import os
+FLUXES = [float(x) for x in os.environ.get("MATCHED_FLUXES", "0,0.1,0.2,0.3,0.4,0.5").split(",")]
 GUARD, TOL, MAXITER = 4, 1e-6, 3000
 LOG = []
 
@@ -131,6 +134,13 @@ def install(sys_, depth):
             dev = "cuda" if SOLVER == "torch-cuda" else "cpu"
             sys_.esys_method = lambda m, k, **kw: torch_esys(m, k, device=dev)
             sys_.evals_method = lambda m, k, **kw: torch_esys(m, k, device=dev)[0]
+        elif SOLVER == "dense-M":
+            if depth == 1:
+                sys_.evals_method = timed(diag.evals_scipy_dense, "dense M")
+                sys_.esys_method = timed(diag.esys_scipy_dense, "dense M")
+            else:
+                sys_.evals_method = timed(diag.evals_scipy_sparse, "arpack")
+                sys_.esys_method = timed(diag.esys_scipy_sparse, "arpack")
         elif SOLVER == "lobpcg":
             sys_.evals_method, sys_.esys_method = lobpcg_evals, lobpcg_esys
         else:
@@ -164,4 +174,4 @@ for fc in FLUXES:
           + ", ".join(f"{k}: {v:.2f}" for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:4]), flush=True)
 
 json.dump(dict(scqubits=scq.__version__, frame=FRAME, kM=KM, solver=SOLVER, setup_seconds=setup, points=points),
-          open(f"matched-scqubits-{FRAME}-kM{KM}-{SOLVER}.json", "w"), indent=1)
+          open(f"matched-scqubits-{FRAME}-kM{KM}-{SOLVER}" + ("" if len(FLUXES) == 6 else "-" + "_".join(map(str, FLUXES))) + ".json", "w"), indent=1)
