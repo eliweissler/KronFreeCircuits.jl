@@ -13,6 +13,8 @@ which gives every junction phase its own offset charge in the full form 4 (n −
   the black-sheep junction (C_Jb = 7.5 fF, E_Jb = 8.9 GHz), C_0 = 0 (floating); coordinates the junction phases
   θ_i = φ_(i−1) − φ_i (compact) and the cyclic global phase; the loop flux on the black-sheep junction. Writes
   `specs/array_N<N>_z<z>.json` (parameters n_g, varphi_ext).
+- `digitize_fig3.py`: Di Paolo's Fig. 3 read from the vector paths of its source PDF (`plot_vlad_v2.pdf`, mutool),
+  to about 3-4 digits; writes `results/dipaolo_fig3_digitized.json`.
 - `dmrg/dmrg_spec.jl` (its own environment: ITensors, ITensorMPS): DMRG on a spec, every term read from it (E_C, the
   offsets, the cosines); site eigenbases from KronFreeCircuits or the raw charge basis; excited state by penalty.
 
@@ -63,3 +65,26 @@ T = e^{−2πin} from the package's `exp2pin(-1)` port. `plot_fig3.py` draws `re
   499/50 and 137/57 sweeps), reproduce ω01(½) to 1e-6 GHz (0.106436, 0.046892, 0.277379), and put the third level,
   penalized against both, 9.17, 9.04 and 8.90 GHz above the ground state: no state was missed below it, and the dip is
   the spectrum's.
+
+## Against Di Paolo's Fig. 3 (2026-11-13, `digitize_fig3.py`)
+
+The full DMRG matches theirs to the figure's precision from z = 0.08 to 0.15, the flattening at 0.53 GHz included:
+
+| z | 0.05 | 0.06 | 0.07 | 0.08 | 0.09 | 0.10 | 0.11 | 0.12 | 0.13 | 0.14 | 0.15 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Di Paolo Δω01 (GHz) | 1.46e-7 | 8.3e-6 | 1.45e-4 | 1.21e-3 | 6.25e-3 | 2.307e-2 | 6.66e-2 | 0.160 | 0.335 | 0.534 | 0.522 |
+| ours / theirs | 3.5 | 2.6 | 1.16 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+z ≤ 0.07 is at our DMRG's precision (about 5e-7 GHz on energies of order 1e3 GHz); Di Paolo converge to an
+eigenvalue tolerance of 1e-12 with truncation errors of 1e-11 (superfluxo.tex l. 192). Their top panel's ω01 at Φ0/2
+for n_g = 0 and ½ matches ours to the fourth digit at z = 0.10-0.14 (n_g = ½: 0.2932, 0.2592, 0.2023, 0.1065, 0.0469
+theirs, 0.2932, 0.2591, 0.2022, 0.1064, 0.0469 ours), the dip at z = 0.14 included.
+
+**Their single-mode model is renormalized.** Their dashed ω01 lies 25-27 MHz below our single-mode model's. Their
+effective model (superfluxo.tex l. 317-424, `eq: effective fluxonium model`) multiplies each array cosine by
+x_i = Π_n exp(−π v_ni² z_n / 2), the zero-point motion of the N − 1 internal array modes traced out. At C_0 = 0 the
+internal modes are uniform (capacitance C_J, impedance z) and x_i = exp(−π z (1 − 1/N)/2) = 0.858 to 0.807 at
+z = 0.10 to 0.14, so E_L → x E_J/N (x_b = 1, and E_C is ours). With it the single-mode ω01 is 0.3082, 0.2962, 0.2864,
+0.2783, 0.2715 GHz, against their 0.3082, 0.2961, 0.2864, 0.2783, 0.2714; the full −N² x E_L cos(φ/N) instead of
+the quadratic term moves it by 1e-4 GHz. Our single-mode rows above are the unrenormalized model, E_L = E_J/N.
+
