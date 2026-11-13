@@ -52,9 +52,10 @@ Jacobian 692 s (`sq_retime.py`, one run). Its
 Hessian, by central differences of the autodiff Jacobian, was not re-timed: 4154 s on the loaded machine at n_eig = 4
 (≈ 10 Jacobians; at a converged n_eig it would be ≈ 10 × 2063 s).
 
-KronFree, mean ± std of 10 trials after a compiling run, 8 threads. `kronfree.jl` (Lanczos root): materialize
-0.265 ± 0.081 s, Jacobian (first derivatives, 5 parameters) 0.134 ± 0.045 s, Jacobian and full Hessian (first and
-second, 10 mixed pairs) 0.548 ± 0.083 s. By root solver (`root_solvers.jl`; the Hessian column is the order-2 call,
+KronFree, mean ± std of 10 trials after a compiling run, 8 threads. `kronfree.jl` (Lanczos root; also after 3
+untimed warm-up runs): materialize 0.244 ± 0.059 s, Jacobian (first derivatives, 5 parameters) 0.129 ± 0.044 s,
+Jacobian and full Hessian (first and second, 10 mixed pairs) 0.530 ± 0.082 s; the spread is garbage collection
+(materialize 204-213 ms in 7 trials, 325-333 ms in 3; the order-2 call alternates 450 and 605 ms). By root solver (`root_solvers.jl`; the Hessian column is the order-2 call,
 first derivatives included):
 
 | root solver | materialize (s) | Jacobian (s) | Jacobian and full Hessian (s) | max rel. diff vs Dense |
@@ -65,7 +66,7 @@ first derivatives included):
 | LOBPCG (CPU) | 0.280 ± 0.078 | 0.149 ± 0.077 | 0.564 ± 0.147 | 5e-10 |
 | LOBPCG (GPU) | 0.916 ± 0.166 | 0.316 ± 0.112 | 1.181 ± 0.131 | 5e-10 |
 
-The converged Jacobian takes about 0.4 s with KronFree (solve and Jacobian, Lanczos on the CPU) against 2063 s with
-SQcircuit, about 5000 times faster; the exact Hessian with it about 0.8 s. The GPU is slower on this small root
+The converged Jacobian takes about 0.37 s with KronFree (solve and Jacobian, Lanczos on the CPU) against 2063 s with
+SQcircuit, about 5500 times faster; the exact Hessian with it about 0.77 s. The GPU is slower on this small root
 (launch and transfer overhead). The earlier loaded-machine runs (`results/sqcircuit_neig.json`, 427-2131 s for
 n_eig 4-32) were 4-30 % slower.

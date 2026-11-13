@@ -79,14 +79,16 @@ end
 
 root = tree()
 sys, q0 = solve(root, P0)                                          # compile
-# timings: mean and standard deviation of 10 trials after a compiling run
-trials(f, n=10) = (ts = [@elapsed(f()) for _ in 1:n]; (mean(ts), std(ts)))
-t_mat = trials(() -> solve(root, P0))
+# timings: mean and standard deviation of 10 trials after a compiling run and 3 untimed warm-up runs
+const RUNS = Dict{String,Vector{Float64}}()
+trials(f, name, n=10) = (foreach(_ -> f(), 1:3); ts = [@elapsed(f()) for _ in 1:n]; RUNS[name] = ts; (mean(ts), std(ts)))
+t_mat = trials(() -> solve(root, P0), "materialize")
 J, H = jac_hess(sys)                                               # compile
-t_der = trials(() -> jac_hess(sys))
+t_der = trials(() -> jac_hess(sys), "derivatives")
 derivatives(sys; wrt=Tuple(specname.(PARAMS)))                     # compile first order alone
-t_jac = trials(() -> derivatives(sys; wrt=Tuple(specname.(PARAMS))))
+t_jac = trials(() -> derivatives(sys; wrt=Tuple(specname.(PARAMS))), "first_derivatives")
 @printf("range warnings: %d\nmaterialize %.4f ± %.4f s, first derivatives alone %.4f ± %.4f s, derivatives (first and second, 5 params, 10 mixed pairs) %.4f ± %.4f s (10 trials)\n", W[], t_mat..., t_jac..., t_der...)
+for (k, v) in RUNS; println(k, " trials (ms): ", join((@sprintf("%.1f", 1e3x) for x in v), " ")); end
 for (i, n) in enumerate(QNAMES)
     @printf("%-12s = %+.9e   J: %s\n", n, q0[i], join((@sprintf("%+.4e", x) for x in J[i, :]), " "))
 end
@@ -116,6 +118,6 @@ hdev = maximum(maximum(abs, H[i, :, :] .- Hfd[i, :, :]) / maximum(abs, Hfd[i, :,
 mkpath(joinpath(@__DIR__, "results"))
 open(io -> JSON3.pretty(io, JSON3.write(Dict("params" => string.(PARAMS), "quantities" => QNAMES, "values" => q0,
                                              "jacobian" => J, "hessian" => [H[i, :, :] for i in 1:6], "jacobian_fd" => Jfd, "hessian_fd" => [Hfd[i, :, :] for i in 1:6],
-                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "threads" => Threads.nthreads(),
+                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "seconds_runs" => RUNS, "threads" => Threads.nthreads(),
                                              "range_warnings" => W[]))),
      joinpath(@__DIR__, "results", "kronfree.json"), "w")

@@ -1,5 +1,8 @@
 range warnings: 0
-materialize 0.0482 ± 0.0482 s, first derivatives alone 0.0068 ± 0.0038 s, derivatives (first and second, all mixed pairs) 0.0269 ± 0.0059 s (10 trials)
+materialize 0.0297 ± 0.0037 s, first derivatives alone 0.0068 ± 0.0038 s, derivatives (first and second, all mixed pairs) 0.0266 ± 0.0037 s (10 trials)
+derivatives trials (ms): 34.9 22.8 27.1 22.5 27.8 26.6 22.8 26.4 26.0 28.9
+materialize trials (ms): 30.2 40.0 27.1 28.1 28.2 29.9 27.9 28.0 29.1 28.7
+first_derivatives trials (ms): 14.1 5.1 5.1 5.0 5.1 5.0 5.1 5.0 13.9 5.0
 omega01      = +1.068159851e+00   J: +1.0650e-01 -9.6682e-03 +1.5631e+01 -1.1189e-12
 alpha        = -7.137421954e-01   J: +1.7675e-01 -1.3876e-01 -1.5955e+01 +3.1816e-12
 |n_01|^2     = +1.812977980e-02   J: +1.4474e-03 -4.8673e-03 +1.9244e-01 -6.0844e-14

@@ -30,13 +30,13 @@ mode varphi = φ2 − φ1.
   matrix-element rows converge with n_eig, as in the two-mode case, and here all of them do: at n_eig = 64 every row
   is within 3e-7 of SQcircuit's central differences and 2e-6 of KronFree.
 
-## Timing (ewdesktop, idle machine, 2026-11-13; mean ± std of 10 trials after a compiling run)
+## Timing (ewdesktop, idle machine, 2026-11-13; mean ± std of 10 trials after a compiling run; KronFree also after 3 untimed warm-up runs, which removed a slow first trial)
 
 | | time (s) |
 |---|---|
-| KronFree materialize | 0.048 ± 0.048 (one slow trial; the others ≈ 0.03) |
-| KronFree Jacobian (first derivatives, 4 parameters) | 0.0068 ± 0.0038 |
-| KronFree Jacobian and full Hessian (first and second, 6 mixed pairs) | 0.027 ± 0.006 |
+| KronFree materialize | 0.0297 ± 0.0037 |
+| KronFree Jacobian (first derivatives, 4 parameters) | 0.0068 ± 0.0038 (8 trials at 5.0-5.1 ms, 2 at 14 ms) |
+| KronFree Jacobian and full Hessian (first and second, 6 mixed pairs) | 0.0266 ± 0.0037 |
 | SQcircuit one solve (n_eig 4) | 0.0229 ± 0.0010 |
 | SQcircuit central-difference Jacobian (8 solves) | 0.193 ± 0.007 |
 
