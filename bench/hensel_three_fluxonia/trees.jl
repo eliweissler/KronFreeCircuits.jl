@@ -47,7 +47,10 @@ function best_pairing(B)
 end
 
 const QGRID = PhaseGrid(-3π, 3π, 181; order=8)
-const CGRID = PhaseGrid(-2π, 2π, 121; order=8)
+# coupler grids: ±CGRID_HALF·π at the qubit grids' spacing (π/30), so ±3π has 181 points; ±2π (121 points) left the
+# highest kept coupler states at kc 32 with edge support up to 2.7e-6 (> the 1e-6 warning threshold)
+const CGRID_HALF = parse(Int, get(ENV, "HENSEL3_CGRID", "3"))
+const CGRID = PhaseGrid(-CGRID_HALF * π, CGRID_HALF * π, 60CGRID_HALF + 1; order=8)
 nfock(m) = m in (:f1, :f2) ? 30 : 20
 const TOL = parse(Float64, get(ENV, "HENSEL_TOL", "1e-6"))
 lobpcg(; guard=4) = LOBPCG(; tol=TOL, maxiter=3000, guard, on=ON)
