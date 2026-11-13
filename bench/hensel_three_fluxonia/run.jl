@@ -15,6 +15,8 @@
 #   HENSEL3_RUNGS   "kM,kM2;kM,kM2;..." of the four-level tree (default 240,240;480,480;480,960)
 #   HENSEL3_K       "k1j,k1f,k2,kf" (default 40,20,60,4)
 #   HENSEL_TOL      LOBPCG tolerance, GHz (default 1e-6)
+#   HENSEL3_QGRID   qubit grid "a,N": ±aπ with N points (default 5,301)
+#   HENSEL3_CGRID   coupler grid "a,N": ±aπ with N points (default 4,241)
 #   HENSEL3_STAGE   ladder (default: the four-level tree) or flat (the flat reference, trees.jl `flat_root`)
 #   HENSEL3_FLAT    "kq,kc,kf;..." rungs of the flat reference (qubit-pair, coupler-pair kept states, loose Fock levels;
 #                   default 16,32,4;24,48,4)

@@ -73,6 +73,16 @@ Transitions from the ground state, deviation from the paper (MHz), and the warm 
   shift for one more level alone is up to 0.48 MHz (its own table); in the two-fluxonium case the paper's truncated space
   sat 1.04 MHz above the converged answer. The flat reference (below) is to settle this independently.
 
+## Grid range (2026-11-12)
+
+The runs above used the 2026-11-07 study's grids, qubits on ±3π (181 points) and couplers on ±2π (121), on which kept
+leaf states reach the grid edge (warnings in the logs: qubits from state 15, couplers from state 5, edge support up to
+0.34). At the same spacing π/30, a scan on a small tree found the narrowest warning-free ranges: qubits ±5π (301
+points) and couplers ±4π (241); ±4π qubits warn from state 36 and ±3π couplers from state 21. These are now the
+defaults (`HENSEL3_QGRID`, `HENSEL3_CGRID`). The rule frame at (480, 480) on them (`results/gpu-rule-cleangrids/`) has
+no range warning and moves every transition by at most 1.9e-13 GHz from the table above (couplers alone on ±3π:
+2.3e-13, `results/gpu-rule-cgrid3pi/`), so the grid range plays no part in the offset from the paper.
+
 ## Cost
 
 | what | wall time |

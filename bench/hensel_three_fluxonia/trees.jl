@@ -46,15 +46,23 @@ function best_pairing(B)
     return Dict(JNAMES[J] => B.names[5+bestp[J]] for J in 1:5), B.names[5+setdiff(1:6, bestp)[1]]
 end
 
-const QGRID = PhaseGrid(-3π, 3π, 181; order=8)
-const CGRID = PhaseGrid(-2π, 2π, 121; order=8)
+# HENSEL3_QGRID = "a,N": the qubit grid ±aπ with N points (default 5,301: spacing π/30, the narrowest range on which
+# no kept leaf state reaches the edge; ±3π and ±4π warn, 2026-11-12)
+const QGRID = haskey(ENV, "HENSEL3_QGRID") ?
+              (g = parse.(Float64, split(ENV["HENSEL3_QGRID"], ",")); PhaseGrid(-g[1] * π, g[1] * π, Int(g[2]); order=8)) :
+              PhaseGrid(-5π, 5π, 301; order=8)
+# HENSEL3_CGRID = "a,N": the coupler grid ±aπ with N points (default 4,241: spacing π/30, no edge warnings; ±2π and
+# ±3π warn)
+const CGRID = haskey(ENV, "HENSEL3_CGRID") ?
+              (g = parse.(Float64, split(ENV["HENSEL3_CGRID"], ",")); PhaseGrid(-g[1] * π, g[1] * π, Int(g[2]); order=8)) :
+              PhaseGrid(-4π, 4π, 241; order=8)
 nfock(m) = m in (:f1, :f2) ? 30 : 20
 const TOL = parse(Float64, get(ENV, "HENSEL_TOL", "1e-6"))
 lobpcg(; guard=4) = LOBPCG(; tol=TOL, maxiter=3000, guard, on=ON)
 const DENSE_MAX = parse(Int, get(ENV, "HENSEL_DENSE_MAX", "5000"))
 
 """
-Four-level tree (bench_archive, 2026-11-07): single-mode leaves (qubits on a ±3π, 181-point grid, couplers on ±2π, 121,
+Four-level tree (bench_archive, 2026-11-07): single-mode leaves (qubits on QGRID, couplers on CGRID,
 frame modes on Fock bases of 30 (f1, f2) or 20 levels) keeping k1j (junctions) or k1f (frame modes); pairs P(J, partner)
 keeping k2; left wing L = [P(q1), P(c1)] keeping kM, joined with P(q2) into LC keeping kM2; right wing R = [P(q3), P(c2)]
 keeping kM; root over [LC, R, the loose frame mode as a raw Fock axis of kf levels]. Nodes up to DENSE_MAX states are

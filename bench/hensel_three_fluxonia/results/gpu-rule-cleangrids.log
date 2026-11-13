@@ -1,0 +1,26 @@
+case hensel_three_fluxonia: device gpu, threads 4, BLAS 1, commit c3936bd1, smoke false, out bench/hensel_three_fluxonia/results/gpu-rule-cleangrids
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+fourlevel rule kM 480 kM2 480            p = 0.0    E1-E0 = 0.420738 GHz   240.95 s (first 241.0)  root 921600, 20 it, 183 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.26 -1.23 -1.30 -2.80 -2.56 -2.96 -3.52
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 72 has joint-peak amplitude 0.006187594298596247, ratio 0.4417367692309293 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 159 has joint-peak amplitude 0.006553091290126649, ratio 0.46424280878785645 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 164 has joint-peak amplitude 0.0007234358681158469, ratio 0.06795092420438843 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 278 has joint-peak amplitude 0.005844816937616074, ratio 0.42142530033026376 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 311 has joint-peak amplitude 0.004534679174954094, ratio 0.4334521841950898 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 358 has joint-peak amplitude 0.00021654251698500777, ratio 0.03280059994291866 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 385 has joint-peak amplitude 0.0009829755386726318, ratio 0.12904953979853293 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 455 has joint-peak amplitude 0.005808829568849718, ratio 0.40591880158252885 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 473 has joint-peak amplitude 0.00592216744281362, ratio 0.44539783681171136 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 40 has joint-peak amplitude 0.027753287215792247, ratio 0.3889411234177439 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+results: bench/hensel_three_fluxonia/results/gpu-rule-cleangrids/results.json
