@@ -1,0 +1,6 @@
+scqubits 4.3.1; fluxonium; H = 4*EC11*Q1**2 - EJ1*cos(θ1) + EL11*θ1**2/2
+levels (GHz, from E0): [0.         1.06815985 1.42257751 3.91302695 4.03753352 5.07341612]
+omega01 1.068159851 (KronFree 1.068159851, diff -2.6e-13); alpha -0.713742195 (KronFree -0.713742195, diff 2.8e-13)
+build circuit + diagonalize: 0.1732 ± 0.0131 s (10 trials after 3 warm-ups; 175 178 185 187 154 178 159 175 188 154 ms)
+set parameters + diagonalize: 0.1506 ± 0.0187 s (10 trials after 3 warm-ups; 144 160 163 129 128 122 165 154 167 174 ms)
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/scqubits_solve/results/scqubits_fluxonium.json

@@ -70,3 +70,5 @@ The converged Jacobian takes about 0.37 s with KronFree (solve and Jacobian, Lan
 SQcircuit, about 5500 times faster; the exact Hessian with it about 0.77 s. The GPU is slower on this small root
 (launch and transfer overhead). The earlier loaded-machine runs (`results/sqcircuit_neig.json`, 427-2131 s for
 n_eig 4-32) were 4-30 % slower.
+
+Solve times against scqubits in the same coordinates and truncation: `../scqubits_solve/`.

@@ -53,3 +53,5 @@ SQcircuit's solve plus autodiff Jacobian against n_eig, with each row's deviatio
 On one mode a single solve costs SQcircuit about as much as KronFree; the derivatives are where they part: KronFree's
 Jacobian 0.007 s against SQcircuit's converged autodiff Jacobian 1.07 s (n_eig 64) or 0.19 s by central differences,
 and KronFree's exact Hessian 0.027 s.
+
+Solve times against scqubits in the same coordinates and truncation: `../scqubits_solve/`.

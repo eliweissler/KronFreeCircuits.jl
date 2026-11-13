@@ -12,6 +12,7 @@ Cases (one directory each):
 | coupled soft 0-π | Eli's Python pipeline (arXiv:2609.16630), same machine | planned |
 | Hensel three fluxonia | arXiv:2611.05627 Sec. V DMRG (published) | planned |
 | `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | compared and timed (idle machine) |
+| `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | compared and timed (idle machine) |
 | current mirror, full circuit | none (exact diagonalization stops at N = 3) | on hold |
 
 ## Environment
