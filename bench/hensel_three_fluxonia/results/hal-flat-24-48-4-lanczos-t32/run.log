@@ -1,0 +1,8 @@
+case hensel_three_fluxonia: device cpu, threads 32, BLAS 32, commit 33d55761, smoke false, out bench/hensel_three_fluxonia/results/hal-flat-24-48-4-lanczos-t32
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+flat rung kq 24 kc 48 kf 4: dimension 1.274e+08, estimated eigensolver memory 47.9 GB (lanczos, guard 4)
+flat rule kq 24 kc 48 kf 4 lanczos       p = 0.0    E1-E0 = 0.420734 GHz  10073.11 s (first 10073.1)  root 127401984, 41 it, 427 matvec
+   transitions (GHz) 0.42073 0.70377 0.81469 1.03519 1.21743 1.47402 1.76746
+   vs paper (MHz)    -1.27 -1.23 -1.31 -2.81 -2.57 -2.98 -3.54
+results: bench/hensel_three_fluxonia/results/hal-flat-24-48-4-lanczos-t32/results.json
+exit 0

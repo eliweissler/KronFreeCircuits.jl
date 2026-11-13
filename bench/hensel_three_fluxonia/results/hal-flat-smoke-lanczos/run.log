@@ -1,0 +1,15 @@
+case hensel_three_fluxonia: device cpu, threads 16, BLAS 16, commit 4d2f6932 (src dirty), smoke true, out bench/hensel_three_fluxonia/results/hal-flat-smoke-lanczos
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+flat rung kq 6 kc 8 kf 2: dimension 2.765e+04, estimated eigensolver memory 0.0 GB (lanczos, guard 4)
+flat rung kq 8 kc 10 kf 2: dimension 1.024e+05, estimated eigensolver memory 0.0 GB (lanczos, guard 4)
+flat rule kq 6 kc 8 kf 2 lanczos         p = 0.0    E1-E0 = 0.424024 GHz     5.67 s (first 33.0)  root 27648, 20 it, 213 matvec
+   transitions (GHz) 0.42402 0.70667 0.82523 1.06075 1.23209 1.50088 1.82324
+   vs paper (MHz)    +2.02 +1.67 +9.23 +22.75 +12.09 +23.88 +52.24
+flat rule kq 8 kc 10 kf 2 lanczos        p = 0.0    E1-E0 = 0.420901 GHz    18.66 s (first 24.0)  root 102400, 21 it, 226 matvec
+   transitions (GHz) 0.42090 0.70513 0.82111 1.03828 1.22078 1.48182 1.77681
+   vs paper (MHz)    -1.10 +0.13 +5.11 +0.28 +0.78 +4.82 +5.81
+ladder flat, rule frame: no rung reaches 0.1 MHz
+   flat rule kq 6 kc 8 kf 2 lanczos         change to next 4.64e-02        5.67 s/pt
+   flat rule kq 8 kc 10 kf 2 lanczos        change to next -              18.66 s/pt
+results: bench/hensel_three_fluxonia/results/hal-flat-smoke-lanczos/results.json
+exit 0
