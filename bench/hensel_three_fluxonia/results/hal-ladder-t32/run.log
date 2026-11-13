@@ -1,0 +1,17 @@
+case hensel_three_fluxonia: device cpu, threads 32, BLAS 32, commit c240c3f7, smoke false, out bench/hensel_three_fluxonia/results/hal-ladder-t32
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+fourlevel rule kM 240 kM2 240            p = 0.0    E1-E0 = 0.420784 GHz    58.96 s (first 117.6)  root 230400, 19 it, 176 matvec
+   transitions (GHz) 0.4208 0.7039 0.8148 1.0357 1.2182 1.4745 1.7703
+   vs paper (MHz)    -1.22 -1.14 -1.22 -2.33 -1.82 -2.52 -0.65
+fourlevel rule kM 480 kM2 480            p = 0.0    E1-E0 = 0.420738 GHz   225.08 s (first 228.2)  root 921600, 20 it, 183 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.26 -1.23 -1.30 -2.80 -2.56 -2.96 -3.52
+fourlevel rule kM 480 kM2 960            p = 0.0    E1-E0 = 0.420734 GHz   573.70 s (first 610.6)  root 1843200, 20 it, 181 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.27 -1.23 -1.31 -2.81 -2.57 -2.98 -3.53
+ladder four-level, rule frame: accurate rung fourlevel rule kM 480 kM2 480 (change 1.68e-05 GHz < 1e-03), 225.08 s per point (check 573.70 s)
+   fourlevel rule kM 240 kM2 240            change to next 2.87e-03       58.96 s/pt
+   fourlevel rule kM 480 kM2 480            change to next 1.68e-05      225.08 s/pt
+   fourlevel rule kM 480 kM2 960            change to next -             573.70 s/pt
+results: bench/hensel_three_fluxonia/results/hal-ladder-t32/results.json
+exit 0

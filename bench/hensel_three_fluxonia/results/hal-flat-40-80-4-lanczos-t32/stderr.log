@@ -1,0 +1,571 @@
+
+[1691734] signal 15: Terminated
+in expression starting at /home/eweissler/src/KronFreeCircuits.jl/bench/hensel_three_fluxonia/run.jl:51
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /workspace/srcdir/libuv/src/unix/thread.c:822
+ijl_task_get_next at /cache/build/builder-amdci4-8/julialang/julia-ci/src/scheduler.c:599
+wait at ./task.jl:1297
+wait_forever at ./task.jl:1196
+jfptr_wait_forever_70523.1 at /home/eweissler/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+__futex_abstimed_wait_common at /lib64/libc.so.6 (unknown line)
+pthread_cond_wait at /lib64/libc.so.6 (unknown line)
+uv_cond_wait at /workspace/srcdir/libuv/src/unix/thread.c:822
+ijl_task_get_next at /cache/build/builder-amdci4-8/julialang/julia-ci/src/scheduler.c:599
+wait at ./task.jl:1297
+wait_forever at ./task.jl:1196
+jfptr_wait_forever_70523.1 at /home/eweissler/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
+_setindex! at ./genericmemory.jl:263 [inlined]
+setindex! at ./genericmemory.jl:270 [inlined]
+setindex! at /home/eweissler/.julia/packages/StridedViews/yGJin/src/stridedview.jl:177 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+#_mapreduce_threaded!##0 at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:281
+unknown function (ip: 0x7f419cf974d3) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+start_task at /cache/build/builder-amdci4-8/julialang/julia-ci/src/task.c:1285
+unknown function (ip: (nil)) at (unknown file)
++ at ./float.jl:492 [inlined]
+#286 at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+consume at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:115 [inlined]
+CaptureArgs at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:112 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:398 [inlined]
+macro expansion at ./simdloop.jl:77 [inlined]
+macro expansion at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:397 [inlined]
+_mapreduce_kernel! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:535
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:0
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_threaded! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:290
+_mapreduce_block! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:240
+_mapreduce_order! at /home/eweissler/.julia/packages/Strided/OEWpa/src/mapreduce.jl:180
+copyto! at /home/eweissler/.julia/packages/Strided/OEWpa/src/broadcast.jl:55 [inlined]
+materialize! at ./broadcast.jl:910 [inlined]
+materialize! at ./broadcast.jl:907
+unknown function (ip: 0x7f419cf9735a) at (unknown file)
+permutedims! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/array/permutedims.jl:22
+permutedims!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/abstractarray/permutedims.jl:7 [inlined]
+permutedims! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/dense/densetensor.jl:274
+unknown function (ip: 0x7f419cf8b33f) at (unknown file)
+permutedims!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/dense/densetensor.jl:215
+_map!! at /home/eweissler/.julia/packages/ITensors/rRwEF/src/itensor.jl:1978
+unknown function (ip: 0x7f419cf8968c) at (unknown file)
+map! at /home/eweissler/.julia/packages/ITensors/rRwEF/src/itensor.jl:1983
+copyto! at /home/eweissler/.julia/packages/ITensors/rRwEF/src/broadcast.jl:375 [inlined]
+materialize! at ./broadcast.jl:910 [inlined]
+materialize! at ./broadcast.jl:907 [inlined]
+_accumulate_term! at /home/eweissler/src/KronFreeCircuits.jl/src/apply.jl:387
+unknown function (ip: 0x7f419cf84a56) at (unknown file)
+mul! at /home/eweissler/src/KronFreeCircuits.jl/src/apply.jl:427
+* at /home/eweissler/src/KronFreeCircuits.jl/src/apply.jl:432 [inlined]
+#lanczos_solve##0 at /home/eweissler/src/KronFreeCircuits.jl/src/solvers.jl:90 [inlined]
+apply at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/apply.jl:2
+unknown function (ip: 0x7f419cfc3256) at (unknown file)
+lanczosrecurrence at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:327
+#expand!#23 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:258
+expand! at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:250
+unknown function (ip: 0x7f419cfc1dd8) at (unknown file)
+#eigsolve#54 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/lanczos.jl:78
+eigsolve at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/lanczos.jl:1 [inlined]
+#eigsolve#51 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/eigsolve.jl:235 [inlined]
+eigsolve at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/eigsolve.jl:209 [inlined]
+lanczos_solve at /home/eweissler/src/KronFreeCircuits.jl/src/solvers.jl:90
+_solve_stats at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:681
+unknown function (ip: 0x7f419cf7d26d) at (unknown file)
+#_solve_node#260 at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:776
+_solve_node at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:751 [inlined]
+#_materialize#259 at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:728
+_materialize at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:712 [inlined]
+#_materialize_terms#229 at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:205
+_materialize_terms at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:197 [inlined]
+#materialize#225 at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:189
+materialize at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:182
+unknown function (ip: 0x7f41d076651d) at (unknown file)
+#16 at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:141
+with at ./scopedvalues.jl:324
+unknown function (ip: 0x7f41d075aaea) at (unknown file)
+node_timings at /home/eweissler/src/KronFreeCircuits.jl/src/materialize.jl:705
+macro expansion at ./timing.jl:699 [inlined]
+_call at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:85
+#timed_point#4 at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:109
+timed_point at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:108 [inlined]
+#sweep!#14 at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:141
+unknown function (ip: 0x7f41d0755f4a) at (unknown file)
+sweep! at /home/eweissler/src/KronFreeCircuits.jl/bench/common.jl:135
+unknown function (ip: 0x7f41d07536a2) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+do_call at /cache/build/builder-amdci4-8/julialang/julia-ci/src/interpreter.c:123
+eval_value at /cache/build/builder-amdci4-8/julialang/julia-ci/src/interpreter.c:243
+eval_body at /cache/build/builder-amdci4-8/julialang/julia-ci/src/interpreter.c:581
+jl_interpret_toplevel_thunk at /cache/build/builder-amdci4-8/julialang/julia-ci/src/interpreter.c:884
+jl_toplevel_eval_flex at /cache/build/builder-amdci4-8/julialang/julia-ci/src/toplevel.c:742
+jl_eval_toplevel_stmts at /cache/build/builder-amdci4-8/julialang/julia-ci/src/toplevel.c:585
+jl_toplevel_eval_flex at /cache/build/builder-amdci4-8/julialang/julia-ci/src/toplevel.c:683
+ijl_toplevel_eval at /cache/build/builder-amdci4-8/julialang/julia-ci/src/toplevel.c:754
+ijl_toplevel_eval_in at /cache/build/builder-amdci4-8/julialang/julia-ci/src/toplevel.c:799
+eval at ./boot.jl:489
+include_string at ./loading.jl:3033
+_include at ./loading.jl:3093
+include at ./Base.jl:309
+exec_options at ./client.jl:344
+_start at ./client.jl:577
+jfptr__start_58396.1 at /home/eweissler/.julia/juliaup/julia-1.13.1+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci4-8/julialang/julia-ci/src/julia.h:2318 [inlined]
+true_main at /cache/build/builder-amdci4-8/julialang/julia-ci/src/jlapi.c:985
+jl_repl_entrypoint at /cache/build/builder-amdci4-8/julialang/julia-ci/src/jlapi.c:1152
+main at /cache/build/builder-amdci4-8/julialang/julia-ci/cli/loader_exe.c:58
+__libc_start_call_main at /lib64/libc.so.6 (unknown line)
+__libc_start_main at /lib64/libc.so.6 (unknown line)
+unknown function (ip: 0x4010b8) at /workspace/srcdir/glibc-2.17/csu/../sysdeps/x86_64/start.S
+unknown function (ip: (nil)) at (unknown file)
+Allocations: 95222717 (Pool: 95221251; Big: 1466); GC: 49
+Command terminated by signal 15
+	Command being timed: "julia +1.13.1 --project=bench -t 32 --gcthreads=1 bench/hensel_three_fluxonia/run.jl"
+	User time (seconds): 127739.39
+	System time (seconds): 279.50
+	Percent of CPU this job got: 2852%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:14:48
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 246276964
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 40
+	Minor (reclaiming a frame) page faults: 63883192
+	Voluntary context switches: 325797
+	Involuntary context switches: 86017
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 272
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

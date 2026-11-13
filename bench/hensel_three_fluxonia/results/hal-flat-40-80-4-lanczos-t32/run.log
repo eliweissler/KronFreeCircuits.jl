@@ -1,0 +1,4 @@
+case hensel_three_fluxonia: device cpu, threads 32, BLAS 32, commit c240c3f7, smoke false, out bench/hensel_three_fluxonia/results/hal-flat-40-80-4-lanczos-t32
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+flat rung kq 40 kc 80 kf 4: dimension 1.638e+09, estimated eigensolver memory 616.0 GB (lanczos, guard 4)
+exit 143

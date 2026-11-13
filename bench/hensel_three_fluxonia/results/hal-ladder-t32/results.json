@@ -1,0 +1,1482 @@
+{
+    "runs": [
+        {
+            "flat_dim": "45616930588252800000",
+            "points": [
+                {
+                    "bytes_allocated": 4411866736,
+                    "first_seconds": 117.573234759,
+                    "gc_seconds": 1.141494249,
+                    "energies": [
+                        41.21326376255847,
+                        41.63404817637989,
+                        41.91712224748667,
+                        42.02804628327111,
+                        42.248935748540866,
+                        42.4314391879924,
+                        42.68774745185113,
+                        42.98361170884718
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000386999,
+                            "modes": [
+                                "q1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.001038491,
+                            "solve_seconds": 0.025025694,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000125857,
+                            "modes": [
+                                "f3"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 6.4395e-5,
+                            "solve_seconds": 6.9563e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000189274,
+                            "modes": [
+                                "q1",
+                                "f3"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.008063551,
+                            "solve_seconds": 0.211691187,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000309473,
+                            "modes": [
+                                "c1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000728111,
+                            "solve_seconds": 0.011665899,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000109793,
+                            "modes": [
+                                "f1"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.8573e-5,
+                            "solve_seconds": 0.000120619,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000191159,
+                            "modes": [
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.013544738,
+                            "solve_seconds": 0.162432374,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 240,
+                            "operator_seconds": 0.000665321,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 240,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.30475179,
+                            "solve_seconds": 2.924451055,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000383158,
+                            "modes": [
+                                "q2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000614686,
+                            "solve_seconds": 0.018471862,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000112586,
+                            "modes": [
+                                "f4"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.6618e-5,
+                            "solve_seconds": 9.4148e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000175514,
+                            "modes": [
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003111284,
+                            "solve_seconds": 0.154186743,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                240,
+                                60
+                            ],
+                            "n_matvec": 13685,
+                            "dim": 14400,
+                            "kept": 240,
+                            "operator_seconds": 0.010227558,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 240,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 763,
+                            "assemble_seconds": 0.345053693,
+                            "solve_seconds": 41.924131087,
+                            "solver": "LOBPCG"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000479261,
+                            "modes": [
+                                "q3"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000711627,
+                            "solve_seconds": 0.029649003,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000193534,
+                            "modes": [
+                                "f6"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 8.9399e-5,
+                            "solve_seconds": 9.4148e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000208131,
+                            "modes": [
+                                "q3",
+                                "f6"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003274995,
+                            "solve_seconds": 0.162948651,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000344953,
+                            "modes": [
+                                "c2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000564888,
+                            "solve_seconds": 0.010015097,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000130047,
+                            "modes": [
+                                "f2"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.3823e-5,
+                            "solve_seconds": 0.000122155,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000201916,
+                            "modes": [
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.004123305,
+                            "solve_seconds": 0.155313794,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 240,
+                            "operator_seconds": 0.000597993,
+                            "modes": [
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 240,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.130057201,
+                            "solve_seconds": 2.331047826,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                240,
+                                240,
+                                4
+                            ],
+                            "n_matvec": 176,
+                            "dim": 230400,
+                            "kept": 8,
+                            "operator_seconds": 0.190511172,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4",
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2",
+                                "f5"
+                            ],
+                            "compute": 8,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 19,
+                            "assemble_seconds": 0.027281544,
+                            "solve_seconds": 9.782351091,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "deviation_from_paper_MHz": [
+                        -1.2155861785772548,
+                        -1.1415150718024902,
+                        -1.217479287359713,
+                        -2.328014017603186,
+                        -1.8245745660661061,
+                        -2.516310707338709,
+                        -0.6520537112910674
+                    ],
+                    "seconds": 58.955749383,
+                    "root_dim": 230400,
+                    "root_seconds_per_matvec": 0.05558154028977273,
+                    "transitions": [
+                        0.42078441382142273,
+                        0.7038584849281975,
+                        0.8147825207126402,
+                        1.0356719859823968,
+                        1.2181754254339339,
+                        1.4744836892926614,
+                        1.7703479462887088
+                    ],
+                    "point": 0,
+                    "memory": {
+                        "maxrss_bytes": 2346979328,
+                        "system_bytes": 107287752
+                    },
+                    "repeat_seconds": [
+                        58.955749383
+                    ]
+                }
+            ],
+            "label": "fourlevel rule kM 240 kM2 240",
+            "settings": {
+                "cgrid_half_pi": 4,
+                "k1j": 40,
+                "tree": "four-level",
+                "kM2": 240,
+                "qgrid_half_pi": 5,
+                "k1f": 20,
+                "k2": 60,
+                "kM": 240,
+                "frame": "rule",
+                "kf": 4
+            }
+        },
+        {
+            "flat_dim": "45616930588252800000",
+            "points": [
+                {
+                    "bytes_allocated": 13624615880,
+                    "first_seconds": 228.155018194,
+                    "gc_seconds": 2.325562029,
+                    "energies": [
+                        41.213227726742225,
+                        41.6339657102026,
+                        41.91700077429825,
+                        42.02792384903866,
+                        42.24842313114397,
+                        42.43067079942263,
+                        42.68726307790804,
+                        42.98070977956152
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000493508,
+                            "modes": [
+                                "q1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000771692,
+                            "solve_seconds": 0.024142743,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000248012,
+                            "modes": [
+                                "f3"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.7106e-5,
+                            "solve_seconds": 7.089e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000212532,
+                            "modes": [
+                                "q1",
+                                "f3"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.002964195,
+                            "solve_seconds": 0.159761588,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000300883,
+                            "modes": [
+                                "c1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000490296,
+                            "solve_seconds": 0.010133899,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000110631,
+                            "modes": [
+                                "f1"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 9.5126e-5,
+                            "solve_seconds": 0.000118244,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.00018215,
+                            "modes": [
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003448135,
+                            "solve_seconds": 0.146584991,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 480,
+                            "operator_seconds": 0.000484429,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 480,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.186095017,
+                            "solve_seconds": 3.314890642,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000458937,
+                            "modes": [
+                                "q2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000646325,
+                            "solve_seconds": 0.019399164,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000129628,
+                            "modes": [
+                                "f4"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 9.4637e-5,
+                            "solve_seconds": 8.2764e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000216233,
+                            "modes": [
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.00422737,
+                            "solve_seconds": 0.184976486,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                480,
+                                60
+                            ],
+                            "n_matvec": 28814,
+                            "dim": 28800,
+                            "kept": 480,
+                            "operator_seconds": 0.00834418,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 480,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 276,
+                            "assemble_seconds": 3.56525912,
+                            "solve_seconds": 167.868958406,
+                            "solver": "LOBPCG"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000541281,
+                            "modes": [
+                                "q3"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000879599,
+                            "solve_seconds": 0.020645927,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000203522,
+                            "modes": [
+                                "f6"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 8.5697e-5,
+                            "solve_seconds": 9.5475e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000212391,
+                            "modes": [
+                                "q3",
+                                "f6"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.002971249,
+                            "solve_seconds": 0.16301151,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000324978,
+                            "modes": [
+                                "c2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000478842,
+                            "solve_seconds": 0.010065314,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000109304,
+                            "modes": [
+                                "f2"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 9.2262e-5,
+                            "solve_seconds": 0.000103577,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000202474,
+                            "modes": [
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.002930042,
+                            "solve_seconds": 0.147302276,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 480,
+                            "operator_seconds": 0.000449508,
+                            "modes": [
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 480,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.213340033,
+                            "solve_seconds": 3.294204486,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                480,
+                                480,
+                                4
+                            ],
+                            "n_matvec": 183,
+                            "dim": 921600,
+                            "kept": 8,
+                            "operator_seconds": 0.433516482,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4",
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2",
+                                "f5"
+                            ],
+                            "compute": 8,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 20,
+                            "assemble_seconds": 0.39171743,
+                            "solve_seconds": 44.889721039,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "deviation_from_paper_MHz": [
+                        -1.2620165396229344,
+                        -1.226952443973306,
+                        -1.3038777035677684,
+                        -2.804595598252524,
+                        -2.556927319596669,
+                        -2.9646488341830146,
+                        -3.517947180703196
+                    ],
+                    "seconds": 225.081180688,
+                    "root_dim": 921600,
+                    "root_seconds_per_matvec": 0.24529902207103826,
+                    "transitions": [
+                        0.42073798346037705,
+                        0.7037730475560267,
+                        0.8146961222964322,
+                        1.0351954044017475,
+                        1.2174430726804033,
+                        1.474035351165817,
+                        1.7674820528192967
+                    ],
+                    "point": 0,
+                    "memory": {
+                        "maxrss_bytes": 4579885056,
+                        "system_bytes": 310523592
+                    },
+                    "repeat_seconds": [
+                        225.081180688
+                    ]
+                }
+            ],
+            "label": "fourlevel rule kM 480 kM2 480",
+            "settings": {
+                "cgrid_half_pi": 4,
+                "k1j": 40,
+                "tree": "four-level",
+                "kM2": 480,
+                "qgrid_half_pi": 5,
+                "k1f": 20,
+                "k2": 60,
+                "kM": 480,
+                "frame": "rule",
+                "kf": 4
+            }
+        },
+        {
+            "flat_dim": "45616930588252800000",
+            "points": [
+                {
+                    "bytes_allocated": 36204455952,
+                    "first_seconds": 610.601695739,
+                    "gc_seconds": 4.597298241,
+                    "energies": [
+                        41.21321821450099,
+                        41.63395245511922,
+                        41.91698576971714,
+                        42.0279110124806,
+                        42.2484063195431,
+                        42.43064855288327,
+                        42.687236742546034,
+                        42.980684878080396
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000432047,
+                            "modes": [
+                                "q1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000717284,
+                            "solve_seconds": 0.023429298,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000122504,
+                            "modes": [
+                                "f3"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000134378,
+                            "solve_seconds": 7.096e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000196398,
+                            "modes": [
+                                "q1",
+                                "f3"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003170859,
+                            "solve_seconds": 0.189035942,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000305143,
+                            "modes": [
+                                "c1"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000483102,
+                            "solve_seconds": 0.010207233,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000105462,
+                            "modes": [
+                                "f1"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 8.2764e-5,
+                            "solve_seconds": 0.000120199,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000185921,
+                            "modes": [
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003442058,
+                            "solve_seconds": 0.149504198,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 480,
+                            "operator_seconds": 0.000465501,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1"
+                            ],
+                            "compute": 480,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.239747689,
+                            "solve_seconds": 3.170205582,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000477864,
+                            "modes": [
+                                "q2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000735234,
+                            "solve_seconds": 0.018521031,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.00015554,
+                            "modes": [
+                                "f4"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 6.2928e-5,
+                            "solve_seconds": 9.0866e-5,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000248849,
+                            "modes": [
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003651586,
+                            "solve_seconds": 0.162653835,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                480,
+                                60
+                            ],
+                            "n_matvec": 61236,
+                            "dim": 28800,
+                            "kept": 960,
+                            "operator_seconds": 0.009100645,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4"
+                            ],
+                            "compute": 960,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 2076,
+                            "assemble_seconds": 7.067402024,
+                            "solve_seconds": 461.920758999,
+                            "solver": "LOBPCG"
+                        },
+                        {
+                            "dims": [
+                                301
+                            ],
+                            "n_matvec": null,
+                            "dim": 301,
+                            "kept": 40,
+                            "operator_seconds": 0.000624464,
+                            "modes": [
+                                "q3"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.001012021,
+                            "solve_seconds": 0.018723644,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 20,
+                            "kept": 20,
+                            "operator_seconds": 0.000174048,
+                            "modes": [
+                                "f6"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.1868e-5,
+                            "solve_seconds": 0.000104135,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000455165,
+                            "modes": [
+                                "q3",
+                                "f6"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.00524854,
+                            "solve_seconds": 0.19521828,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                241
+                            ],
+                            "n_matvec": null,
+                            "dim": 241,
+                            "kept": 40,
+                            "operator_seconds": 0.000327353,
+                            "modes": [
+                                "c2"
+                            ],
+                            "compute": 40,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.000600857,
+                            "solve_seconds": 0.011751595,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                30
+                            ],
+                            "n_matvec": null,
+                            "dim": 30,
+                            "kept": 20,
+                            "operator_seconds": 0.000150441,
+                            "modes": [
+                                "f2"
+                            ],
+                            "compute": 20,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 7.8573e-5,
+                            "solve_seconds": 0.000116847,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                40,
+                                20
+                            ],
+                            "n_matvec": null,
+                            "dim": 800,
+                            "kept": 60,
+                            "operator_seconds": 0.000201566,
+                            "modes": [
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 60,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.003331288,
+                            "solve_seconds": 0.196356646,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                60,
+                                60
+                            ],
+                            "n_matvec": null,
+                            "dim": 3600,
+                            "kept": 480,
+                            "operator_seconds": 0.000478353,
+                            "modes": [
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2"
+                            ],
+                            "compute": 480,
+                            "warm": null,
+                            "real": true,
+                            "iterations": null,
+                            "assemble_seconds": 0.23354405,
+                            "solve_seconds": 3.2816939,
+                            "solver": "Dense"
+                        },
+                        {
+                            "dims": [
+                                960,
+                                480,
+                                4
+                            ],
+                            "n_matvec": 181,
+                            "dim": 1843200,
+                            "kept": 8,
+                            "operator_seconds": 0.995054043,
+                            "modes": [
+                                "q1",
+                                "f3",
+                                "c1",
+                                "f1",
+                                "q2",
+                                "f4",
+                                "q3",
+                                "f6",
+                                "c2",
+                                "f2",
+                                "f5"
+                            ],
+                            "compute": 8,
+                            "warm": false,
+                            "real": true,
+                            "iterations": 20,
+                            "assemble_seconds": 0.77981171,
+                            "solve_seconds": 94.993797327,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "deviation_from_paper_MHz": [
+                        -1.2657593817693713,
+                        -1.232444783853981,
+                        -1.3072020203895862,
+                        -2.8118949578901375,
+                        -2.5696616177210974,
+                        -2.9814719549567936,
+                        -3.5333364205945017
+                    ],
+                    "seconds": 573.698019946,
+                    "root_dim": 1843200,
+                    "root_seconds_per_matvec": 0.5248276095414365,
+                    "transitions": [
+                        0.4207342406182306,
+                        0.703767555216146,
+                        0.8146927979796104,
+                        1.03518810504211,
+                        1.2174303383822789,
+                        1.4740185280450433,
+                        1.7674666635794054
+                    ],
+                    "point": 0,
+                    "memory": {
+                        "maxrss_bytes": 7690932224,
+                        "system_bytes": 585175752
+                    },
+                    "repeat_seconds": [
+                        573.698019946
+                    ]
+                }
+            ],
+            "label": "fourlevel rule kM 480 kM2 960",
+            "settings": {
+                "cgrid_half_pi": 4,
+                "k1j": 40,
+                "tree": "four-level",
+                "kM2": 960,
+                "qgrid_half_pi": 5,
+                "k1f": 20,
+                "k2": 60,
+                "kM": 480,
+                "frame": "rule",
+                "kf": 4
+            }
+        }
+    ],
+    "environment": {
+        "pairing": {
+            "c1": "f1",
+            "q2": "f4",
+            "c2": "f2",
+            "q3": "f6",
+            "q1": "f3"
+        },
+        "commit": "c240c3f742f1f36a6d6024af9b9289a88b4a5bd2",
+        "date": "2026-11-13T18:18:05.093",
+        "tol": 1.0e-6,
+        "smoke": false,
+        "baseline_maxrss_bytes": 716627968,
+        "cpu": "AMD EPYC 7713 64-Core Processor",
+        "threads": 32,
+        "blas_threads": 32,
+        "frame": "rule",
+        "shear": "{\n \"frame\": \"rule\",\n \"s_star\": [\n  [\n   0.7791334888916157,\n   0.751888199522289,\n   0.7792808229483302,\n   0.17938194080483486,\n   0.18061809995207495\n  ],\n  [\n   0.8213221689395669,\n   0.7971651854037082,\n   0.821452608565812,\n   0.21953957068562108,\n   0.22097805216165214\n  ],\n  [\n   0.8998633846390542,\n   0.8839220452132536,\n   0.8999490069972877,\n   0.34929831122713784,\n   0.3512048712519431\n  ],\n  [\n   0.9040749298567092,\n   0.8886731949830123,\n   0.904157623001074,\n   0.35989507227813883,\n   0.3618273477204492\n  ],\n  [\n   0.9570068019892606,\n   0.9493351166270508,\n   0.9570477677050765,\n   0.566228017956991,\n   0.5682853699030166\n  ],\n  [\n   0.9578342649970523,\n   0.950297971794118,\n   0.9578745038624054,\n   0.5711396052457698,\n   0.5731912397752059\n  ]\n ],\n \"a_star\": [\n  [\n   0.6388297323555366,\n   1.4792963276066613,\n   0.6489335958905652,\n   -1.537825859338122,\n   0.9704834797713097\n  ],\n  [\n   -0.39006646562694053,\n   -0.013852417820491464,\n   0.4051168907549566,\n   0.5627105220133581,\n   0.8079255589570353\n  ],\n  [\n   -0.2520869843718344,\n   -0.06103582253116093,\n   0.22905406788775162,\n   0.3119129304366296,\n   -0.3019964934446677\n  ],\n  [\n   -0.2597456612690241,\n   0.518341709176024,\n   -0.18017567348100444,\n   0.15448041527134682,\n   0.19172315710870227\n  ],\n  [\n   0.05335059156480605,\n   0.05525196080619367,\n   -0.0604102821501068,\n   -0.041878100358172465,\n   -0.021980528479861056\n  ],\n  [\n   -0.037569003668383116,\n   -0.08232955390362265,\n   -0.08609478419101496,\n   -0.014072750510364707,\n   -0.0244781087234755\n  ]\n ],\n \"A\": [\n  [\n   0.49773363817786637,\n   1.1122654523241067,\n   0.5057015066444188,\n   -0.2758581872679353,\n   0.1752868821511719\n  ],\n  [\n   -0.3203702355793098,\n   -0.011042665220161708,\n   0.3327843266847302,\n   0.12353722642309438,\n   0.17853381630993972\n  ],\n  [\n   -0.22684384698029128,\n   -0.05395090908301695,\n   0.2061369809442714,\n   0.10895065985142244,\n   -0.10606263959877281\n  ],\n  [\n   -0.2348295404923775,\n   0.4606363827864126,\n   -0.16290720865720262,\n   0.055596740219638265,\n   0.06937068143323273\n  ],\n  [\n   0.05105687901767026,\n   0.05245262665582111,\n   -0.05781552567819354,\n   -0.023712553761611948,\n   -0.012491212757841631\n  ],\n  [\n   -0.0359848790153773,\n   -0.07823760809332711,\n   -0.08246799869210931,\n   -0.008037505171211904,\n   -0.014030637486561205\n  ]\n ],\n \"rows\": [\n  \"f1\",\n  \"f2\",\n  \"f3\",\n  \"f4\",\n  \"f5\",\n  \"f6\"\n ],\n \"columns\": [\n  \"q1\",\n  \"q2\",\n  \"q3\",\n  \"c1\",\n  \"c2\"\n ]\n}\n",
+        "host": "hal.colorado.edu",
+        "repeats": 1,
+        "julia": "1.13.1",
+        "device": "cpu",
+        "dirty": false,
+        "cores": 256,
+        "spec": "specs/three_fluxonia_rule.json",
+        "case": "hensel_three_fluxonia",
+        "package_version": "0.1.0"
+    },
+    "published": {
+        "transitions_GHz": [
+            0.422,
+            0.705,
+            0.816,
+            1.038,
+            1.22,
+            1.477,
+            1.771
+        ],
+        "source": "arXiv:2611.05627v1 Table tab:q3levels (appC), cap-128 DMRG at 12 Fock levels on the low modes, 4 on the stiff",
+        "wall": {
+            "cap 16": "27 min",
+            "cap 32": "81 min",
+            "cap 64": "4.4 h",
+            "exact HD (estimate, not run)": "66 h, 2.2 TB",
+            "cap 128": "13 h",
+            "study": "19 h"
+        },
+        "memory": {
+            "cap 16": "0.97 GB",
+            "cap 32": "1.3 GB",
+            "cap 64": "2.4 GB",
+            "cap 128": "5.8 GB"
+        },
+        "stiff_shift_GHz": [
+            0.00014,
+            9.999999999999999e-5,
+            0.00047999999999999996,
+            9.6e-5,
+            0.00017999999999999998,
+            0.00043999999999999996,
+            7.8e-5
+        ],
+        "hardware": "one node, Intel Xeon 6517P, 16 physical cores, 230 GB (numbers.tex, appD)"
+    },
+    "summaries": [
+        {
+            "accurate": "fourlevel rule kM 480 kM2 480",
+            "rungs": [
+                {
+                    "complete": true,
+                    "label": "fourlevel rule kM 240 kM2 240",
+                    "change_to_next": 0.0028658934694121285,
+                    "seconds_per_point": 58.955749383
+                },
+                {
+                    "complete": true,
+                    "label": "fourlevel rule kM 480 kM2 480",
+                    "change_to_next": 1.682312077377901e-5,
+                    "seconds_per_point": 225.081180688
+                },
+                {
+                    "complete": true,
+                    "label": "fourlevel rule kM 480 kM2 960",
+                    "change_to_next": null,
+                    "seconds_per_point": 573.698019946
+                }
+            ],
+            "target_GHz": 0.001,
+            "check_seconds_per_point": 573.698019946,
+            "reference": null,
+            "ladder": "four-level, rule frame",
+            "seconds_per_point": 225.081180688,
+            "within_reference": null
+        }
+    ]
+}
