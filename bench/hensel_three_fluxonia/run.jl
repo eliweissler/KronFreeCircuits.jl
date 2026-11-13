@@ -21,7 +21,8 @@
 #   HENSEL3_GUARD   LOBPCG guard columns at the flat root (default 4; 0 saves memory)
 #   HENSEL3_SOLVER  the flat root's solver: lobpcg (default) or lanczos (KrylovKit, single vector; far less memory)
 #   HENSEL3_KRYLOVDIM  the Lanczos Krylov dimension (default 0: 2·8 + 10 = 26)
-#   HENSEL3_CGRID   coupler grid half-width in units of π, at spacing π/30 (default 3: ±3π, 181 points)
+#   HENSEL3_QGRID   qubit grid half-width in units of π, at spacing π/30 (default 5: ±5π, 301 points)
+#   HENSEL3_CGRID   coupler grid half-width in units of π, at spacing π/30 (default 4: ±4π, 241 points)
 #   HENSEL3_DRYRUN  1: print each flat rung's dimension and estimated memory, solve nothing
 
 include(joinpath(@__DIR__, "..", "common.jl"))
@@ -61,7 +62,7 @@ if STAGE == "flat"
     for (kq, kc, kf) in frungs
         root = flat_root(B, PARTNER, LOOSE; kq, kc, kf, compute=NLEVELS, guard, smoke=SMOKE)
         run = sweep!(REC, "flat $FRAME kq $kq kc $kc kf $kf" * (FLAT_SOLVER == "lobpcg" ? "" : " $FLAT_SOLVER"), root, SPEC, [0.0], θ_work;
-                     settings=Dict("tree" => "flat", "frame" => FRAME, "cgrid_half_pi" => CGRID_HALF, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard,
+                     settings=Dict("tree" => "flat", "frame" => FRAME, "qgrid_half_pi" => QGRID_HALF, "cgrid_half_pi" => CGRID_HALF, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard,
                                    "solver" => FLAT_SOLVER, "krylovdim" => KRYLOVDIM, "dim" => string(flat_dim(kq, kc, kf))))
         p = run["points"][end]
         if haskey(p, "transitions")
@@ -85,7 +86,7 @@ ladder = Any[]
 for (kM, kM2) in rungs
     root = fourlevel_root(B, PARTNER, LOOSE; k1j, k1f, k2, kM, kM2, kf, compute=NLEVELS, smoke=SMOKE)
     run = sweep!(REC, "fourlevel $FRAME kM $kM kM2 $kM2", root, SPEC, [0.0], θ_work;
-                 settings=Dict("tree" => "four-level", "frame" => FRAME, "cgrid_half_pi" => CGRID_HALF, "k1j" => k1j, "k1f" => k1f, "k2" => k2,
+                 settings=Dict("tree" => "four-level", "frame" => FRAME, "qgrid_half_pi" => QGRID_HALF, "cgrid_half_pi" => CGRID_HALF, "k1j" => k1j, "k1f" => k1f, "k2" => k2,
                                "kM" => kM, "kM2" => kM2, "kf" => kf))
     p = run["points"][end]
     if haskey(p, "transitions")

@@ -46,10 +46,13 @@ function best_pairing(B)
     return Dict(JNAMES[J] => B.names[5+bestp[J]] for J in 1:5), B.names[5+setdiff(1:6, bestp)[1]]
 end
 
-const QGRID = PhaseGrid(-3π, 3π, 181; order=8)
-# coupler grids: ±CGRID_HALF·π at the qubit grids' spacing (π/30), so ±3π has 181 points; ±2π (121 points) left the
-# highest kept coupler states at kc 32 with edge support up to 2.7e-6 (> the 1e-6 warning threshold)
-const CGRID_HALF = parse(Int, get(ENV, "HENSEL3_CGRID", "3"))
+# phase grids at spacing π/30: qubits ±QGRID_HALF·π, couplers ±CGRID_HALF·π. The defaults (±5π, 301 points; ±4π, 241)
+# leave no kept state with edge support above the 1e-6 warning threshold in either tree; at ±3π/±2π the flat
+# reference's coupler pairs reached 3.9e-5 at kc 64, and the four-level tree's single-mode leaves warned on the
+# qubits from state 36 at ±4π and on the couplers from state 21 at ±3π.
+const QGRID_HALF = parse(Int, get(ENV, "HENSEL3_QGRID", "5"))
+const QGRID = PhaseGrid(-QGRID_HALF * π, QGRID_HALF * π, 60QGRID_HALF + 1; order=8)
+const CGRID_HALF = parse(Int, get(ENV, "HENSEL3_CGRID", "4"))
 const CGRID = PhaseGrid(-CGRID_HALF * π, CGRID_HALF * π, 60CGRID_HALF + 1; order=8)
 nfock(m) = m in (:f1, :f2) ? 30 : 20
 const TOL = parse(Float64, get(ENV, "HENSEL_TOL", "1e-6"))
