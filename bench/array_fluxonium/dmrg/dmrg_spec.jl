@@ -10,7 +10,7 @@
 #
 #   julia --project=bench/array_fluxonium/dmrg -t 1 bench/array_fluxonium/dmrg/dmrg_spec.jl
 #
-# Env: SPEC (path), NG (comma list, default 0,0.5), PHIEXT (default π), BASIS, D, NCUT, MAXDIM, SWEEPS, CUTOFF, ETOL,
+# Env: SPEC (path), NG (comma list, default 0,0.5), PHIEXT (default π), NLEV (2 or 3), BASIS, D, NCUT, MAXDIM, SWEEPS, CUTOFF, ETOL,
 # WEIGHT, NOISESWEEPS, BLASTHREADS, OUTLEVEL.
 
 using ITensors, ITensorMPS, KronFreeCircuits, LinearAlgebra, Printf
@@ -108,10 +108,21 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
     t0 = time()
     E0, ψ0 = dmrg(H, MPS(sites, fill("g", N)), sw; outputlevel=OUTLEVEL[], observer=obs0)
     E1, ψ1 = dmrg(H, [ψ0], random_mps(sites; linkdims=10), sw; weight, outputlevel=OUTLEVEL[], observer=obs1)
+    E2 = NaN; var2 = NaN; ov2 = NaN; nsw2 = 0
+    if parse(Int, get(ENV, "NLEV", "2")) >= 3          # a third level, penalized against both lower states: a missed
+        obs2 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)   # or crossing state near E1 shows up here
+        E2, ψ2 = dmrg(H, [ψ0, ψ1], random_mps(sites; linkdims=10), sw; weight, outputlevel=OUTLEVEL[], observer=obs2)
+        var2 = inner(H, ψ2, H, ψ2) - E2^2
+        ov2 = max(abs(inner(ψ0, ψ2)), abs(inner(ψ1, ψ2)))
+        nsw2 = length(ITensorMPS.energies(obs2))
+        E2 += const_
+    end
     tdmrg = time() - t0
     var0 = inner(H, ψ0, H, ψ0) - E0^2
     var1 = inner(H, ψ1, H, ψ1) - E1^2
     E0 += const_; E1 += const_
+    isnan(E2) || @printf("   third level: E2 = %.9f ω02 = %.9f ω12 = %.9f  var %.1e  max overlap with ψ0, ψ1 %.1e  sweeps %d\n",
+                         E2, E2 - E0, E2 - E1, var2, ov2, nsw2)
     @printf("DMRG %s N=%d%s θ=%s: E0 = %.9f E1 = %.9f ω01 = %.9f  maxlink %d/%d  MPO bond %d  ⟨ψ0|ψ1⟩ = %.1e  var %.1e/%.1e  sweeps %d/%d  (MPO %.1f s, DMRG %.1f s)\n",
             basis, N, basis == "eigen" ? " D=$D" : " ncut=$ncut", θ, E0, E1, E1 - E0, maxlinkdim(ψ0), maxlinkdim(ψ1),
             maxlinkdim(H), abs(inner(ψ0, ψ1)), var0, var1, length(ITensorMPS.energies(obs0)), length(ITensorMPS.energies(obs1)),

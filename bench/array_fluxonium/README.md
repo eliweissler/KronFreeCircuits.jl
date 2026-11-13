@@ -44,9 +44,9 @@ T = e^{−2πin} from the package's `exp2pin(-1)` port. `plot_fig3.py` draws `re
 | 0.10 | 2.31e-2 | 2.56e-2 | 5.72e-2 | 0.3163, 0.2932 | 0.3352 |
 | 0.11 | 6.66e-2 | 7.85e-2 | 0.175 | 0.3257, 0.2591 | 0.3224 |
 | 0.12 | 0.160 | 0.199 | 0.441 | 0.3625, 0.2022 | 0.3119 |
-| 0.13 | 0.335 * | 0.434 | 0.962 | 0.4415, 0.1064 * | 0.3031 |
-| 0.14 | 0.534 * | 0.844 | 1.871 | 0.5806, 0.0469 * | 0.2958 |
-| 0.15 | 0.521 * | 1.495 | 3.324 | 0.7989, 0.2774 * | 0.2895 |
+| 0.13 | 0.335 | 0.434 | 0.962 | 0.4415, 0.1064 | 0.3031 |
+| 0.14 | 0.534 | 0.844 | 1.871 | 0.5806, 0.0469 | 0.2958 |
+| 0.15 | 0.521 | 1.495 | 3.324 | 0.7989, 0.2774 | 0.2895 |
 
 - The single-mode Eq. 6 has the same exponential divergence. With the exact ε0 (the ground-band width E0(½) − E0(0) of
   one junction's transmon, from the spec's site E_C and E_J) it lies on the DMRG at z = 0.08-0.10 (within 3-11 %) and
@@ -56,7 +56,10 @@ T = e^{−2πin} from the package's `exp2pin(-1)` port. `plot_fig3.py` draws `re
 - The single-mode ω01 lies between the n_g = 0 and ½ DMRG curves at large z, as in Di Paolo's top panel, and 15-40 MHz
   above both at small z (the array treated as a linear inductor).
 - z = 0.05: at the DMRG's precision (5e-7 GHz against energies of order 1e3 GHz); z = 0.06-0.07 may be too.
-- (*) z ≥ 0.13 at n_g = ½ is provisional: the excited state at z = 0.13 and the ground state at z = 0.14 stopped at the
-  400-sweep cap, and ω01(½) falls 0.202, 0.106, 0.047 GHz then jumps to 0.277 at z = 0.15, which suggests the penalty
-  method found a different second state there (the risk Di Paolo names, superfluxo.tex l. 93). These need more sweeps
-  and a third targeted level.
+- z ≥ 0.13 at n_g = ½, rerun with a third level (`NLEV=3`, 1500-sweep cap; `results/rerun3-z*.log`, 2026-11-13): the
+  sweep stopped at the 400-sweep cap for the excited state at z = 0.13 and the ground state at z = 0.14, and ω01(½)
+  falls 0.202, 0.106, 0.047 GHz then rises to 0.277 at z = 0.15, which could have been the penalty method finding a
+  different second state (the risk Di Paolo names, superfluxo.tex l. 93). The reruns converge every state (314/52,
+  499/50 and 137/57 sweeps), reproduce ω01(½) to 1e-6 GHz (0.106436, 0.046892, 0.277379), and put the third level,
+  penalized against both, 9.17, 9.04 and 8.90 GHz above the ground state: no state was missed below it, and the dip is
+  the spectrum's.
