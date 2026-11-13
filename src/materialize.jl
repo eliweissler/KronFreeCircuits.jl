@@ -528,6 +528,7 @@ end
 # The array storage a solver's block lives on.
 storage(::Solver) = Array
 storage(s::LOBPCG) = s.on
+storage(s::Lanczos) = s.on
 storage(::ShiftInvert) = Array
 storage(s::ChebyshevFilter) = s.on
 storage(a::Auto) = a.on

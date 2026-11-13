@@ -43,6 +43,7 @@ end
     @test_throws ArgumentError Node([:a => c, 3])
     @test_throws ArgumentError axis_of(Node([:a => c]), :zz)
     @test Node([:a => c]; solver=Lanczos(), compute=3).compute == 3
+    @test Lanczos().on === Array && Lanczos(1e-9, 0, 10, 0).on === Array && Lanczos(on=Matrix).on === Matrix
     using KronFreeCircuits: follow
     @test Node([:a => c]).phase === :positive_sector
     @test Node([:a => c]; keep=follow()).phase === :follow                    # follow rule: :follow phase

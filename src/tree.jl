@@ -4,10 +4,12 @@ abstract type Solver end
 struct Dense <: Solver end
 
 """
-    Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0)
+    Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0, on=Array)
 
 Iterative solver; `krylovdim == 0` lets the solver choose.
 `maxiter` bounds the restarts (grid Hamiltonians are stiff: a 9k-dimensional zero-pi leaf needs several hundred) and `verbosity` is passed to KrylovKit (0 is silent).
+`on`: the array storage the operator and the Krylov vectors live on (`Array`, or a device array type such as
+`CuArray` with `using CUDA, cuTENSOR`); the eigenpairs are returned as host arrays either way.
 A single-vector Krylov space does not resolve repeated eigenvalues (KrylovKit documents this); use `LOBPCG` or `Dense` where exact degeneracies are expected.
 """
 struct Lanczos <: Solver
@@ -15,8 +17,10 @@ struct Lanczos <: Solver
     krylovdim::Int
     maxiter::Int
     verbosity::Int
+    on::Any
 end
-Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0) = Lanczos(tol, krylovdim, maxiter, verbosity)
+Lanczos(tol, krylovdim, maxiter, verbosity) = Lanczos(tol, krylovdim, maxiter, verbosity, Array)
+Lanczos(; tol=1e-10, krylovdim=0, maxiter=1000, verbosity=0, on=Array) = Lanczos(tol, krylovdim, maxiter, verbosity, on)
 
 """
     LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:product, on=Array, callback=nothing)
