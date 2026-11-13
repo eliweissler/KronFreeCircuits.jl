@@ -13,6 +13,7 @@ which gives every junction phase its own offset charge in the full form 4 (n −
   the black-sheep junction (C_Jb = 7.5 fF, E_Jb = 8.9 GHz), C_0 = 0 (floating); coordinates the junction phases
   θ_i = φ_(i−1) − φ_i (compact) and the cyclic global phase; the loop flux on the black-sheep junction. Writes
   `specs/array_N<N>_z<z>.json` (parameters n_g, varphi_ext).
+- `plot_vs_dipaolo.py` (conda env `qutip4`): the thesis figure, our DMRG Δω01 against Di Paolo's DMRG and Eq. 6.
 - `digitize_fig3.py`: Di Paolo's Fig. 3 read from the vector paths of its source PDF (`plot_vlad_v2.pdf`, mutool),
   to about 3-4 digits; writes `results/dipaolo_fig3_digitized.json`.
 - `dmrg/dmrg_spec.jl` (its own environment: ITensors, ITensorMPS): DMRG on a spec, every term read from it (E_C, the
@@ -72,7 +73,8 @@ columns are their dashed single-mode curves read from the figure's vector PDF (`
 
 ## Against Di Paolo's Fig. 3 (2026-11-13, `digitize_fig3.py`)
 
-The full DMRG matches theirs to the figure's precision from z = 0.08 to 0.15, the flattening at 0.53 GHz included:
+The full DMRG matches theirs to the figure's precision from z = 0.08 to 0.15, the flattening at 0.53 GHz included (`plot_vs_dipaolo.py` draws `results/dmrg_vs_dipaolo.{png,pdf}`: our DMRG, theirs, and
+their single-mode Eq. 6 dashed curve, all read from the figure's PDF but ours):
 
 | z | 0.05 | 0.06 | 0.07 | 0.08 | 0.09 | 0.10 | 0.11 | 0.12 | 0.13 | 0.14 | 0.15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
