@@ -18,6 +18,7 @@ KronFreeCircuits' perturbative derivatives and from SQcircuit's PyTorch autodiff
   writes `results/sqcircuit_neig.json`.
 - `root_solvers.jl`: the KronFree tree with each root solver, CPU and GPU.
 - `sq_retime.py`: SQcircuit's one solve and central-difference Jacobian, re-timed (`results/sqcircuit_quiet.json`).
+- `sq_solve_trials.py`: SQcircuit's one solve, 10 trials (`results/sqcircuit_solve_trials.json`).
 - The single-mode companion is `../autodiff_fluxonium/`.
 
 ## Agreement (2026-11-12/13)
@@ -46,7 +47,8 @@ largest entry, for the rows other than |n2_01|²:
 | 32 | 2063 | 1e-5, 3e-5 | 1.7e-4, 8.6e-5, 5.0e-4 |
 
 n_eig = 32 is converged (64 and 128 changed nothing in the earlier loaded run, at 4032 and 8100 s). SQcircuit's one
-solve (n_eig = 4) takes 61 s (best of 2: 61.2, 63.5 s), the central-difference Jacobian 692 s (`sq_retime.py`). Its
+solve (n_eig = 4) takes 62.2 ± 1.9 s (mean ± std of 10 trials, `sq_solve_trials.py`), the central-difference
+Jacobian 692 s (`sq_retime.py`, one run). Its
 Hessian, by central differences of the autodiff Jacobian, was not re-timed: 4154 s on the loaded machine at n_eig = 4
 (≈ 10 Jacobians; at a converged n_eig it would be ≈ 10 × 2063 s).
 
