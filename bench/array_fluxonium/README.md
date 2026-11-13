@@ -34,27 +34,31 @@ which gives every junction phase its own offset charge in the full form 4 (n −
 (ncut 8), bond cap 150, cutoff and energy tolerance 1e-12, penalty weight 100, one CPU core per point (about 3.5 to 6 h).
 `single_mode.jl` (specs from `quantize_single.py`: the black-sheep junction, C_J/N, and E_L = E_J/N; grid ±10π at
 spacing 2π/40, no range warning) gives the single-mode ω01 and Di Paolo's Eq. 6, |Δω01| = 2 N ε0 |⟨T⟩1 − ⟨T⟩0|, with
-T = e^{−2πin} from the package's `exp2pin(-1)` port. `plot_fig3.py` draws `results/fig3_comparison.png`.
+T = e^{−2πin} from the package's `exp2pin(-1)` port. `plot_fig3.py` draws `results/fig3_comparison.png`. The Di Paolo
+columns are their dashed single-mode curves read from the figure's vector PDF (`digitize_fig3.py`; the top panels'
+ω01 at Φ0/2 exist for z = 0.10-0.14 only).
 
-| z | DMRG Δω01 (GHz) | Eq. 6, exact ε0 | Eq. 6, printed ε0 | DMRG ω01(0), ω01(½) | single-mode ω01 |
-|---|---|---|---|---|---|
-| 0.05 | 5.1e-7 | 8.8e-8 | 2.2e-7 | 0.4594, 0.4594 | 0.4976 |
-| 0.06 | 2.19e-5 | 6.0e-6 | 1.43e-5 | 0.4037, 0.4036 | 0.4391 |
-| 0.07 | 1.68e-4 | 1.21e-4 | 2.81e-4 | 0.3665, 0.3664 | 0.4000 |
-| 0.08 | 1.24e-3 | 1.14e-3 | 2.60e-3 | 0.3406, 0.3393 | 0.3722 |
-| 0.09 | 6.28e-3 | 6.45e-3 | 1.45e-2 | 0.3233, 0.3170 | 0.3514 |
-| 0.10 | 2.31e-2 | 2.56e-2 | 5.72e-2 | 0.3163, 0.2932 | 0.3352 |
-| 0.11 | 6.66e-2 | 7.85e-2 | 0.175 | 0.3257, 0.2591 | 0.3224 |
-| 0.12 | 0.160 | 0.199 | 0.441 | 0.3625, 0.2022 | 0.3119 |
-| 0.13 | 0.335 | 0.434 | 0.962 | 0.4415, 0.1064 | 0.3031 |
-| 0.14 | 0.534 | 0.844 | 1.871 | 0.5806, 0.0469 | 0.2958 |
-| 0.15 | 0.521 | 1.495 | 3.324 | 0.7989, 0.2774 | 0.2895 |
+| z | DMRG Δω01 (GHz) | Eq. 6, exact ε0 | Eq. 6, printed ε0 | Di Paolo's Eq. 6 (dashed) | DMRG ω01(0), ω01(½) | single-mode ω01 | Di Paolo's single-mode ω01 (dashed) |
+|---|---|---|---|---|---|---|---|
+| 0.05 | 5.1e-7 | 8.8e-8 | 2.2e-7 | 1.24e-7 | 0.4594, 0.4594 | 0.4976 | — |
+| 0.06 | 2.19e-5 | 6.0e-6 | 1.43e-5 | 8.2e-6 | 0.4037, 0.4036 | 0.4391 | — |
+| 0.07 | 1.68e-4 | 1.21e-4 | 2.81e-4 | 1.61e-4 | 0.3665, 0.3664 | 0.4000 | — |
+| 0.08 | 1.24e-3 | 1.14e-3 | 2.60e-3 | 1.48e-3 | 0.3406, 0.3393 | 0.3722 | — |
+| 0.09 | 6.28e-3 | 6.45e-3 | 1.45e-2 | 8.29e-3 | 0.3233, 0.3170 | 0.3514 | — |
+| 0.10 | 2.31e-2 | 2.56e-2 | 5.72e-2 | 3.26e-2 | 0.3163, 0.2932 | 0.3352 | 0.3082 |
+| 0.11 | 6.66e-2 | 7.85e-2 | 0.175 | 9.95e-2 | 0.3257, 0.2591 | 0.3224 | 0.2961 |
+| 0.12 | 0.160 | 0.199 | 0.441 | 0.251 | 0.3625, 0.2022 | 0.3119 | 0.2864 |
+| 0.13 | 0.335 | 0.434 | 0.962 | 0.547 | 0.4415, 0.1064 | 0.3031 | 0.2783 |
+| 0.14 | 0.534 | 0.844 | 1.871 | 1.064 | 0.5806, 0.0469 | 0.2958 | 0.2714 |
+| 0.15 | 0.521 | 1.495 | 3.324 | 1.889 | 0.7989, 0.2774 | 0.2895 | — |
 
 - The single-mode Eq. 6 has the same exponential divergence. With the exact ε0 (the ground-band width E0(½) − E0(0) of
   one junction's transmon, from the spec's site E_C and E_J) it lies on the DMRG at z = 0.08-0.10 (within 3-11 %) and
   above it beyond, the large-z breakdown Di Paolo reports. With the printed Eq. 5, which is √π times Koch et al.'s
-  asymptotic band width and about 2.3 times the exact one, it runs about 2 times high; Di Paolo's own dashed line looks
-  consistent with the correct band width (read off their figure), so Eq. 5 as printed is probably a typo.
+  asymptotic band width and about 2.3 times the exact one, it runs about 2 times high. Di Paolo's own dashed line is
+  1.26-1.41 times our exact-ε0 Eq. 6 and 0.57 times the printed-ε0 one, so they did not plot Eq. 5 as printed (probably
+  a typo); the remaining factor is not explained here. Their single-mode model is renormalized (below), which changes
+  ⟨T⟩ but not ε0; our Eq. 6 uses the unrenormalized model.
 - The single-mode ω01 lies between the n_g = 0 and ½ DMRG curves at large z, as in Di Paolo's top panel, and 15-40 MHz
   above both at small z (the array treated as a linear inductor).
 - z = 0.05: at the DMRG's precision (5e-7 GHz against energies of order 1e3 GHz); z = 0.06-0.07 may be too.
