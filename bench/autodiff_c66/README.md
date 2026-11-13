@@ -17,6 +17,8 @@ KronFreeCircuits' perturbative derivatives and from SQcircuit's PyTorch autodiff
 - `sq_neig_sweep.py`: SQcircuit's autodiff Jacobian against the number of computed eigenpairs n_eig;
   writes `results/sqcircuit_neig.json`.
 - `root_solvers.jl`: the KronFree tree with each root solver, CPU and GPU.
+- `sq_retime.py`: SQcircuit's one solve and central-difference Jacobian, re-timed (`results/sqcircuit_quiet.json`).
+- The single-mode companion is `../autodiff_fluxonium/`.
 
 ## Agreement (2026-11-12/13)
 
@@ -30,32 +32,38 @@ KronFreeCircuits' perturbative derivatives and from SQcircuit's PyTorch autodiff
 - |n2_01|² stays 9 % off in SQcircuit's autodiff at every n_eig (its E_J, E_L13 and E_C23 columns), against both
   KronFree and SQcircuit's own central differences; not pursued.
 
-## Timing (ewdesktop, CPU, other jobs running)
+## Timing (ewdesktop, idle machine, 2026-11-13)
 
-SQcircuit, the autodiff Jacobian (one solve plus the gradients of the six quantities) against n_eig; deviation from
-KronFree's Jacobian as the largest entry error over each row's largest entry, for the rows other than |n2_01|²:
+SQcircuit, the autodiff Jacobian (one solve plus the gradients of the six quantities) against n_eig, one run each
+(`sq_neig_sweep.py`, `OUT_TAG=_quiet`); deviation from KronFree's Jacobian as the largest entry error over each row's
+largest entry, for the rows other than |n2_01|²:
 
 | n_eig | solve + autodiff Jacobian (s) | ω01, α | \|n1\|², \|φ1\|², \|φ2\|² |
 |---|---|---|---|
-| 4 | 427 | 1e-5, 3e-5 | 0.10, 0.38, 0.41 |
-| 8 | 609 | 1e-5, 3e-5 | 1.3e-2, 3.4e-3, 2.3e-2 |
-| 16 | 1115 | 1e-5, 3e-5 | 3.1e-4, 8.5e-5, 1.1e-3 |
-| 32 | 2131 | 1e-5, 3e-5 | 1.7e-4, 8.6e-5, 5.0e-4 |
+| 4 | 296 | 1e-5, 3e-5 | 0.10, 0.38, 0.41 |
+| 8 | 549 | 1e-5, 3e-5 | 1.3e-2, 3.4e-3, 2.3e-2 |
+| 16 | 1054 | 1e-5, 3e-5 | 3.1e-4, 8.5e-5, 1.1e-3 |
+| 32 | 2063 | 1e-5, 3e-5 | 1.7e-4, 8.6e-5, 5.0e-4 |
 
-n_eig = 32 is converged (64 and 128 change nothing, at 4032 and 8100 s). For comparison, in SQcircuit one solve
-(n_eig = 4) takes 89 s, the central-difference Jacobian 1139 s, and the Hessian by central differences of the
-autodiff Jacobian 4154 s (≈ 10 Jacobians; at a converged n_eig it would be ≈ 10 × 2131 s).
+n_eig = 32 is converged (64 and 128 changed nothing in the earlier loaded run, at 4032 and 8100 s). SQcircuit's one
+solve (n_eig = 4) takes 61 s (best of 2: 61.2, 63.5 s), the central-difference Jacobian 692 s (`sq_retime.py`). Its
+Hessian, by central differences of the autodiff Jacobian, was not re-timed: 4154 s on the loaded machine at n_eig = 4
+(≈ 10 Jacobians; at a converged n_eig it would be ≈ 10 × 2063 s).
 
-KronFree (`root_solvers.jl`, best of 3, 8 threads):
+KronFree, mean ± std of 10 trials after a compiling run, 8 threads. `kronfree.jl` (Lanczos root): materialize
+0.265 ± 0.081 s, Jacobian (first derivatives, 5 parameters) 0.134 ± 0.045 s, Jacobian and full Hessian (first and
+second, 10 mixed pairs) 0.548 ± 0.083 s. By root solver (`root_solvers.jl`; the Hessian column is the order-2 call,
+first derivatives included):
 
-| root solver | materialize (s) | Jacobian (s) | full Hessian (s) | max rel. diff vs Dense |
+| root solver | materialize (s) | Jacobian (s) | Jacobian and full Hessian (s) | max rel. diff vs Dense |
 |---|---|---|---|---|
-| Dense (CPU) | 2.0-2.7 | 0.2-0.4 | 0.7-1.4 | — |
-| Lanczos (CPU) | 0.30-0.47 | 0.17-0.25 | 0.6-1.2 | 1e-11 |
-| Lanczos (GPU) | 0.9-1.8 | 0.31-0.36 | 1.3-1.4 | 1e-11 |
-| LOBPCG (CPU) | 0.32 | 0.14 | 0.64 | 5e-10 |
-| LOBPCG (GPU) | 0.98 | 0.27-0.29 | 1.3-1.5 | 5e-10 |
+| Dense (CPU) | 1.563 ± 0.057 | 0.103 ± 0.003 | 0.456 ± 0.075 | — |
+| Lanczos (CPU) | 0.235 ± 0.066 | 0.132 ± 0.051 | 0.531 ± 0.093 | 1e-11 |
+| Lanczos (GPU) | 0.671 ± 0.073 | 0.301 ± 0.057 | 1.184 ± 0.099 | 9e-12 |
+| LOBPCG (CPU) | 0.280 ± 0.078 | 0.149 ± 0.077 | 0.564 ± 0.147 | 5e-10 |
+| LOBPCG (GPU) | 0.916 ± 0.166 | 0.316 ± 0.112 | 1.181 ± 0.131 | 5e-10 |
 
-The converged Jacobian takes about 0.5 s with KronFree (solve and Jacobian, Lanczos on the CPU) against 2131 s with
-SQcircuit, about 4000 times faster; the full Hessian, exact, adds under 1.2 s. The GPU is slower on this small root
-(launch and transfer overhead). The ranges are repeated runs on a loaded machine; to re-time on a quiet one.
+The converged Jacobian takes about 0.4 s with KronFree (solve and Jacobian, Lanczos on the CPU) against 2063 s with
+SQcircuit, about 5000 times faster; the exact Hessian with it about 0.8 s. The GPU is slower on this small root
+(launch and transfer overhead). The earlier loaded-machine runs (`results/sqcircuit_neig.json`, 427-2131 s for
+n_eig 4-32) were 4-30 % slower.

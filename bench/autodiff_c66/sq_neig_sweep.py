@@ -37,7 +37,8 @@ def rowdev(A, B):
     return np.max(np.abs(A - B) / np.max(np.abs(B), axis=1, keepdims=True), axis=1)
 
 
-out = HERE / "results" / ("sqcircuit_neig_smoke.json" if SMOKE else "sqcircuit_neig.json")
+import os
+out = HERE / "results" / ("sqcircuit_neig_smoke.json" if SMOKE else f"sqcircuit_neig{os.environ.get('OUT_TAG', '')}.json")
 points = []
 print(f"truncation {sq_grad.TR}; n_eig {NS}", flush=True)
 for n in NS:

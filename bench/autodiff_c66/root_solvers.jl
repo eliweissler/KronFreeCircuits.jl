@@ -5,7 +5,7 @@
 #
 #   julia --project=bench -t 8 --gcthreads=1 bench/autodiff_c66/root_solvers.jl
 
-using KronFreeCircuits, LinearAlgebra, Printf, CUDA, cuTENSOR
+using KronFreeCircuits, LinearAlgebra, Printf, Statistics, CUDA, cuTENSOR
 
 const SPEC = load_spec(joinpath(@__DIR__, "specs", "c66_sqcircuit.json"))
 const θ = (E_J=28.83436338, E_L13=0.10343485, E_C23=1.36334654, E_L23=0.05167763, varphi_ext=0.0)
@@ -35,16 +35,17 @@ end
 # ports carry an arbitrary phase per state: compare magnitudes
 absdiff(a, b) = maximum(abs.(abs.(a) .- abs.(b))) / maximum(abs, b)   # relative to the largest entry
 
-best(f, n=3) = (f(); minimum(@elapsed(f()) for _ in 1:n))
+# mean and standard deviation of n trials after a compiling run
+trials(f, n=10) = (f(); ts = [@elapsed(f()) for _ in 1:n]; (mean(ts), std(ts)))
 function run(name, s, ref)
     root = tree(s)
     sys = materialize(root, SPEC, θ)
-    t_mat = best(() -> materialize(root, SPEC, θ))
-    t_jac = best(() -> derivatives(sys; wrt=WRT))
-    t_hes = best(() -> derivatives(sys; wrt=WRT, order=2, mixed=MIXED))
+    t_mat = trials(() -> materialize(root, SPEC, θ))
+    t_jac = trials(() -> derivatives(sys; wrt=WRT))
+    t_hes = trials(() -> derivatives(sys; wrt=WRT, order=2, mixed=MIXED))
     r = results(sys, derivatives(sys; wrt=WRT), derivatives(sys; wrt=WRT, order=2, mixed=MIXED))
-    @printf("%-22s materialize %6.3f s   Jacobian %6.3f s   Hessian %6.3f s   max rel. diff vs Dense %.1e\n",
-            name, t_mat, t_jac, t_hes, ref === nothing ? 0.0 : absdiff(r, ref))
+    @printf("%-15s materialize %6.3f ± %.3f s   Jacobian %6.3f ± %.3f s   Hessian %6.3f ± %.3f s   max rel. diff vs Dense %.1e\n",
+            name, t_mat..., t_jac..., t_hes..., ref === nothing ? 0.0 : absdiff(r, ref))
     return r
 end
 

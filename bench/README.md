@@ -11,7 +11,7 @@ Cases (one directory each):
 | KITE | scqubits `Circuit`, same machine | planned |
 | coupled soft 0-π | Eli's Python pipeline (arXiv:2609.16630), same machine | planned |
 | Hensel three fluxonia | arXiv:2611.05627 Sec. V DMRG (published) | planned |
-| `autodiff_c66/` (J, L, CL) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | compared; to re-time on a quiet machine |
+| `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | compared and timed (idle machine) |
 | current mirror, full circuit | none (exact diagonalization stops at N = 3) | on hold |
 
 ## Environment
