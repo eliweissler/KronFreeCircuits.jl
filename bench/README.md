@@ -11,7 +11,7 @@ Cases (one directory each):
 | KITE | scqubits `Circuit`, same machine | planned |
 | coupled soft 0-π | Eli's Python pipeline (arXiv:2609.16630), same machine | planned |
 | Hensel three fluxonia | arXiv:2611.05627 Sec. V DMRG (published) | planned |
-| J, L, CL autodiff | SQcircuit 1.0 (PyTorch), conda env `sqcircuit-bench` on ewdesktop | planned |
+| `autodiff_c66/` (J, L, CL) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | compared; to re-time on a quiet machine |
 | current mirror, full circuit | none (exact diagonalization stops at N = 3) | on hold |
 
 ## Environment
@@ -72,3 +72,11 @@ App. D), far below the class, so the Hensel cases also report the stricter 10 kH
 4. Where the case has an independent converged or exact reference, the accurate setting must also lie within the
    target of it; this catches a ladder that has stalled rather than converged.
 5. Every solver tolerance is at least ten times below the target (LOBPCG `tol` is in GHz on eigenvalue residuals).
+
+## Follow-ups
+
+- **`Auto` for small roots** (2026-11-12): study whether `Auto()` should pick `Lanczos` on the CPU for small roots that keep only a
+  few states. On the c66 autodiff tree (a 2 400-state root keeping 6 levels) Lanczos took 0.32 s against 2.21 s for
+  `Dense`'s full decomposition and 0.64 s for `LOBPCG`, with the Jacobian and Hessian also fastest (0.21 / 0.73 s against
+  0.25 / 1.23 and 0.27 / 1.27 s) and every result the same to 1e-13. The study should map the crossover in root size and
+  in the number of kept states against `Dense` and `LOBPCG`, with and without `retain`, and with the derivative pass.

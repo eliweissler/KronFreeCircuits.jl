@@ -1,0 +1,12 @@
+/home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_c66/sq_grad.py:87: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /home/task_179331722330938/croot/libtorch_1793317299911/work/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  return float(loop.internal_value) / 0.1          # internal per Phi_0
+truncation [150, 80]; n_eig [8, 16, 32, 64, 128]
+/home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/functions.py:407: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /home/task_179333869444034/croot/libtorch_1793338741864/work/aten/src/ATen/Context.cpp:916.)
+  coo_tensor = torch.sparse_coo_tensor(
+n_eig    8:   609.0 s   vs sq_fd: 8.7e-05 1.9e-04 1.3e-02 1.5e-01 3.4e-03 2.3e-02   vs kronfree: 1.1e-05 3.3e-05 1.3e-02 1.5e-01 3.4e-03 2.3e-02
+n_eig   16:  1114.5 s   vs sq_fd: 8.7e-05 1.9e-04 2.8e-04 9.1e-02 7.9e-05 1.0e-03   vs kronfree: 1.1e-05 3.3e-05 3.1e-04 9.1e-02 8.5e-05 1.1e-03
+n_eig   32:  2130.5 s   vs sq_fd: 8.7e-05 1.9e-04 2.1e-04 9.1e-02 3.2e-05 5.5e-04   vs kronfree: 1.1e-05 3.3e-05 1.7e-04 9.1e-02 8.6e-05 5.0e-04
+n_eig   64:  4032.1 s   vs sq_fd: 8.7e-05 1.9e-04 2.1e-04 9.0e-02 3.2e-05 5.8e-04   vs kronfree: 1.1e-05 3.3e-05 1.6e-04 9.0e-02 8.6e-05 5.3e-04
+n_eig  128:  8100.5 s   vs sq_fd: 8.7e-05 1.9e-04 2.1e-04 9.0e-02 3.2e-05 5.8e-04   vs kronfree: 1.1e-05 3.3e-05 1.6e-04 9.0e-02 8.6e-05 5.3e-04
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_c66/results/sqcircuit_neig.json

@@ -1,0 +1,16 @@
+/home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_c66/sq_grad.py:85: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /home/task_179331722330938/croot/libtorch_1793317299911/work/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  return float(loop.internal_value) / 0.1          # internal per Phi_0
+/home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/functions.py:407: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /home/task_179333869444034/croot/libtorch_1793338741864/work/aten/src/ATen/Context.cpp:916.)
+  coo_tensor = torch.sparse_coo_tensor(
+SQcircuit /home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/__init__.py; truncation [150, 80]; loop flux internal per Phi_0 = 6.283185307179586
+one solve 89.4 s; solve + autodiff Jacobian 426.6 s
+omega01      = +6.781003749e-01   J: +2.7828e-05 +1.7407e+00 +5.7679e-02 +8.0493e+00 +8.8015e-15
+alpha        = -5.504507285e-01   J: -1.4384e-02 -2.6448e+00 -6.4102e-02 -7.4527e+00 -1.4440e-13
+|n1_01|^2    = +3.879238494e-02   J: -2.0746e-03 -4.3786e-02 -3.4980e-02 +4.6812e-01 -7.5183e-15
+|n2_01|^2    = +2.825342809e-04   J: +1.4708e-05 +8.7239e-04 +9.9269e-05 -4.4412e-04 +3.4408e-16
+|phi1_01|^2  = +6.019051494e-01   J: -6.0765e-02 -4.8904e+00 -6.9768e-02 -4.7438e+00 -2.5510e-13
+|phi2_01|^2  = +2.826555216e+00   J: -2.4153e-01 -2.6006e+01 +1.4606e+00 -5.2447e+01 -1.0423e-13
+autodiff Jacobian vs central differences of values: max deviation 1.1e+00 of each row's largest entry (1139 s)
+Hessian by central differences of the autodiff Jacobian: 4154 s
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_c66/results/sqcircuit.json
