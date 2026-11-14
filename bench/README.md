@@ -7,13 +7,14 @@ Cases (one directory each):
 
 | case | reference times | status |
 |---|---|---|
-| `hensel_two_fluxonia/` | Hensel et al., arXiv:2611.05627 Sec. IV (published), and our own flat solve of their space | first case, harness testbed |
+| `hensel_two_fluxonia/` | Hensel et al., arXiv:2611.05627 Sec. IV (published); our flat solve of their space; scqubits on the same tree | done: 1 MHz in 0.84 s per point (8 CPU cores) |
+| `hensel_three_fluxonia/` | arXiv:2611.05627 Sec. V DMRG (published) | done: 1 MHz in 153 s per point (A4500); flat reference pending (needs the 2 TB server) |
+| `coupled_zero_pi/` | Eli's Python pipeline (arXiv:2609.16630, scqubits), same machine | done: 1000 levels in 80.9 s CPU, 42.9 s GPU, against 3303 s |
+| `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | done (idle machine, mean ± std of 10) |
+| `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | done (idle machine) |
+| `array_fluxonium/` | Di Paolo et al., arXiv:1912.01018 Fig. 3 (digitized) | compared (DMRG and Eq. 6); not yet a timed case |
 | KITE | scqubits `Circuit`, same machine | planned |
-| coupled soft 0-π | Eli's Python pipeline (arXiv:2609.16630), same machine | planned |
-| Hensel three fluxonia | arXiv:2611.05627 Sec. V DMRG (published) | planned |
-| `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | compared and timed (idle machine) |
-| `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | compared and timed (idle machine) |
-| current mirror, full circuit | none (exact diagonalization stops at N = 3) | on hold |
+| `current_mirror/`, full circuit | none (exact diagonalization stops at N = 3) | shelved (next: a momentum-sector root) |
 
 ## Environment
 
