@@ -6,9 +6,17 @@
 # Parameters: E_C, E_J, E_L (GHz) and the loop flux f (units of Φ0; the spec's varphi_ext = 2π f).
 # Quantities: ω01 = E1 − E0, α = E2 − 2E1 + E0, and |⟨0|O|1⟩|² for O = n, φ of the mode varphi = φ2 − φ1.
 # One node: varphi on PhaseGrid(GRID), Dense, 6 levels.
+# KF_DEVICE=gpu: the node by LOBPCG(tol=1e-10, on=CuArray) instead (writes results/kronfree_gpu.json); KF_OUT overrides
+# the output file.
 
 using KronFreeCircuits, LinearAlgebra, Printf, Logging, Statistics
 import JSON3
+const DEVICE = get(ENV, "KF_DEVICE", "cpu")
+DEVICE in ("cpu", "gpu") || error("KF_DEVICE: cpu or gpu")
+if DEVICE == "gpu"
+    using CUDA, cuTENSOR
+end
+const OUT = get(ENV, "KF_OUT", joinpath(@__DIR__, "results", DEVICE == "gpu" ? "kronfree_gpu.json" : "kronfree.json"))
 
 const W = Ref(0)
 struct CountEdge <: AbstractLogger; inner::AbstractLogger; end
@@ -31,7 +39,8 @@ const NQ, NP = length(QNAMES), length(PARAMS)
 
 function tree()
     w, n = GRID
-    return Node([:varphi => PhaseGrid(-w * π, w * π, n; order=8)]; solver=Dense(), compute=6, keep=lowest(6), ports=PORTS, retain=:always)
+    return Node([:varphi => PhaseGrid(-w * π, w * π, n; order=8)]; compute=6, keep=lowest(6), ports=PORTS, retain=:always,
+                solver=DEVICE == "gpu" ? LOBPCG(tol=1e-10, on=CuArray) : Dense())
 end
 
 quantities(E, P) = [E[2] - E[1], E[3] - 2E[2] + E[1], (abs2(M[1, 2]) for M in P)...]
@@ -112,6 +121,6 @@ hdev = maximum(maximum(abs, H[i, :, :] .- Hfd[i, :, :]) / maximum(abs, Hfd[i, :,
 mkpath(joinpath(@__DIR__, "results"))
 open(io -> JSON3.pretty(io, JSON3.write(Dict("params" => string.(PARAMS), "quantities" => QNAMES, "values" => q0,
                                              "jacobian" => J, "hessian" => [H[i, :, :] for i in 1:NQ], "jacobian_fd" => Jfd, "hessian_fd" => [Hfd[i, :, :] for i in 1:NQ],
-                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "seconds_runs" => RUNS, "threads" => Threads.nthreads(),
+                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "seconds_runs" => RUNS, "threads" => Threads.nthreads(), "device" => DEVICE,
                                              "range_warnings" => W[], "grid" => collect(GRID)))),
-     joinpath(@__DIR__, "results", "kronfree.json"), "w")
+     OUT, "w")

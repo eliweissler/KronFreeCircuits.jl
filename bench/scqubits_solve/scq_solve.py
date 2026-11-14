@@ -10,8 +10,16 @@ setting new parameter values on a built Circuit (every coefficient is a symbolic
 is the step that matches KronFree's materialize.
 
     ~/anaconda3/envs/scqubits-bench/bin/python bench/scqubits_solve/scq_solve.py fluxonium|c66 [trials]
+
+SCQ_SOLVER: default (scqubits' own: dense for these sizes; writes results/scqubits_<case>.json), or torch / torch-cuda:
+torch.lobpcg on the CPU / GPU for the fluxonium's one system and the c66 root (its leaves keep scqubits' default, as in
+../hensel_two_fluxonia/scqubits_ref/matched.py; the complex root through its real embedding, see torch_evals), 6 levels
+(12 for the embedding) + 4 guard columns, diagonal (Jacobi) preconditioner,
+lowest-diagonal unit-vector start, torch's relative tolerance set so that every residual is below SCQ_TOL (GHz,
+default 1e-10); writes results/scqubits_<case>_<solver>.json. SCQ_OUT overrides the output file.
 """
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,6 +29,10 @@ import scqubits as scq
 import sympy as sm
 
 HERE = Path(__file__).resolve().parent
+SOLVER = os.environ.get("SCQ_SOLVER", "default")
+assert SOLVER in ("default", "torch", "torch-cuda"), SOLVER
+TOL = float(os.environ.get("SCQ_TOL", "1e-10"))
+GUARD, MAXITER = 4, 3000
 CASES = {
     "fluxonium": dict(spec=HERE.parent / "autodiff_fluxonium" / "specs" / "fluxonium_sqcircuit.json",
                       p0={"E_C": 2.63, "E_J": 2.85, "E_L": 0.051, "varphi_ext": 0.0},
@@ -77,6 +89,40 @@ def hamiltonian(spec, p):
     return H, vals
 
 
+def torch_evals(matrix, evals_count, **kw):
+    """The lowest evals_count eigenvalues by torch.lobpcg. torch.lobpcg is wrong on complex Hermitian input (the c66 root:
+    scqubits leaves its leaves' eigenvector phases unfixed), so a complex A = B + iC is solved through its real symmetric
+    embedding [[B, -C], [C, B]], whose spectrum is A's with every level twice: 2 evals_count levels, every other kept."""
+    import scipy.sparse as sp
+    import torch
+    dev = "cuda" if SOLVER == "torch-cuda" else "cpu"
+    A = sp.csr_matrix(matrix.full() if hasattr(matrix, "full") else matrix)
+    twice = np.iscomplexobj(A.data) and np.abs(A.data.imag).max() > 0
+    A = sp.bmat([[A.real, -A.imag], [A.imag, A.real]]) if twice else A.real
+    A = sp.coo_matrix(A)
+    n, k = A.shape[0], (2 if twice else 1) * evals_count
+    b = k + GUARD
+    D = A.diagonal()
+    At = torch.sparse_coo_tensor(np.vstack([A.row, A.col]), A.data, (n, n), dtype=torch.float64, device=dev).coalesce()
+    inv = 1.0 / (D - (D.min() - 1.0))
+    iK = torch.sparse_coo_tensor(np.vstack([np.arange(n)] * 2), inv, (n, n), dtype=torch.float64, device=dev).coalesce()
+    X = torch.zeros(n, b, dtype=torch.float64, device=dev)
+    sel = np.argsort(D, kind="stable")[:b]
+    X[sel, np.arange(b)] = 1.0
+    A_norm = float(torch.linalg.vector_norm(torch.sparse.mm(At, X))) / float(torch.linalg.vector_norm(X))
+    rel_tol = TOL / (A_norm + float(np.abs(D[sel]).max()))
+    w, _ = torch.lobpcg(At, k=b, X=X, iK=iK, largest=False, tol=rel_tol, niter=MAXITER)
+    if dev == "cuda":
+        torch.cuda.synchronize()
+    w = np.sort(w.cpu().numpy())[:k]
+    return w[::2] if twice else w
+
+
+def install(cr):
+    if SOLVER != "default":
+        cr.evals_method = torch_evals
+
+
 def build(case, spec, p):
     H, vals = hamiltonian(spec, p)
     cr = scq.Circuit(symbolic_hamiltonian=H, symbolic_param_dict=vals, ext_basis="discretized", truncated_dim=6)
@@ -88,6 +134,7 @@ def build(case, spec, p):
         cr.cutoff_ext_2 = 1153
         cr.set_discretized_phi_range((2,), (-24 * np.pi, 24 * np.pi))
         cr.configure(system_hierarchy=[[1], [2]], subsystem_trunc_dims=[40, 60], ext_basis=["harmonic", "discretized"])
+    install(cr)
     return cr
 
 
@@ -119,7 +166,7 @@ if __name__ == "__main__":
     c = CASES[case]
     spec = json.loads(c["spec"].read_text())
     H, _ = hamiltonian(spec, c["p0"])
-    print(f"scqubits {scq.__version__}; {case}; H =", H, flush=True)
+    print(f"scqubits {scq.__version__}; {case}; solver {SOLVER}; H =", H, flush=True)
     E, t_build = trials(lambda: build_and_solve(case, spec, c["p0"]), n)
     cr = build(case, spec, c["p0"])
     # alternate between two parameter points so that no cached diagonalization can be reused
@@ -137,9 +184,10 @@ if __name__ == "__main__":
     for name, ts in (("build circuit + diagonalize", t_build), ("set parameters + diagonalize", t_upd)):
         print(f"{name}: {np.mean(ts):.4f} ± {np.std(ts, ddof=1):.4f} s ({n} trials after 3 warm-ups; "
               + " ".join(f"{1e3 * x:.0f}" for x in ts) + " ms)")
-    out = HERE / "results" / f"scqubits_{case}.json"
+    out = Path(os.environ.get("SCQ_OUT", HERE / "results" / (f"scqubits_{case}.json" if SOLVER == "default" else
+                                                               f"scqubits_{case}_{SOLVER}.json")))
     out.parent.mkdir(exist_ok=True)
-    out.write_text(json.dumps({"scqubits": scq.__version__, "case": case, "levels": list(map(float, E)),
+    out.write_text(json.dumps({"scqubits": scq.__version__, "case": case, "solver": SOLVER, "tol": TOL, "levels": list(map(float, E)),
                                "omega01": float(w01), "alpha": float(a), "kronfree_omega01": kf[0], "kronfree_alpha": kf[1],
                                "build_and_solve_seconds_mean_std": [float(np.mean(t_build)), float(np.std(t_build, ddof=1))],
                                "build_and_solve_seconds_runs": t_build,

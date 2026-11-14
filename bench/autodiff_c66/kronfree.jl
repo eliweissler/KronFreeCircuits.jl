@@ -6,10 +6,18 @@
 # Parameters: E_J, E_L13, E_C23, E_L23 (GHz) and the loop flux f (units of Φ0; the spec's varphi_ext = 2π f).
 # Quantities: ω01 = E1 − E0, α = E2 − 2E1 + E0, and |⟨0|O|1⟩|² for O = n1, n2, φ1, φ2, the charge and phase of the
 # appendix's modes varphi1 = (φ3 − φ2)/2 (harmonic) and varphi2 = φ2 − φ1 (the junction's).
+# KF_DEVICE=gpu: the grid leaf by LOBPCG(tol=1e-10) (the 60-state Fock leaf stays Dense) and the root by Lanczos on the GPU (results/kronfree_gpu.json);
+# KF_OUT overrides the output file.
 # Tree (no range warning, converged to ~1e-9 GHz in ω01 and α, 2026-11-12): a leaf per mode, varphi1 on 60 Fock levels
 # keeping 40, varphi2 on PhaseGrid(±24π, 1153 points, order 8) keeping 60, the root by Lanczos.
 
 using KronFreeCircuits, LinearAlgebra, Printf, Logging, Statistics
+const DEVICE = get(ENV, "KF_DEVICE", "cpu")
+DEVICE in ("cpu", "gpu") || error("KF_DEVICE: cpu or gpu")
+if DEVICE == "gpu"
+    using CUDA, cuTENSOR
+end
+const GPU = DEVICE == "gpu"
 import JSON3
 
 const W = Ref(0)
@@ -35,9 +43,10 @@ function tree()
     σ1 = (8EC[1, 1] / EL[1, 1])^(1 / 4) / sqrt(2)
     l1 = Node([:varphi1 => FockBasis(60; phi_zpf=σ1)]; solver=Dense(), compute=40, keep=lowest(40), retain=:always)
     l2 = Node([:varphi2 => PhaseGrid(-24π, 24π, 1153; order=8)]; solver=Dense(), compute=60, keep=lowest(60), retain=:always)
+    GPU && (l2 = Node([:varphi2 => PhaseGrid(-24π, 24π, 1153; order=8)]; solver=LOBPCG(tol=1e-10, on=CuArray), compute=60, keep=lowest(60), retain=:always))
     # the root by Lanczos for its 6 levels (2026-11-12, CPU: solve 0.32 s, Jacobian 0.21 s, full Hessian 0.73 s, against
     # 2.21 / 0.25 / 1.23 s with a Dense root's full decomposition; values and derivatives the same to 1e-13)
-    return Node([l1, l2]; solver=Lanczos(tol=1e-11), compute=6, keep=lowest(6), ports=PORTS, retain=:always)
+    return Node([l1, l2]; solver=Lanczos(tol=1e-11, on=GPU ? CuArray : Array), compute=6, keep=lowest(6), ports=PORTS, retain=:always)
 end
 
 quantities(E, P) = [E[2] - E[1], E[3] - 2E[2] + E[1], (abs2(M[1, 2]) for M in P)...]
@@ -118,6 +127,6 @@ hdev = maximum(maximum(abs, H[i, :, :] .- Hfd[i, :, :]) / maximum(abs, Hfd[i, :,
 mkpath(joinpath(@__DIR__, "results"))
 open(io -> JSON3.pretty(io, JSON3.write(Dict("params" => string.(PARAMS), "quantities" => QNAMES, "values" => q0,
                                              "jacobian" => J, "hessian" => [H[i, :, :] for i in 1:6], "jacobian_fd" => Jfd, "hessian_fd" => [Hfd[i, :, :] for i in 1:6],
-                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "seconds_runs" => RUNS, "threads" => Threads.nthreads(),
+                                             "seconds_materialize_mean_std" => collect(t_mat), "seconds_derivatives_mean_std" => collect(t_der), "seconds_first_derivatives_mean_std" => collect(t_jac), "timing_trials" => 10, "seconds_runs" => RUNS, "threads" => Threads.nthreads(), "device" => DEVICE,
                                              "range_warnings" => W[]))),
-     joinpath(@__DIR__, "results", "kronfree.json"), "w")
+     get(ENV, "KF_OUT", joinpath(@__DIR__, "results", GPU ? "kronfree_gpu.json" : "kronfree.json")), "w")
