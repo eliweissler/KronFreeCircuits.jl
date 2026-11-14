@@ -1,0 +1,56 @@
+Saved coupling strength.
+Circuit and parameters set. Beginning calculations...
+Finished calculating subsystem 1 eigensystem.
+evecs1.shape = (54300, 300)
+eval1.shape = (300,)
+Finished calculating subsystem 2 eigensystem.
+evecs2.shape = (54300, 300)
+eval2.shape = (300,)
+dtype after reorder: complex128
+Finished calculating full system eigensystem.
+run 1: build 1082.2 s, qubit 1 0.6 s, qubit 2 + coupled solve 2350.0 s, total 3432.8 s; 1000 levels, worst |Δ(E_k - E_0)| vs the pipeline's reference 4.2e-12 GHz
+Saved coupling strength.
+Circuit and parameters set. Beginning calculations...
+Finished calculating subsystem 1 eigensystem.
+evecs1.shape = (54300, 300)
+eval1.shape = (300,)
+Finished calculating subsystem 2 eigensystem.
+evecs2.shape = (54300, 300)
+eval2.shape = (300,)
+dtype after reorder: complex128
+Finished calculating full system eigensystem.
+run 2: build 1082.2 s, qubit 1 0.7 s, qubit 2 + coupled solve 2112.4 s, total 3195.3 s; 1000 levels, worst |Δ(E_k - E_0)| vs the pipeline's reference 4.4e-12 GHz
+Saved coupling strength.
+Circuit and parameters set. Beginning calculations...
+Finished calculating subsystem 1 eigensystem.
+evecs1.shape = (54300, 300)
+eval1.shape = (300,)
+Finished calculating subsystem 2 eigensystem.
+evecs2.shape = (54300, 300)
+eval2.shape = (300,)
+dtype after reorder: complex128
+Finished calculating full system eigensystem.
+run 3: build 1078.3 s, qubit 1 0.7 s, qubit 2 + coupled solve 2347.0 s, total 3426.0 s; 1000 levels, worst |Δ(E_k - E_0)| vs the pipeline's reference 3.9e-12 GHz
+Saved coupling strength.
+Circuit and parameters set. Beginning calculations...
+Finished calculating subsystem 1 eigensystem.
+evecs1.shape = (54300, 300)
+eval1.shape = (300,)
+Finished calculating subsystem 2 eigensystem.
+evecs2.shape = (54300, 300)
+eval2.shape = (300,)
+dtype after reorder: complex128
+Finished calculating full system eigensystem.
+run 4: build 1079.0 s, qubit 1 0.7 s, qubit 2 + coupled solve 2134.7 s, total 3214.4 s; 1000 levels, worst |Δ(E_k - E_0)| vs the pipeline's reference 4.5e-12 GHz
+Saved coupling strength.
+Circuit and parameters set. Beginning calculations...
+Finished calculating subsystem 1 eigensystem.
+evecs1.shape = (54300, 300)
+eval1.shape = (300,)
+Finished calculating subsystem 2 eigensystem.
+evecs2.shape = (54300, 300)
+eval2.shape = (300,)
+dtype after reorder: complex128
+Finished calculating full system eigensystem.
+run 5: build 1081.5 s, qubit 1 0.7 s, qubit 2 + coupled solve 2163.3 s, total 3245.4 s; 1000 levels, worst |Δ(E_k - E_0)| vs the pipeline's reference 4.1e-12 GHz
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/coupled_zero_pi/results/pipeline_timing_1000.json

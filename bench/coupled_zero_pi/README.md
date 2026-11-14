@@ -25,7 +25,33 @@ scqubits 4.3.1); this case first reproduces its output, then times both.
 | kept sets (connected to 0 and 2 through n_θ > 10⁻⁵) | identical: 154 and 155 indices |
 | lowest 1000 coupled levels | ≤ 1.3×10⁻¹¹ GHz (median 6×10⁻¹²) |
 
-## Timing so far (ewdesktop, 8 CPU cores; not yet the benchmark)
+- `pipeline_timing.py` (conda env `qutip4`): times the pipeline's own stages (`_build_circuit`, `_compute_subsystem1`,
+  `_compute_sweep_point`) at `truc_total` = 1000, without its file writes, and checks the levels against the reference.
+  (`ham_data.py`'s command line returns after a flux-derivative sweep, before the coupled solve, so it is not used.)
 
-658 s per point: each 54 300-state qubit leaf 23 s (`ShiftInvert`, 300 levels), the 23 870-state root 552 s (`Dense`, a
-full decomposition for 1000 levels). The root solver is the thing to tune before timing against the pipeline.
+## Timing (2026-11-14, ewdesktop: i7-11700K, 8 cores / 16 threads, RTX A4500, otherwise idle; 1000 coupled levels)
+
+Five timed repeats each. KronFree: `BENCH_REPEATS=5 ZP_ROOT=lobpcg julia --project=bench -t 8 --gcthreads=1 run.jl`
+(LOBPCG root, tol 1e-8, 8 guard columns), after one untimed first call; `BENCH_DEVICE=gpu` for the GPU, `ZP_LEAF=device`
+for GPU leaves (`Auto(on=CuArray)`, i.e. `ChebyshevFilter`). Pipeline: `pipeline_timing.py 1000 5`, numpy on all 16 hardware threads.
+
+| | mean ± std (s) | first call (s) | leaves (s each) | root assemble + solve (s) | peak memory (GB) |
+|---|---|---|---|---|---|
+| Python pipeline (scqubits 4.3.1) | **3303 ± 117** | – | – | – | – |
+| KronFree, CPU (8 threads) | **80.9 ± 0.6** | 123.6 | `ShiftInvert` 21.8, 22.3 | 5.2 + 31.0 | 8.6 |
+| KronFree, GPU root, CPU leaves | **102.2 ± 0.9** | 158.3 | `ShiftInvert` 34.1, 33.8 | 10.8 + 21.7 | 7.5 host, 6.6 GPU |
+| KronFree, all on the GPU | **42.9 ± 0.4** | 92.2 | `ChebyshevFilter` 4.8, 4.6 | 10.4 + 22.2 | 6.7 host, 6.9 GPU |
+
+- Pipeline stages: build (scqubits `Circuit`, hierarchy, g) 1081 ± 2 s; qubit 1 0.7 s (its eigensystem apparently
+  already computed during the build, so only the total is quoted); qubit 2 + coupled `eigsh` 2222 ± 117 s (runs
+  alternate between about 2350 and 2130 s).
+- KronFree is 41× (CPU) and 77× (GPU) faster. Every run reproduces the reference: KronFree ≤ 1.3×10⁻¹¹ GHz over 1000
+  levels with identical kept sets, the pipeline ≤ 4.5×10⁻¹² GHz. No grid-edge warnings; each KronFree run prints 10
+  "heavy hybridization" phase-fixing warnings at the root (sign conventions only).
+- In GPU mode the harness sets BLAS to 1 thread, so CPU leaves slow from 22 s to 34 s; that costs more than the GPU
+  saves at the root. The root's LOBPCG: 23 870 states, 134–140 iterations, about 6 930 matvecs.
+- The earlier `Dense` root (2026-11-12, loaded machine) took 552 s of a 658 s point.
+- CUDA test tier (`test/cuda`) the same night: 595/595.
+
+Results: `results/overnight_{cpu,gpu_root,gpu_all}/`, `results/pipeline_timing_1000.json` (5 runs),
+`results/pipeline_timing_1000_single.json` (one run on 2026-11-13), logs `results/overnight_*.log`.

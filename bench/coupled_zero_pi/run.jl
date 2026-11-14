@@ -16,7 +16,8 @@
 #   ZP_NTOTAL      levels of the coupled system (default 1000)
 #   ZP_TRUNC       levels computed per qubit (default 300)
 #   ZP_THRESH      the connected rule's threshold on |n_theta| (default 1e-5)
-#   ZP_ROOT        root solver: dense (default) or lobpcg
+#   ZP_ROOT        root solver: dense (default), lobpcg or shiftinvert
+#   ZP_LEAF        leaf solver: auto (default; ShiftInvert on the CPU) or device (Auto(on=ON): ChebyshevFilter on a GPU)
 
 include(joinpath(@__DIR__, "..", "common.jl"))
 import JSON3
@@ -31,10 +32,12 @@ const REC = Recorder("coupled_zero_pi", @__DIR__)
 REC.record["environment"]["settings"] = Dict("ntotal" => NTOTAL, "trunc" => TRUNC, "thresh" => THRESH, "ncut" => NCUT, "nphi" => NPHI)
 
 qubit(q; selection=true) = Node([Symbol("theta$q") => ChargeBasis(NCUT), Symbol("phi$q") => PhaseGrid(-6π, 6π, NPHI; order=6)];
-                                compute=TRUNC,
+                                compute=TRUNC, solver=get(ENV, "ZP_LEAF", "auto") == "device" ? Auto(on=ON) : Auto(),
                                 keep=selection ? connected([1, 3], (Symbol("theta$q"), nport()), THRESH) : lowest(TRUNC))
 function root_node(; selection=true)
-    rootsolver = get(ENV, "ZP_ROOT", "dense") == "dense" ? Dense() : LOBPCG(; tol=1e-8, maxiter=3000, guard=8, on=ON)
+    r = get(ENV, "ZP_ROOT", "dense")
+    rootsolver = r == "dense" ? Dense() : r == "shiftinvert" ? ShiftInvert(; tol=1e-8) :
+                 r == "lobpcg" ? LOBPCG(; tol=1e-8, maxiter=3000, guard=8, on=ON) : error("ZP_ROOT: dense, lobpcg or shiftinvert")
     return Node([qubit(1; selection), qubit(2; selection), :zeta1 => FockBasis(1; phi_zpf=1.0), :zeta2 => FockBasis(1; phi_zpf=1.0)];
                 solver=rootsolver, compute=NTOTAL, keep=lowest(NTOTAL))
 end
