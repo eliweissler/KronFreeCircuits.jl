@@ -1,0 +1,100 @@
+┌ Warning: fix_phases!: column 2 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 4 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 6 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 8 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 10 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 12 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 14 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 16 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 18 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 20 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 22 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 23 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 26 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 28 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 29 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 30 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 31 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 32 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 34 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 35 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 36 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 38 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 39 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 40 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 15 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 17 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 2 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 4 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 6 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 8 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 10 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 12 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 14 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 16 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 18 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+┌ Warning: fix_phases!: column 20 has no weight on the phase mask; using its largest entry
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/phase.jl:20
+current mirror N = 4, tree rungs, root lobpcg, NC = 10, K = 40; threads 8
+materialize: first 1612.60 s (compile included), second NaN s
+levels from E0 (GHz): 0.000000 1.478166 1.498381 2.616394 2.883995 2.933687 2.941456 3.533769 3.576207 3.819999 3.844262 4.230495
+E0 = -18.478146238 GHz
+wrote results/lobpcg_rung_rungs_N4_nc10_K40.json
+	Command being timed: "julia --project=bench -t 8 --gcthreads=1 bench/current_mirror/cm.jl"
+	User time (seconds): 10679.66
+	System time (seconds): 5.11
+	Percent of CPU this job got: 660%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 26:57.06
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 8354520
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 2641490
+	Voluntary context switches: 33481
+	Involuntary context switches: 147125
+	Swaps: 0
+	File system inputs: 40
+	File system outputs: 664
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

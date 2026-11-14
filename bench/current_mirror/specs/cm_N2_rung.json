@@ -1,0 +1,129 @@
+{
+ "format": "kronfree-spec",
+ "version": 1,
+ "units": "GHz",
+ "parameters": [
+  "n_g1",
+  "n_g2",
+  "n_g3",
+  "E_J",
+  "varphi_ext"
+ ],
+ "modes": [
+  {
+   "name": "a1",
+   "type": "c"
+  },
+  {
+   "name": "a2",
+   "type": "c"
+  },
+  {
+   "name": "b1",
+   "type": "c"
+  }
+ ],
+ "E_C": [
+  [
+   "80 // 401",
+   "0",
+   "-40 // 401"
+  ],
+  [
+   "0",
+   "80 // 401",
+   "40 // 401"
+  ],
+  [
+   "-40 // 401",
+   "40 // 401",
+   "80560 // 3609"
+  ]
+ ],
+ "E_L": [
+  [
+   "0",
+   "0",
+   "0"
+  ],
+  [
+   "0",
+   "0",
+   "0"
+  ],
+  [
+   "0",
+   "0",
+   "0"
+  ]
+ ],
+ "flux_linear": [
+  "0",
+  "0",
+  "0"
+ ],
+ "n_g": [
+  "n_g1",
+  "n_g2",
+  "n_g3"
+ ],
+ "cosines": [
+  {
+   "energy": "E_J",
+   "omega": [
+    1,
+    -1,
+    1
+   ],
+   "offset": "(2 // 9) * varphi_ext"
+  },
+  {
+   "energy": "E_J",
+   "omega": [
+    0,
+    1,
+    -1
+   ],
+   "offset": "-3992 // 18045 * varphi_ext"
+  },
+  {
+   "energy": "E_J",
+   "omega": [
+    0,
+    0,
+    1
+   ],
+   "offset": "(2 // 9) * varphi_ext"
+  },
+  {
+   "energy": "E_J",
+   "omega": [
+    -1,
+    0,
+    -1
+   ],
+   "offset": "(14017 // 18045) * varphi_ext"
+  }
+ ],
+ "constant": "0",
+ "_generator": {
+  "package": "circuit-quantization",
+  "version": "0.2.0",
+  "branches": [
+   "CB1",
+   "CB2",
+   "Cg1",
+   "Cg2",
+   "Cg3",
+   "Cg4",
+   "J1",
+   "J2",
+   "J3",
+   "J4"
+  ],
+  "script": "bench/current_mirror/quantize.py 2"
+ },
+ "_comment": [
+  "Current mirror N = 2 (2N = 4 nodes), arXiv:1908.04615 Eq. Ham; E_CB = 0.2, E_CJ = 100, E_Cg = 200 GHz; rung coordinates a_j, b_j (periodic), the free global phase dropped (zero total charge)."
+ ]
+}

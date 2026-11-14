@@ -1,0 +1,59 @@
+ERROR: LoadError: NaN not allowed to be written in JSON spec
+Stacktrace:
+  [1] error(s::String)
+    @ Base ./error.jl:44
+  [2] #write#93
+    @ ~/.julia/packages/JSON3/YNcKF/src/write.jl:283 [inlined]
+  [3] write(::StructTypes.NumberType, buf::Vector{UInt8}, pos::Int64, len::Int64, x::Float64)
+    @ JSON3 ~/.julia/packages/JSON3/YNcKF/src/write.jl:282
+  [4] write(::StructTypes.DictType, buf::Vector{UInt8}, pos::Int64, len::Int64, x::Dict{String, Any}; kw::@Kwargs{})
+    @ JSON3 ~/.julia/packages/JSON3/YNcKF/src/write.jl:157
+  [5] write
+    @ ~/.julia/packages/JSON3/YNcKF/src/write.jl:147 [inlined]
+  [6] write(obj::Dict{String, Any}; kw::@Kwargs{})
+    @ JSON3 ~/.julia/packages/JSON3/YNcKF/src/write.jl:40
+  [7] write(obj::Dict{String, Any})
+    @ JSON3 ~/.julia/packages/JSON3/YNcKF/src/write.jl:37
+  [8] (::var"#12#13")(io::IOStream)
+    @ Main ~/src/KronFreeCircuits-bench/bench/current_mirror/cm.jl:60
+  [9] open(::var"#12#13", ::String, ::Vararg{String}; kwargs::@Kwargs{})
+    @ Base ./io.jl:429
+ [10] open(::Function, ::String, ::String)
+    @ Base ./io.jl:426
+ [11] top-level scope
+    @ ~/src/KronFreeCircuits-bench/bench/current_mirror/cm.jl:60
+ [12] include(mod::Module, _path::String)
+    @ Base ./Base.jl:309
+ [13] exec_options(opts::Base.JLOptions)
+    @ Base ./client.jl:344
+ [14] _start()
+    @ Base ./client.jl:577
+in expression starting at /home/eweissler/src/KronFreeCircuits-bench/bench/current_mirror/cm.jl:60
+current mirror N = 3, tree flat, root lobpcg, NC = 10; threads 8
+materialize: first 957.68 s (compile included), second NaN s
+levels from E0 (GHz): 0.000000 2.276451 2.276451 4.412031 4.480204 4.480204 4.494658 6.448449 6.448449 6.535654 6.535654 6.587552
+E0 = -18.231767498 GHz
+Command exited with non-zero status 1
+	Command being timed: "julia --project=bench -t 8 --gcthreads=1 bench/current_mirror/cm.jl"
+	User time (seconds): 4457.57
+	System time (seconds): 7.70
+	Percent of CPU this job got: 463%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 16:02.66
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 21391116
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 6692333
+	Voluntary context switches: 27443
+	Involuntary context switches: 18216
+	Swaps: 0
+	File system inputs: 64
+	File system outputs: 648
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 1
