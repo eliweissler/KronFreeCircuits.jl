@@ -64,8 +64,8 @@ columns are their dashed single-mode curves read from the figure's vector PDF (`
   ⟨T⟩ but not ε0; our Eq. 6 uses the unrenormalized model.
 - The single-mode ω01 lies between the n_g = 0 and ½ DMRG curves at large z, as in Di Paolo's top panel, and 15-40 MHz
   above both at small z (the array treated as a linear inductor).
-- z = 0.05: unresolved (the site basis D changes Δω01 by more than its size); z = 0.06-0.07 are converged in the DMRG
-  parameters (tightened reruns, below).
+- z ≤ 0.07: the site basis D = 10 is too small there; with D = 14 (tightened reruns, below) z = 0.06 and 0.07 land on
+  Di Paolo's DMRG, and z = 0.05 is converged in D but 15 times theirs.
 - z ≥ 0.13 at n_g = ½, rerun with a third level (`NLEV=3`, 1500-sweep cap; `results/rerun3-z*.log`, 2026-11-13): the
   sweep stopped at the 400-sweep cap for the excited state at z = 0.13 and the ground state at z = 0.14, and ω01(½)
   falls 0.202, 0.106, 0.047 GHz then rises to 0.277 at z = 0.15, which could have been the penalty method finding a
@@ -82,31 +82,34 @@ their single-mode Eq. 6 dashed curve, all read from the figure's PDF but ours):
 | z | 0.05 | 0.06 | 0.07 | 0.08 | 0.09 | 0.10 | 0.11 | 0.12 | 0.13 | 0.14 | 0.15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Di Paolo Δω01 (GHz) | 1.46e-7 | 8.3e-6 | 1.45e-4 | 1.21e-3 | 6.25e-3 | 2.307e-2 | 6.66e-2 | 0.160 | 0.335 | 0.534 | 0.522 |
-| ours / theirs | 3.5 | 2.6 | 1.16 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| ours / theirs | 15 | 0.98 | 1.00 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-z ≤ 0.07: see the tightened reruns below (z = 0.06, 0.07 hold; z = 0.05 is unresolved). Di Paolo converge to an
+z ≤ 0.07 are the D = 14 (z = 0.06, 0.07) and D = 18 (z = 0.05) reruns below; the sweep's D = 10 gave 3.5, 2.6, 1.16. Di Paolo converge to an
 eigenvalue tolerance of 1e-12 with truncation errors of 1e-11 (superfluxo.tex l. 192). Their top panel's ω01 at Φ0/2
 for n_g = 0 and ½ matches ours to the fourth digit at z = 0.10-0.14 (n_g = ½: 0.2932, 0.2592, 0.2023, 0.1065, 0.0469
 theirs, 0.2932, 0.2591, 0.2022, 0.1064, 0.0469 ours), the dip at z = 0.14 included.
 
-**Small z, tightened (2026-11-14, `results/tight-20261114/`).** One DMRG per (z, n_g), bond cap 150, cutoff 1e-14,
-energy tolerance 1e-13, `KRYLOVDIM=20 EIGMAXITER=4`, up to 400 sweeps, one core each (1.2-4.3 h per run). The
-variances fell from 5e-7-3e-6 (the sweep) to 2-9e-8 and the bonds grew from 22 to 32-50 (cap not reached), yet
-Δω01 is unchanged:
+**Small z, tightened (2026-11-14/15, `results/tight-20261114/`).** One DMRG per (z, n_g, D), bond cap 150, cutoff
+1e-14, energy tolerance 1e-13, `KRYLOVDIM=20 EIGMAXITER=4`, up to 400 sweeps, one core each (1.1-7 h per run). The
+variances fell from 5e-7-3e-6 (the sweep) to 3e-8-1e-7 and the bonds grew from 22 to 32-50 (cap not reached). At the
+sweep's site basis (D = 10) Δω01 did not move; the site basis is what mattered:
 
-| z | sweep Δω01 | tightened, D = 10 | D = 14 | Di Paolo |
-|---|---|---|---|---|
-| 0.05 | 5.1e-7 | 5.12e-7 | −2.16e-6 | 1.46e-7 |
-| 0.06 | 2.19e-5 | 2.19e-5 | — | 8.3e-6 |
-| 0.07 | 1.68e-4 | 1.68e-4 | — | 1.45e-4 |
+| z | sweep (D = 10) | tightened, D = 10 | D = 14 | D = 18 | Di Paolo | ours / theirs |
+|---|---|---|---|---|---|---|
+| 0.05 | 5.1e-7 | 5.12e-7 | −2.162e-6 | −2.166e-6 | 1.46e-7 | 15 |
+| 0.06 | 2.19e-5 | 2.19e-5 | 8.15e-6 | — | 8.3e-6 | 0.98 |
+| 0.07 | 1.68e-4 | 1.68e-4 | 1.444e-4 | — | 1.45e-4 | 1.00 |
 
-At z = 0.05 the site basis decides: D = 10 → 14 lowers E0 by 3.6e-5 GHz at n_g = 0 and 2.3e-5 at n_g = ½, so the
-truncation does not cancel between the two offsets, and its 1.3e-5 GHz is about 100 times Di Paolo's Δω01; z = 0.05
-is out of reach here. At z = 0.06 and 0.07 the result is converged in the DMRG parameters, so the factors 2.6 and 1.16
-are not convergence. Open leads: (1) the site basis at z = 0.06-0.07 (D = 14 not run there); (2) a small difference
-in the model, e.g. the array or black-sheep junction parameters: the ratio drifts with z (3.5, 2.6, 1.16, 1.02), as a
-slightly different exponent would make, rather than a constant convention factor; (3) Di Paolo's own precision at
-these sizes (their tolerances are 1e-12, but Δω01 ~ 1e-7 to 1e-5 against energies ~1e3 GHz).
+Δω01 = ω01(n_g = 0) − ω01(½) in GHz. Going from D = 10 to 14 lowers E0 by 2-19e-5 GHz, by different amounts at
+n_g = 0 and ½, so the truncation does not cancel in Δω01; at z = 0.06 and 0.07 D = 14 brings us onto Di Paolo's DMRG
+(within the 2-3 digits of the digitized figure). The sweep's D = 10 is enough from z = 0.08 up (ratios 1.00-1.02).
+
+z = 0.05 is converged in D (D = 14 and 18 agree to 4e-9 GHz in Δω01 and 1e-7 in E0) but is 15 times Di Paolo's and of
+the opposite sign. It is also out of line with the trend: the ground-band splitting E0(0) − E0(½) is −7.1e-5, −5.0e-6,
+−1.0e-5 GHz at z = 0.07, 0.06, 0.05 (D = 14), growing again at the smallest z, where array phase slips should make it
+shrink exponentially. So something other than the site basis sets it: open are the charge cutoff of the site basis
+(ncut 8; the site transmon is about 1.3 charge states wide at z = 0.05, so unlikely), the DMRG's absolute precision at
+energies of 1352 GHz (variances 3-7e-8 GHz²), or the model (the z-independent black-sheep junction).
 
 **DMRG on the GPU (2026-11-14, `results/gpu-compare-20261114/`).** z = 0.10, n_g = 0, 8 sweeps, bond cap 150, cutoff
 1e-12, idle machine: GPU (RTX A4500) 241 s, CPU 1 BLAS thread 923 s, CPU 8 BLAS threads 527 s, so 3.8× and 2.2×.

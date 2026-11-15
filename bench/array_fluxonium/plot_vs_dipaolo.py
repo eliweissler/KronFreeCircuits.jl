@@ -4,7 +4,8 @@
 
     ~/anaconda3/envs/qutip4/bin/python bench/array_fluxonium/plot_vs_dipaolo.py [sweep-tag]
 
-Reads results/sweep-<tag>-z*.log (latest tag by default). Writes results/dmrg_vs_dipaolo.{png,pdf}.
+Reads results/sweep-<tag>-z*.log (latest tag by default), replaced at a z by results/tight-*/ reruns (largest site basis
+D with both n_g). Writes results/dmrg_vs_dipaolo.{png,pdf}.
 """
 import glob
 import json
@@ -27,6 +28,18 @@ for f in sorted(glob.glob(str(R / f"sweep-{tag}-z*.log"))):
          for m in re.finditer(r"n_g = ([0-9.]+),.*?ω01 = ([-0-9.]+)", Path(f).read_text())}
     if 0.0 in w and 0.5 in w:
         ours.append((z, abs(w[0.0] - w[0.5])))
+# tightened reruns (results/tight-*/z<z>_ng<ng>_D<D>.log) replace the sweep at their z, largest site basis D first
+tight = {}
+for f in glob.glob(str(R / "tight-*" / "z*_ng*_D*.log")):
+    m = re.search(r"z([0-9.]+)_ng([0-9.]+)_D([0-9]+)\.log", f)
+    w = re.search(r"ω01 = ([-0-9.]+)", Path(f).read_text())
+    if w:
+        tight.setdefault((float(m.group(1)), int(m.group(3))), {})[float(m.group(2))] = float(w.group(1))
+best = {}
+for (z, D), w in sorted(tight.items()):
+    if 0.0 in w and 0.5 in w:
+        best[z] = (D, abs(w[0.0] - w[0.5]))
+ours = sorted([p for p in ours if p[0] not in best] + [(z, v) for z, (D, v) in best.items()])
 dp = json.loads((R / "dipaolo_fig3_digitized.json").read_text())
 theirs = [(p["z"], p["delta_omega01_GHz"]) for p in dp["bottom_full_dmrg"]]
 eq6 = [(p["z"], p["delta_omega01_GHz"]) for p in dp["bottom_single_mode_eq6"]]
