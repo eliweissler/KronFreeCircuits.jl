@@ -72,3 +72,9 @@ SQcircuit, about 5500 times faster; the exact Hessian with it about 0.77 s. The 
 n_eig 4-32) were 4-30 % slower.
 
 Solve times against scqubits in the same coordinates and truncation: `../scqubits_solve/`.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+KronFree with `KF_DEVICE=gpu` (grid leaf LOBPCG and root Lanczos on the GPU, Fock leaf Dense): materialize 1.15 s
+(H200), 1.89 s (A100); first and second derivatives 1.41 s and 2.49 s, against 0.24 s and 0.53 s on the desktop CPU.
+scqubits torch-cuda (complex root through the real embedding) build + diagonalize 3.5 s (H200), 7.1 s (A100).

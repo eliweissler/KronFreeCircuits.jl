@@ -1,0 +1,32 @@
+case autodiff mode a100 job 35701394 host c3gpu-a9-u35-1 2026-11-14T13:54:14-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA A100 80GB PCIe (UUID: GPU-7f8ac82f-d2ea-af5d-5126-c921c09a1b05)
+NVIDIA A100 80GB PCIe, 590.48.01, 81920 MiB
+CPU(s):              64
+Model name:          AMD EPYC 7502 32-Core Processor
+==== kf_fluxonium  2026-11-14T13:54:16-07:00
+==== kf_fluxonium  exit 0  523 s
+|n_01|^2     = +1.812977980e-02   J: +1.4474e-03 -4.8673e-03 +1.9244e-01 -1.0816e-14
+|phi_01|^2   = +6.192996255e+00   J: +3.6784e+00 -1.5505e+00 -1.1552e+02 +2.2908e-13
+Jacobian vs central differences: max deviation 6.1e-09 of each row's largest entry
+Hessian vs central differences of the Jacobian: max deviation 1.3e-06 of each Hessian's largest entry
+==== kf_c66  2026-11-14T14:02:59-07:00
+==== kf_c66  exit 0  256 s
+|phi1_01|^2  = +6.019231314e-01   J: -5.1734e-02 -3.4374e+00 +2.2828e-02 -7.7097e+00 -3.6460e-11
+|phi2_01|^2  = +2.826714412e+00   J: -2.4313e-01 -3.1645e+01 +1.3095e+00 -3.7313e+01 -1.1030e-10
+Jacobian vs central differences: max deviation 1.2e-08 of each row's largest entry
+Hessian vs central differences of the Jacobian: max deviation 5.8e-06 of each Hessian's largest entry
+==== scq_fluxonium  2026-11-14T14:07:15-07:00
+==== scq_fluxonium  exit 0  87 s
+omega01 1.068159851 (KronFree 1.068159851, diff -2.4e-13); alpha -0.713742195 (KronFree -0.713742195, diff 6.3e-13)
+build circuit + diagonalize: 1.4181 ± 0.0014 s (10 trials after 3 warm-ups; 1418 1418 1415 1417 1419 1418 1418 1421 1418 1418 ms)
+set parameters + diagonalize: 1.6636 ± 0.1954 s (10 trials after 3 warm-ups; 1425 1785 1451 1784 1501 1871 1504 1872 1540 1905 ms)
+wrote /projects/elwe6267/kronfree-bench-gpu/results/autodiff-a100-35701394/scqubits_fluxonium_torch-cuda.json
+==== scq_c66  2026-11-14T14:08:42-07:00
+==== scq_c66  exit 0  216 s
+omega01 0.678106382 (KronFree 0.678106382, diff 1.5e-12); alpha -0.550455189 (KronFree -0.550455189, diff -1.8e-12)
+build circuit + diagonalize: 7.0858 ± 1.9002 s (10 trials after 3 warm-ups; 6683 4914 6641 6767 6426 7026 6989 6510 6680 12221 ms)
+set parameters + diagonalize: 7.7752 ± 1.7771 s (10 trials after 3 warm-ups; 8342 6369 12251 6998 6732 8229 6720 6706 8685 6722 ms)
+wrote /projects/elwe6267/kronfree-bench-gpu/results/autodiff-a100-35701394/scqubits_c66_torch-cuda.json
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE autodiff a100 status 0 2026-11-14T14:12:18-07:00

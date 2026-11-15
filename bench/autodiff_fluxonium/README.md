@@ -55,3 +55,9 @@ Jacobian 0.007 s against SQcircuit's converged autodiff Jacobian 1.07 s (n_eig 6
 and KronFree's exact Hessian 0.027 s.
 
 Solve times against scqubits in the same coordinates and truncation: `../scqubits_solve/`.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+KronFree with `KF_DEVICE=gpu` (LOBPCG on the GPU): materialize 0.20 s (H200), 0.37 s (A100); first and second
+derivatives 0.48 s and 0.94 s, against 0.030 s and 0.027 s on the desktop CPU: the problem is too small for a GPU.
+scqubits torch-cuda build + diagonalize 0.64 s (H200), 1.42 s (A100).

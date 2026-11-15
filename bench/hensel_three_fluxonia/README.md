@@ -104,3 +104,8 @@ the tree is pending.
   kq, kc, kf = 32, 64, 4 and 40, 80, 4: 5.4e8 and 1.6e9 states, real arithmetic), after smoke runs that measure memory
   and time per state on that machine.
 - **CPU timing** of the tree ladder.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+Per point, ladder (240, 240) / accurate (480, 480) / check (480, 960): H200 8.4 / 15.4 / 33.5 s, A100 17.1 / 30.9 /
+71.4 s (A4500 32 / 153 / 462 s); same levels, no edge warnings.

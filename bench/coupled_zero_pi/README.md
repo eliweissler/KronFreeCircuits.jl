@@ -55,3 +55,8 @@ for GPU leaves (`Auto(on=CuArray)`, i.e. `ChebyshevFilter`). Pipeline: `pipeline
 
 Results: `results/overnight_{cpu,gpu_root,gpu_all}/`, `results/pipeline_timing_1000.json` (5 runs),
 `results/pipeline_timing_1000_single.json` (one run on 2026-11-13), logs `results/overnight_*.log`.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+1000 levels, 5 repeats: all on the GPU 8.4 ± 0.2 s (H200), 19.5 ± 0.4 s (A100 80 GB); GPU root with CPU
+leaves 41.6 ± 0.4 s and 90.2 ± 0.5 s; 1.26e-11 GHz from the reference on both.

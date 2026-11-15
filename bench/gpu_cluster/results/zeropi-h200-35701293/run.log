@@ -1,0 +1,20 @@
+case zeropi mode h200 job 35701293 host c3gpu-g5-u13 2026-11-14T19:29:11-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA H200 NVL (UUID: GPU-a9c83e8c-954a-d48f-3abb-a7a1cc8df44f)
+NVIDIA H200 NVL, 595.112.07, 143771 MiB
+CPU(s):              128
+Model name:          AMD EPYC 9555 64-Core Processor
+==== zp_gpu_root  2026-11-14T19:29:11-07:00
+==== zp_gpu_root  exit 0  361 s
+qubit 1: 300 levels, worst |Δ(E_k - E_0)| = 2.26e-11 GHz;  qubit 2: 300 levels, 2.51e-11 GHz
+kept sets: qubit 1 identical (154 vs 154), qubit 2 identical (155 vs 155)
+coupled: 1000 levels, worst |Δ(E_k - E_0)| = 1.27e-11 GHz (median 6.04e-12); first ten: 0.0e+00 1.6e-12 1.8e-12 2.1e-12 3.0e-12 5.7e-14 2.2e-12 9.5e-13 6.1e-13 4.6e-12
+results: /projects/elwe6267/kronfree-bench-gpu/results/zeropi-h200-35701293/gpu_root/results.json
+==== zp_gpu_all  2026-11-14T19:35:12-07:00
+==== zp_gpu_all  exit 0  121 s
+qubit 1: 300 levels, worst |Δ(E_k - E_0)| = 2.29e-11 GHz;  qubit 2: 300 levels, 2.51e-11 GHz
+kept sets: qubit 1 identical (154 vs 154), qubit 2 identical (155 vs 155)
+coupled: 1000 levels, worst |Δ(E_k - E_0)| = 1.26e-11 GHz (median 6.02e-12); first ten: 0.0e+00 1.6e-12 1.8e-12 2.1e-12 3.1e-12 3.3e-14 2.3e-12 9.2e-13 5.6e-13 4.5e-12
+results: /projects/elwe6267/kronfree-bench-gpu/results/zeropi-h200-35701293/gpu_all/results.json
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE zeropi h200 status 0 2026-11-14T19:37:13-07:00

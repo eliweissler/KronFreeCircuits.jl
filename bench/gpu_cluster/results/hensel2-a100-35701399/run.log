@@ -1,0 +1,20 @@
+case hensel2 mode a100 job 35701399 host c3gpu-a9-u35-1 2026-11-14T14:12:27-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA A100 80GB PCIe (UUID: GPU-7f8ac82f-d2ea-af5d-5126-c921c09a1b05)
+NVIDIA A100 80GB PCIe, 590.48.01, 81920 MiB
+CPU(s):              64
+Model name:          AMD EPYC 7502 32-Core Processor
+==== hensel2  2026-11-14T14:12:28-07:00
+==== hensel2  exit 0  888 s
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel2-a100-35701399/hensel2/results.json
+==== hensel2_grid5  2026-11-14T14:27:16-07:00
+==== hensel2_grid5  exit 0  328 s
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel2-a100-35701399/hensel2_grid5/results.json
+edge warnings (PhaseGrid range): 2 logs; 20 lines
+DONE hensel2 a100 status 0 2026-11-14T14:32:44-07:00

@@ -29,3 +29,8 @@ is reused). The second matches KronFree's `materialize` (a built tree at new par
 
 KronFree solves 5 times faster than scqubits on one mode and 4 times on two. SQcircuit's solves are in its own
 coordinates and truncation (harmonic-oscillator bases, no hierarchy), not the ones above.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+`SCQ_SOLVER=torch-cuda`: fluxonium 0.64 s (H200), 1.42 s (A100); c66 3.5 s and 7.1 s, against 0.17 s and 0.99 s for
+the default CPU solver here; agreement with KronFree about 1e-12.

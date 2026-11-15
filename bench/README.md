@@ -16,6 +16,8 @@ Cases (one directory each):
 | KITE | scqubits `Circuit`, same machine | planned |
 | `current_mirror/`, full circuit | none (exact diagonalization stops at N = 3) | shelved (next: a momentum-sector root) |
 
+GPU timings of the first five cases on CU Boulder Alpine (one H200, one A100 80 GB): `gpu_cluster/README.md`.
+
 ## Environment
 
 ```bash

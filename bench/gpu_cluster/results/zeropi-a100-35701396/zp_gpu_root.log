@@ -1,0 +1,28 @@
+case coupled_zero_pi: device gpu, threads 8, BLAS 1, commit f6048397, smoke false, out /projects/elwe6267/kronfree-bench-gpu/results/zeropi-a100-35701396/gpu_root
+two-level tree, connected leaves, 1000 levels p = 0.0    E1-E0 = 2.409790 GHz    90.34 s (first 190.8)  root 23870, 136 it, 6931 matvec
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 48 has joint-peak amplitude 0.0015212052699277324, ratio 0.18510629720555904 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 82 has joint-peak amplitude 0.0014825143585482157, ratio 0.20788056395637533 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 130 has joint-peak amplitude 0.0029051082924620246, ratio 0.3614235068841692 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 360 has joint-peak amplitude 0.0012648792356204001, ratio 0.22832909889403788 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 412 has joint-peak amplitude 0.0015079995335856543, ratio 0.3764183494779591 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 506 has joint-peak amplitude 0.0019667109693073705, ratio 0.25220100421064506 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 704 has joint-peak amplitude 0.0013504900955470416, ratio 0.4423413316179055 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 706 has joint-peak amplitude 0.0003832241734739567, ratio 0.11931959671274153 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 710 has joint-peak amplitude 0.0015214192346666776, ratio 0.3415217330674794 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]: kept state 714 has joint-peak amplitude 0.001680752334710676, ratio 0.4359584316558119 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+qubit leaves: 154 and 155 of 300 computed levels kept (connected to 0 and 2 through n_theta > 1e-05)
+coupled: 1000 levels, E1 - E0 = 2.409789811 GHz, E_999 - E0 = 28.942478 GHz
+qubit 1: 300 levels, worst |Δ(E_k - E_0)| = 2.26e-11 GHz;  qubit 2: 300 levels, 2.51e-11 GHz
+kept sets: qubit 1 identical (154 vs 154), qubit 2 identical (155 vs 155)
+coupled: 1000 levels, worst |Δ(E_k - E_0)| = 1.26e-11 GHz (median 6.03e-12); first ten: 0.0e+00 1.6e-12 1.8e-12 2.0e-12 3.0e-12 1.4e-13 2.4e-12 1.0e-12 7.1e-13 4.6e-12
+results: /projects/elwe6267/kronfree-bench-gpu/results/zeropi-a100-35701396/gpu_root/results.json
