@@ -18,6 +18,8 @@ which gives every junction phase its own offset charge in the full form 4 (n −
   to about 3-4 digits; writes `results/dipaolo_fig3_digitized.json`.
 - `dmrg/dmrg_spec.jl` (its own environment: ITensors, ITensorMPS): DMRG on a spec, every term read from it (E_C, the
   offsets, the cosines); site eigenbases from KronFreeCircuits or the raw charge basis; excited state by penalty.
+  `KRYLOVDIM`, `EIGMAXITER` set the local eigensolver (ITensorMPS defaults 3 and 1); `DEVICE=gpu` moves the MPO and
+  MPSs to the GPU (`adapt(CuArray, ·)`, Float64) and needs the `dmrg_gpu/` environment (the same plus CUDA, Adapt).
 
 ## Checks (2026-11-12)
 
@@ -62,7 +64,8 @@ columns are their dashed single-mode curves read from the figure's vector PDF (`
   ⟨T⟩ but not ε0; our Eq. 6 uses the unrenormalized model.
 - The single-mode ω01 lies between the n_g = 0 and ½ DMRG curves at large z, as in Di Paolo's top panel, and 15-40 MHz
   above both at small z (the array treated as a linear inductor).
-- z = 0.05: at the DMRG's precision (5e-7 GHz against energies of order 1e3 GHz); z = 0.06-0.07 may be too.
+- z = 0.05: unresolved (the site basis D changes Δω01 by more than its size); z = 0.06-0.07 are converged in the DMRG
+  parameters (tightened reruns, below).
 - z ≥ 0.13 at n_g = ½, rerun with a third level (`NLEV=3`, 1500-sweep cap; `results/rerun3-z*.log`, 2026-11-13): the
   sweep stopped at the 400-sweep cap for the excited state at z = 0.13 and the ground state at z = 0.14, and ω01(½)
   falls 0.202, 0.106, 0.047 GHz then rises to 0.277 at z = 0.15, which could have been the penalty method finding a
@@ -81,10 +84,35 @@ their single-mode Eq. 6 dashed curve, all read from the figure's PDF but ours):
 | Di Paolo Δω01 (GHz) | 1.46e-7 | 8.3e-6 | 1.45e-4 | 1.21e-3 | 6.25e-3 | 2.307e-2 | 6.66e-2 | 0.160 | 0.335 | 0.534 | 0.522 |
 | ours / theirs | 3.5 | 2.6 | 1.16 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-z ≤ 0.07 is at our DMRG's precision (about 5e-7 GHz on energies of order 1e3 GHz); Di Paolo converge to an
+z ≤ 0.07: see the tightened reruns below (z = 0.06, 0.07 hold; z = 0.05 is unresolved). Di Paolo converge to an
 eigenvalue tolerance of 1e-12 with truncation errors of 1e-11 (superfluxo.tex l. 192). Their top panel's ω01 at Φ0/2
 for n_g = 0 and ½ matches ours to the fourth digit at z = 0.10-0.14 (n_g = ½: 0.2932, 0.2592, 0.2023, 0.1065, 0.0469
 theirs, 0.2932, 0.2591, 0.2022, 0.1064, 0.0469 ours), the dip at z = 0.14 included.
+
+**Small z, tightened (2026-11-14, `results/tight-20261114/`).** One DMRG per (z, n_g), bond cap 150, cutoff 1e-14,
+energy tolerance 1e-13, `KRYLOVDIM=20 EIGMAXITER=4`, up to 400 sweeps, one core each (1.2-4.3 h per run). The
+variances fell from 5e-7-3e-6 (the sweep) to 2-9e-8 and the bonds grew from 22 to 32-50 (cap not reached), yet
+Δω01 is unchanged:
+
+| z | sweep Δω01 | tightened, D = 10 | D = 14 | Di Paolo |
+|---|---|---|---|---|
+| 0.05 | 5.1e-7 | 5.12e-7 | −2.16e-6 | 1.46e-7 |
+| 0.06 | 2.19e-5 | 2.19e-5 | — | 8.3e-6 |
+| 0.07 | 1.68e-4 | 1.68e-4 | — | 1.45e-4 |
+
+At z = 0.05 the site basis decides: D = 10 → 14 lowers E0 by 3.6e-5 GHz at n_g = 0 and 2.3e-5 at n_g = ½, so the
+truncation does not cancel between the two offsets, and its 1.3e-5 GHz is about 100 times Di Paolo's Δω01; z = 0.05
+is out of reach here. At z = 0.06 and 0.07 the result is converged in the DMRG parameters, so the factors 2.6 and 1.16
+are not convergence. Open leads: (1) the site basis at z = 0.06-0.07 (D = 14 not run there); (2) a small difference
+in the model, e.g. the array or black-sheep junction parameters: the ratio drifts with z (3.5, 2.6, 1.16, 1.02), as a
+slightly different exponent would make, rather than a constant convention factor; (3) Di Paolo's own precision at
+these sizes (their tolerances are 1e-12, but Δω01 ~ 1e-7 to 1e-5 against energies ~1e3 GHz).
+
+**DMRG on the GPU (2026-11-14, `results/gpu-compare-20261114/`).** z = 0.10, n_g = 0, 8 sweeps, bond cap 150, cutoff
+1e-12, idle machine: GPU (RTX A4500) 241 s, CPU 1 BLAS thread 923 s, CPU 8 BLAS threads 527 s, so 3.8× and 2.2×.
+E0 agrees to 1e-9 GHz; the excited state is unconverged after 8 sweeps (variance 0.02-0.18, bonds 144-150 in all
+three), so ω01 differs by a few MHz. The production sweeps run 8 points at once on 8 cores, which beats one GPU in
+throughput, and their converged bonds (34-50) favour the GPU less than this test's 150.
 
 **Their single-mode model is renormalized.** Their dashed ω01 lies 25-27 MHz below our single-mode model's. Their
 effective model (superfluxo.tex l. 317-424, `eq: effective fluxonium model`) multiplies each array cosine by

@@ -11,11 +11,20 @@
 #   julia --project=bench/array_fluxonium/dmrg -t 1 bench/array_fluxonium/dmrg/dmrg_spec.jl
 #
 # Env: SPEC (path), NG (comma list, default 0,0.5), PHIEXT (default π), NLEV (2 or 3), BASIS, D, NCUT, MAXDIM, SWEEPS, CUTOFF, ETOL,
-# WEIGHT, NOISESWEEPS, BLASTHREADS, OUTLEVEL.
+# WEIGHT, NOISESWEEPS, BLASTHREADS, OUTLEVEL, KRYLOVDIM and EIGMAXITER (the local eigensolver's Krylov dimension and
+# restarts; ITensorMPS' defaults 3 and 1), DEVICE (cpu, or gpu: the MPO and MPS on the GPU through ITensors' CUDA
+# extension, Float64 kept; needs the environment ../dmrg_gpu, which adds CUDA and Adapt).
 
 using ITensors, ITensorMPS, KronFreeCircuits, LinearAlgebra, Printf
 BLAS.set_num_threads(parse(Int, get(ENV, "BLASTHREADS", "1")))
 const OUTLEVEL = Ref(parse(Int, get(ENV, "OUTLEVEL", "0")))
+const DEVICE = get(ENV, "DEVICE", "cpu")
+DEVICE in ("cpu", "gpu") || error("DEVICE: cpu or gpu")
+if DEVICE == "gpu"
+    using CUDA, Adapt
+end
+todevice(x) = DEVICE == "gpu" ? adapt(CuArray, x) : x
+const KRYLOV = (eigsolve_krylovdim=parse(Int, get(ENV, "KRYLOVDIM", "3")), eigsolve_maxiter=parse(Int, get(ENV, "EIGMAXITER", "1")))
 
 # per-site matrices, looked up by the site index's "n=<i>" tag
 const SITEMATS = Dict{Int,NamedTuple}()
@@ -95,7 +104,7 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
     c = -bs.E / 2 * bs.sign
     os += (c, Iterators.flatten((bs.omega[i] == 1 ? "U" : "Ud", i) for i in 1:N)...)
     os += (c, Iterators.flatten((bs.omega[i] == 1 ? "Ud" : "U", i) for i in 1:N)...)
-    t0 = time(); H = MPO(os, sites); tmpo = time() - t0
+    t0 = time(); H = todevice(MPO(os, sites)); tmpo = time() - t0
 
     sw = Sweeps(sweeps)
     setmaxdim!(sw, maxdim...)
@@ -106,12 +115,12 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
     obs0 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
     obs1 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
     t0 = time()
-    E0, ψ0 = dmrg(H, MPS(sites, fill("g", N)), sw; outputlevel=OUTLEVEL[], observer=obs0)
-    E1, ψ1 = dmrg(H, [ψ0], random_mps(sites; linkdims=10), sw; weight, outputlevel=OUTLEVEL[], observer=obs1)
+    E0, ψ0 = dmrg(H, todevice(MPS(sites, fill("g", N))), sw; outputlevel=OUTLEVEL[], observer=obs0, KRYLOV...)
+    E1, ψ1 = dmrg(H, [ψ0], todevice(random_mps(sites; linkdims=10)), sw; weight, outputlevel=OUTLEVEL[], observer=obs1, KRYLOV...)
     E2 = NaN; var2 = NaN; ov2 = NaN; nsw2 = 0
     if parse(Int, get(ENV, "NLEV", "2")) >= 3          # a third level, penalized against both lower states: a missed
         obs2 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)   # or crossing state near E1 shows up here
-        E2, ψ2 = dmrg(H, [ψ0, ψ1], random_mps(sites; linkdims=10), sw; weight, outputlevel=OUTLEVEL[], observer=obs2)
+        E2, ψ2 = dmrg(H, [ψ0, ψ1], todevice(random_mps(sites; linkdims=10)), sw; weight, outputlevel=OUTLEVEL[], observer=obs2, KRYLOV...)
         var2 = inner(H, ψ2, H, ψ2) - E2^2
         ov2 = max(abs(inner(ψ0, ψ2)), abs(inner(ψ1, ψ2)))
         nsw2 = length(ITensorMPS.energies(obs2))
