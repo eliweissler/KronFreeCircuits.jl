@@ -12,7 +12,10 @@ function _check_rows(b::Basis, V::AbstractVecOrMat, name::AbstractString)
 end
 
 # X[k] = Σ_j V[j] e^{-2πi jk/N} along the first axis, `j = 0..N-1`, in the order of `_conjugate_index(N)`.
-_centred_dft(V::AbstractVecOrMat) = FFTW.fftshift(FFTW.fft(ComplexF64.(V), 1), 1)
+_centred_dft(V::AbstractVecOrMat) = FFTW.fftshift(FFTW.fft(Array{ComplexF64}(V), 1), 1)
+
+# `V` as a dense host array in floating point (a copy): a range, a view, a structured or a sparse `V` all give an `Array`.
+_dense(V::AbstractVecOrMat) = Array{float(eltype(V))}(V)
 
 _sign(k::Integer) = isodd(k) ? -1 : 1                       # e^{±iπk}, exactly
 
@@ -35,6 +38,7 @@ The points are the basis's own grid: nothing is interpolated.
 `h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}` is the oscillator function of level `m`.
 A Fock basis has no grid, so its points are required, and its normalization is `∫|ψ(φ)|² dφ = ‖v‖²`.
 The values of a real grid or Fock vector stay real; those of a charge basis are `ComplexF64`.
+The result is a dense array in floating point, a new one, whatever holds `V` (a range, a view, a sparse or structured matrix).
 See [`charge_wavefunction`](@ref) for the conjugate representation.
 """
 function phase_wavefunction end
@@ -49,7 +53,7 @@ The charge wavefunction `⟨n|ψ⟩` of the states in the columns of `V` (a vect
 
 | basis | `n` | values |
 |:------|:----|:-------|
-| `ChargeBasis(ncut)` | `-ncut..ncut` | `c_n`, a copy of `V` |
+| `ChargeBasis(ncut)` | `-ncut..ncut` | `c_n`, a dense floating-point copy of `V` (real stays real) |
 | `PeriodicGrid(N)`, `Δ = 2π/N` | integers `ℓ` | `c_ℓ = (√2π/N) Σ_j ψ(φ_j) e^{-iℓφ_j}`, with `Σ_ℓ |c_ℓ|² = ‖v‖²` |
 | `PhaseGrid(a, b, N)`, spacing `Δ` | `n_k = 2πk/(NΔ)` | `ψ̃(n_k) = (Δ/√2π) Σ_j ψ(φ_j) e^{-i n_k φ_j}`, with `Δn Σ_k |ψ̃(n_k)|² = ‖v‖²`, `Δn = 2π/(NΔ)` |
 | `FockBasis(N; phi_zpf)` | the points passed | `ψ̃(n) = Σ_m c_m (-i)^m h_m(n; n_zpf)`, `n_zpf = 1/(2φ_zpf)`, with `∫|ψ̃(n)|² dn = ‖v‖²` |
@@ -77,18 +81,18 @@ function phase_wavefunction(b::ChargeBasis, V::AbstractVecOrMat{<:Number})
     _check_rows(b, V, "phase_wavefunction")
     N = dimension(b)
     # ψ(φ_j) = (1/√2π) Σ_n (c_n e^{-iπn}) e^{2πi jn/N} at φ_j = -π + 2πj/N
-    C = ComplexF64.(V) .* _sign.(-b.ncut:b.ncut)
+    C = Array{ComplexF64}(V) .* _sign.(-b.ncut:b.ncut)
     return collect(-π .+ 2π .* (0:N-1) ./ N), FFTW.bfft(FFTW.ifftshift(C, 1), 1) ./ sqrt(2π)
 end
 
 function phase_wavefunction(b::Union{PeriodicGrid,PhaseGrid}, V::AbstractVecOrMat{<:Number})
     _check_rows(b, V, "phase_wavefunction")
-    return coordinates(b), V ./ sqrt(spacing(b))
+    return coordinates(b), _dense(V) ./ sqrt(spacing(b))
 end
 
 function charge_wavefunction(b::ChargeBasis, V::AbstractVecOrMat{<:Number})
     _check_rows(b, V, "charge_wavefunction")
-    return coordinates(b), copy(V)
+    return coordinates(b), _dense(V)
 end
 
 function charge_wavefunction(b::PeriodicGrid, V::AbstractVecOrMat{<:Number})
@@ -140,12 +144,12 @@ _minus_i_power(m::Integer) = (ComplexF64(1), ComplexF64(0, -1), ComplexF64(-1), 
 
 function phase_wavefunction(b::FockBasis, V::AbstractVecOrMat{<:Number}, φ::AbstractVector{<:Real})
     _check_rows(b, V, "phase_wavefunction")
-    return collect(Float64, φ), _hermite_functions(φ, b.N, b.phi_zpf) * V
+    return collect(Float64, φ), _hermite_functions(φ, b.N, b.phi_zpf) * _dense(V)
 end
 
 function charge_wavefunction(b::FockBasis, V::AbstractVecOrMat{<:Number}, n::AbstractVector{<:Real})
     _check_rows(b, V, "charge_wavefunction")
-    return collect(Float64, n), _hermite_functions(n, b.N, 1 / (2 * b.phi_zpf)) * (_minus_i_power.(0:b.N-1) .* V)
+    return collect(Float64, n), _hermite_functions(n, b.N, 1 / (2 * b.phi_zpf)) * (_minus_i_power.(0:b.N-1) .* _dense(V))
 end
 
 phase_wavefunction(::FockBasis, ::AbstractVecOrMat{<:Number}) =
@@ -166,7 +170,11 @@ end
 
 for f in (:phase_wavefunction, :charge_wavefunction)
     @eval begin
-        $f(sys::System, node::Node, points::AbstractVector{<:Real}...) = $f(_single_basis(sys, node, $(string(f)))..., points...)
-        $f(sys::System, points::AbstractVector{<:Real}...) = $f(sys, sys.root.node, points...)
+        $f(b::Union{ChargeBasis,PeriodicGrid,PhaseGrid}, ::AbstractVecOrMat{<:Number}, ::AbstractVector{<:Real}) =
+            throw(ArgumentError($(string(f)) * ": a $(nameof(typeof(b))) has its own grid; points are only for a FockBasis"))
+        $f(sys::System, node::Node) = $f(_single_basis(sys, node, $(string(f)))...)
+        $f(sys::System, node::Node, points::AbstractVector{<:Real}) = $f(_single_basis(sys, node, $(string(f)))..., points)
+        $f(sys::System) = $f(sys, sys.root.node)
+        $f(sys::System, points::AbstractVector{<:Real}) = $f(sys, sys.root.node, points)
     end
 end

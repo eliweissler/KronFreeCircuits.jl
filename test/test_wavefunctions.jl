@@ -226,3 +226,51 @@ end
         @test size(phase_wavefunction(s1, leaf)[2]) == (601, 5)
     end
 end
+
+@testset "wavefunctions: inputs beyond dense eigenvectors" begin
+    bases = (ChargeBasis(3), PeriodicGrid(7; order=2), PhaseGrid(-1.0, 1.0, 7; order=2))
+
+    @testset "the identity, structured or sparse, gives the transform matrix" begin
+        dense_id = Matrix(1.0I, 7, 7)
+        for f in (phase_wavefunction, charge_wavefunction), b in bases, V in (I(7), sparse(1.0I, 7, 7))
+            @test f(b, V)[2] == f(b, dense_id)[2]
+        end
+        F = FockBasis(7; phi_zpf=0.7)
+        @test phase_wavefunction(F, I(7), [0.1, 0.2])[2] == phase_wavefunction(F, dense_id, [0.1, 0.2])[2]
+        @test charge_wavefunction(F, I(7), [0.1, 0.2])[2] == charge_wavefunction(F, dense_id, [0.1, 0.2])[2]
+    end
+
+    @testset "results are dense arrays in floating point, whatever holds V" begin
+        for f in (phase_wavefunction, charge_wavefunction), b in bases
+            @test f(b, 1:7)[2] isa Vector{<:Union{Float64,ComplexF64}}
+            @test f(b, I(7))[2] isa Matrix{<:Union{Float64,ComplexF64}}
+            @test f(b, view(ones(7, 2), :, 1))[2] isa Vector
+        end
+        @test charge_wavefunction(ChargeBasis(1), [0, 1, 0])[2] isa Vector{Float64}      # the stored representation, floated
+        @test charge_wavefunction(ChargeBasis(1), [0, 1im, 0])[2] isa Vector{ComplexF64}
+        @test phase_wavefunction(PeriodicGrid(3; order=2), [0, 1, 0])[2] isa Vector{Float64}
+    end
+
+    @testset "points passed to a basis that has its own grid" begin
+        for f in (phase_wavefunction, charge_wavefunction), b in bases
+            err = try f(b, ones(7), [0.0, 0.1]); nothing catch e; e end
+            @test err isa ArgumentError
+            @test occursin("its own grid", err.msg) && occursin("FockBasis", err.msg)
+        end
+        p = dc_fluxonium()
+        sys = Base.CoreLogging.with_logger(() -> materialize(p.root, p.spec, p.θ), Base.CoreLogging.NullLogger())
+        @test_throws ArgumentError phase_wavefunction(sys, [0.0, 0.1])
+        @test_throws ArgumentError charge_wavefunction(sys, p.root, [0.0, 0.1])
+    end
+
+    @testset "Fock values below the Float64 range, and points at ±Inf and NaN" begin
+        B = FockBasis(1200; phi_zpf=1.0)
+        e = zeros(1200); e[1200] = 1
+        _, ψ = phase_wavefunction(B, e, [100.0, 110.0, 400.0, Inf, -Inf, NaN, 69.0])
+        @test 0 < abs(ψ[1]) < 1e-300                       # subnormal: 5.8e-311
+        @test ψ[2] == 0 && ψ[3] == 0                       # below the range
+        @test ψ[4] == 0 && ψ[5] == 0
+        @test isnan(ψ[6])
+        @test 1e-3 < abs(ψ[7]) < 1                         # near the turning point, unaffected by the other rows
+    end
+end

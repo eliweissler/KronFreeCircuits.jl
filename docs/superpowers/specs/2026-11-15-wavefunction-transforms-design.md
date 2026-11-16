@@ -1,6 +1,6 @@
 # Charge and phase wavefunctions of a single mode
 
-Date: 2026-11-15. Status: awaiting approval.
+Date: 2026-11-15. Status: approved by Eli 2026-11-15; the element-type sentence was amended after the branch review (same day).
 
 ## Intent
 
@@ -52,8 +52,8 @@ Index range of `ℓ` and `k`: `-(N-1)/2..(N-1)/2` for odd `N` (the notes' case),
 
 The grid offset is carried by the phase factor `e^{-iℓφ_0}` (the notes' `n0`, here `φ_0 = -π` or `a`), so a real even `ψ(φ)` gives a real `ψ̃(n)`.
 
-Element types: the phase values of a real grid vector stay real; everything else is `ComplexF64`.
-Results are host arrays.
+Element types: a representation the basis already stores keeps the (floated) element type of `V`, so the phase values of a real grid vector, the charge coefficients of a real charge-basis vector and the phase values of a real Fock vector stay real; every transformed result is `ComplexF64`.
+Results are dense host arrays, new ones, whatever holds `V`.
 
 ## Known limits (documented in the docstrings)
 
