@@ -9,6 +9,7 @@ using LOBPCGEigensolver: LOBPCGEigensolver
 using Adapt: adapt
 using Random: Random, randn!
 using FFTW: FFTW
+using GSL: GSL
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 

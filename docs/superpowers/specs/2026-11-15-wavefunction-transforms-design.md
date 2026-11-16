@@ -46,7 +46,8 @@ Values are function values in the notes' normalization (my call, unchallenged in
 | `PhaseGrid(a, b, N)`, spacing `Δ` | `v_j/√Δ` on its grid | `ψ̃(n_k) = (Δ/√2π) Σ_j ψ(φ_j) e^{-i n_k φ_j}`, `n_k = 2πk/(NΔ)` |
 | `FockBasis(N; phi_zpf)` | `Σ_m c_m h_m(φ; φ_zpf)` | `Σ_m c_m (-i)^m h_m(n; n_zpf)`, `n_zpf = 1/(2φ_zpf)` |
 
-`h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}`, evaluated by the normalized three-term recurrence.
+`h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}`, evaluated by GSL.jl (`gsl_sf_hermite_func_array`).
+Eli chose GSL over the package's own recurrence on 2026-11-15, after both matched a 4096-bit reference to `5e-14` up to level 1199; SpecialPolynomials, ClassicalOrthogonalPolynomials, HypergeometricFunctions and FastGaussQuadrature were tried and do not do this job (overflow at high level, or nodes and weights only).
 
 Index range of `ℓ` and `k`: `-(N-1)/2..(N-1)/2` for odd `N` (the notes' case), `-N/2..N/2-1` for even `N` (the `fftshift` order; the notes do not cover even `N`).
 
@@ -64,6 +65,7 @@ Results are dense host arrays, new ones, whatever holds `V`.
 
 ## My calls, left to correct
 
+- **GSL.jl becomes a dependency** (Eli's choice, above; GPL, compatible).
 - **FFTW becomes a dependency** (compatible: the package is GPL-3). It handles any `N`, including the prime 601, and transforms along one axis of a multi-dimensional array, which the later multi-mode work needs. The alternative is a dependency-free direct sum, same output, `O(N²)`.
 - New file `src/wavefunctions.jl`, tests in `test/test_wavefunctions.jl` (fast tier), a short README section, two new exports.
 
@@ -79,4 +81,4 @@ Results are dense host arrays, new ones, whatever holds `V`.
 
 ## Left to the builder
 
-Internal names, the scaling used to keep the Hermite recurrence in range at large `m`, and the layout of the README section.
+Internal names and the layout of the README section.

@@ -489,6 +489,7 @@ The values are on the basis's own grid, so nothing is interpolated or oversample
 
 `h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}` is the oscillator function, and `ℓ` and `k` run over `-(N-1)/2..(N-1)/2` for odd `N` and `-N/2..N/2-1` for even `N`.
 The grid sums are one fast Fourier transform (FFTW), with the grid's origin applied as a phase factor.
+The oscillator functions come from GSL (`gsl_sf_hermite_func_array`), which stays accurate at levels and points where the Gaussian factor alone underflows.
 The fluxonium above agrees between the grid and the Fock basis to `4e-10` in both representations.
 
 Limits:

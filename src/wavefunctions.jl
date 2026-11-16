@@ -113,29 +113,19 @@ end
 # The oscillator functions `h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}`, `m = 0..N-1`, of a
 # coordinate with zero-point amplitude `s`, at the points `x`: a `length(x) × N` matrix, column `m + 1` for level `m`.
 #
-# In `ξ = x/(√2 s)`: `h_0 = (2π s²)^{-1/4} e^{-ξ²/2}` and `h_m = √(2/m) ξ h_{m-1} - √((m-1)/m) h_{m-2}`, run upwards in
-# `m`, the direction in which it is stable.  The seed underflows for `|ξ| ≳ 38.6` while a level `m ≳ 745` is still of
-# order one there, so each value is carried as `f · 2^e` with the binary exponent apart, as `displacement` does; a value
-# below the `Float64` range comes out as zero.  A point at `±Inf` gives zeros and a `NaN` point gives `NaN`.
+# `h_m(x; s) = (√2 s)^{-1/2} ψ_m(ξ)` with `ξ = x/(√2 s)` and `ψ_m` the orthonormal Hermite function, which GSL evaluates
+# for every level at one point (`gsl_sf_hermite_func_array`) by a rescaled recurrence: a level `m ≳ 745` stays accurate
+# where the Gaussian factor alone underflows (`|ξ| ≳ 38.6`), and a value below the `Float64` range comes out as zero.
+# GSL returns `NaN` once `ξ²` overflows, so a point with `ξ²/2 ≥ 2^40`, where every level that fits in memory is below
+# the range, is set to zero here (`±Inf` included); a `NaN` point gives `NaN`.
 function _hermite_functions(x::AbstractVector{<:Real}, N::Int, s::Float64)
     H = zeros(length(x), N)
-    A = (2π * s^2)^(-1 / 4)
+    c = 1 / sqrt(sqrt(2.0) * s)
     for (i, xi) in enumerate(x)
         ξ = Float64(xi) / (sqrt(2.0) * s)
         isnan(ξ) && (H[i, :] .= NaN; continue)
-        y = ξ^2 / 2
-        y < 0x1p40 || continue                               # e^{-y} is below the range for every level that fits in memory
-        k = round(-y / log(2.0))                             # e^{-y} = g · 2^k with g in [1/√2, √2]
-        fprev, f, e = 0.0, A * exp(fma(-k, log(2.0), -y) - k * _LOG2_LO), Int(k)
-        for m in 0:N-1
-            if m > 0
-                fprev, f = f, sqrt(2 / m) * ξ * f - sqrt((m - 1) / m) * fprev
-                if abs(f) > 0x1p256                          # |h_m| is bounded: f grows only while e is far below zero
-                    fprev *= 0x1p-256; f *= 0x1p-256; e += 256
-                end
-            end
-            H[i, m+1] = ldexp(f, e)
-        end
+        ξ^2 / 2 < 0x1p40 || continue
+        H[i, :] .= c .* GSL.sf_hermite_func_array(N - 1, ξ)
     end
     return H
 end
