@@ -455,6 +455,49 @@ The rules run `derivatives` to first order; second derivatives come from `deriva
 `bench_archive/derivative_design` solves a three-parameter design problem with BFGS on this gradient.
 The design is `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`; spec §20l records the equations, the measurements and where the build departed from the design.
 
+## Wavefunctions
+
+`phase_wavefunction` and `charge_wavefunction` return the states of a single mode as function values in the phase or the charge representation.
+The convention is `⟨φ|n⟩ = e^{inφ}/√2π`, the one the port operators already use (`e^{ikφ}|n⟩ = |n+k⟩`, `n = -i∂_φ`).
+
+```julia
+spec = load_spec("test/fixtures/fluxonium.json")
+θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=2.0)
+
+leaf = Node([:varphi_1 => PhaseGrid(-10π, 10π, 601)]; keep=lowest(5))
+sys = materialize(leaf, spec, θ)
+φ, ψ = phase_wavefunction(sys)          # ψ[:, i] = ψ_i(φ) on the grid, Δφ Σ|ψ|² = 1
+n, ψn = charge_wavefunction(sys)        # ψn[:, i] = ψ̃_i(n) at n_k = 2πk/(NΔφ), Δn Σ|ψ̃|² = 1
+
+fock = Node([:varphi_1 => FockBasis(200; phi_zpf=(2 * 2.5 / 0.5)^0.25)]; keep=lowest(5))
+sysF = materialize(fock, spec, θ)
+φ, ψF = phase_wavefunction(sysF, φ)     # a Fock basis has no grid: pass the points
+n, ψnF = charge_wavefunction(sysF, n)
+```
+
+Both functions also take a basis and a vector or a matrix of column states, `phase_wavefunction(basis, V)`, and a node of a larger tree, `phase_wavefunction(sys, node)`, when that node has one basis child.
+A node with several modes throws: multi-mode wavefunctions are not implemented yet.
+
+The values are on the basis's own grid, so nothing is interpolated or oversampled.
+
+| basis | phase | charge |
+|:------|:------|:-------|
+| `ChargeBasis(ncut)`, `N = 2ncut + 1` | `ψ(φ_j) = (1/√2π) Σ_n c_n e^{inφ_j}` on `φ_j = -π + 2πj/N`, the grid of `PeriodicGrid(N)` | `c_n` |
+| `PeriodicGrid(N)`, `Δ = 2π/N` | `v_j/√Δ` on its grid | `c_ℓ = (√2π/N) Σ_j ψ(φ_j) e^{-iℓφ_j}`, integer `ℓ` |
+| `PhaseGrid(a, b, N)`, spacing `Δ` | `v_j/√Δ` on its grid | `ψ̃(n_k) = (Δ/√2π) Σ_j ψ(φ_j) e^{-i n_k φ_j}`, `n_k = 2πk/(NΔ)` |
+| `FockBasis(N; phi_zpf)` | `Σ_m c_m h_m(φ; φ_zpf)` at the points passed | `Σ_m c_m (-i)^m h_m(n; n_zpf)`, `n_zpf = 1/(2φ_zpf)` |
+
+`h_m(x; s) = (2π s²)^{-1/4} (2^m m!)^{-1/2} H_m(x/(√2 s)) e^{-x²/(4s²)}` is the oscillator function, and `ℓ` and `k` run over `-(N-1)/2..(N-1)/2` for odd `N` and `-N/2..N/2-1` for even `N`.
+The grid sums are one fast Fourier transform (FFTW), with the grid's origin applied as a phase factor.
+The fluxonium above agrees between the grid and the Fock basis to `4e-10` in both representations.
+
+Limits:
+
+- The charge resolution of a `PhaseGrid` is fixed by its window: `Δn = 2π/(NΔ)` over `|n| ≤ π/Δ`, about `0.1` for the grid above. A finer charge grid needs a wider phase window.
+- A `PhaseGrid` holds both endpoints, so the transform's period is `NΔ`, one step more than `b - a`. This is harmless for a state that vanishes at the edges of the grid.
+- The charges of an even-`N` `PeriodicGrid` are not those of a `ChargeBasis`, which always has an odd dimension.
+- A grid basis discretizes `n` by finite differences, so the result is the state's representation in charge, not an eigenvector of the Hamiltonian written in a charge basis.
+
 ## Tests
 
 ```bash

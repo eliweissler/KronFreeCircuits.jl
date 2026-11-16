@@ -163,3 +163,66 @@ end
         @test phase_wavefunction(b, Id[:, 3], [0.3, 0.4])[2] == phase_wavefunction(b, Id, [0.3, 0.4])[2][:, 3]
     end
 end
+
+@testset "wavefunctions: solved nodes" begin
+    p = dc_fluxonium()
+    sys = Base.CoreLogging.with_logger(() -> materialize(p.root, p.spec, p.θ), Base.CoreLogging.NullLogger())
+    g = PhaseGrid(-10π, 10π, 601; order=8)
+
+    @testset "a node with one basis child uses that basis and the node's eigenvectors" begin
+        @test phase_wavefunction(sys) == phase_wavefunction(g, eigenvectors(sys))
+        @test phase_wavefunction(sys, p.root) == phase_wavefunction(g, eigenvectors(sys))
+        @test charge_wavefunction(sys) == charge_wavefunction(g, eigenvectors(sys))
+        @test charge_wavefunction(sys, p.root) == charge_wavefunction(g, eigenvectors(sys))
+        n, ψn = charge_wavefunction(sys)
+        @test size(ψn) == (601, 5)
+        @test all(j -> (n[2] - n[1]) * sum(abs2, view(ψn, :, j)) ≈ 1, 1:5)
+    end
+
+    @testset "fluxonium on a Fock basis agrees with the grid in both representations" begin
+        fock = Node([:varphi_1 => FockBasis(200; phi_zpf=(2 * 2.5 / 0.5)^0.25)]; solver=Dense(), keep=lowest(5))
+        sysF = materialize(fock, p.spec, p.θ)
+        # Measured 2026-11-15: energies agree to 7e-10 and the wavefunctions to 4e-10 in both representations.
+        @test energies(sysF) ≈ energies(sys) atol = 1e-8
+        φ, ψ = phase_wavefunction(sys)
+        n, ψn = charge_wavefunction(sys)
+        φF, ψF = phase_wavefunction(sysF, φ)
+        nF, ψnF = charge_wavefunction(sysF, fock, n)
+        @test φF == φ && nF == n
+        @test phase_wavefunction(sysF, fock, φ) == (φF, ψF)
+        for j in 1:5
+            o = (φ[2] - φ[1]) * dot(ψF[:, j], ψ[:, j])           # ψ ≈ ψF · o
+            @test abs(o) ≈ 1 atol = 1e-8
+            @test ψ[:, j] ≈ ψF[:, j] .* o atol = 1e-8
+            @test ψn[:, j] ≈ ψnF[:, j] .* o atol = 1e-8         # the same phase aligns both representations
+        end
+        @test_throws ArgumentError phase_wavefunction(sysF)      # a Fock basis has no grid
+    end
+
+    @testset "a leaf of a larger tree" begin
+        q = dc_two_transmons()
+        s2 = materialize(q.root, q.spec, q.θ)
+        φ, ψ = phase_wavefunction(s2, q.leaves[1])
+        @test (φ, ψ) == phase_wavefunction(ChargeBasis(30), eigenvectors(s2, q.leaves[1]))
+        @test size(ψ) == (61, 4)
+    end
+
+    @testset "multi-mode nodes are not implemented yet" begin
+        q = dc_two_transmons()
+        s2 = materialize(q.root, q.spec, q.θ)
+        for f in (phase_wavefunction, charge_wavefunction)
+            err = try f(s2); nothing catch e; e end
+            @test err isa ArgumentError
+            @test occursin("multi-mode", err.msg) && occursin("2 children", err.msg)
+        end
+        leaf = Node([:varphi_1 => PhaseGrid(-10π, 10π, 601; order=8)]; solver=Dense(), compute=8, keep=lowest(5))
+        parent = Node([leaf]; solver=Dense(), keep=lowest(3))
+        s1 = Base.CoreLogging.with_logger(() -> materialize(parent, p.spec, p.θ), Base.CoreLogging.NullLogger())
+        for f in (phase_wavefunction, charge_wavefunction)
+            err = try f(s1); nothing catch e; e end
+            @test err isa ArgumentError
+            @test occursin("multi-mode", err.msg) && occursin("not a basis", err.msg)
+        end
+        @test size(phase_wavefunction(s1, leaf)[2]) == (601, 5)
+    end
+end

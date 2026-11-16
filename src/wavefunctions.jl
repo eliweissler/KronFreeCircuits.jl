@@ -152,3 +152,21 @@ phase_wavefunction(::FockBasis, ::AbstractVecOrMat{<:Number}) =
     throw(ArgumentError("FockBasis has no grid: pass the points, e.g. phase_wavefunction(b, V, φ)"))
 charge_wavefunction(::FockBasis, ::AbstractVecOrMat{<:Number}) =
     throw(ArgumentError("FockBasis has no grid: pass the points, e.g. charge_wavefunction(b, V, n)"))
+
+# The basis of a node that has exactly one child, a basis; multi-mode nodes are a later item.
+function _single_basis(sys::System, node::Node, name::AbstractString)
+    mn = materialized(sys, node)
+    k = length(mn.children)
+    k == 1 || throw(ArgumentError("$name: the node has $k children; multi-mode wavefunctions are not implemented yet"))
+    mn.children[1] isa Basis ||
+        throw(ArgumentError("$name: the node's child is not a basis; multi-mode wavefunctions are not implemented yet " *
+                            "(pass the leaf node that holds the mode's basis)"))
+    return mn.children[1], mn.vectors
+end
+
+for f in (:phase_wavefunction, :charge_wavefunction)
+    @eval begin
+        $f(sys::System, node::Node, points::AbstractVector{<:Real}...) = $f(_single_basis(sys, node, $(string(f)))..., points...)
+        $f(sys::System, points::AbstractVector{<:Real}...) = $f(sys, sys.root.node, points...)
+    end
+end
