@@ -8,6 +8,7 @@ using ITensors: ITensors
 using LOBPCGEigensolver: LOBPCGEigensolver
 using Adapt: adapt
 using Random: Random, randn!
+using FFTW: FFTW
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
@@ -28,7 +29,8 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
        MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
        BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented, mean_field_augment,
-       suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks, NearDegenerateBlock, block_levels, spectrum
+       suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks, NearDegenerateBlock, block_levels, spectrum,
+       phase_wavefunction, charge_wavefunction
 
 include("parameters.jl")
 include("spec.jl")
@@ -59,6 +61,7 @@ include("derivblocks.jl")
 include("spectrum.jl")
 include("bo.jl")
 include("dressed.jl")
+include("wavefunctions.jl")
 include("pyinterface.jl")
 
 end # module
