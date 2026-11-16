@@ -130,6 +130,30 @@ the phase slips that set the dispersion live in the tails of the site eigenstate
 grows as z falls (E_J/E_C of a site rises). At z = 0.05 ours is 1.10 times theirs; their point sits at the bottom of a
 log axis, where the digitized value is least certain.
 
+**The half-step points (2026-11-16, `results/tight-20261115/*_ncut12.log`).** The other 11 z of their Fig. 3, at the
+same settings (D = 14, ncut 12, cutoff 1e-12, `ESHIFT=auto`; z ≥ 0.125 up to 1500 sweeps and a third level at n_g = ½),
+8 runs at a time on 8 cores, 0.5-8 h per run (z = 0.075, n_g = 0 took 344 sweeps):
+
+| z | ω01(0) | ω01(½) | Δω01 | Di Paolo | ours / theirs |
+|---|---|---|---|---|---|
+| 0.045 | 0.499091641 | 0.499091624 | 1.7e-8 | 8.87e-9 | 1.9 |
+| 0.055 | 0.428437472 | 0.428436115 | 1.357e-6 | 1.345e-6 | 1.01 |
+| 0.065 | 0.383357239 | 0.383318410 | 3.883e-5 | 3.88e-5 | 1.00 |
+| 0.075 | 0.352391071 | 0.351941578 | 4.495e-4 | 4.50e-4 | 1.00 |
+| 0.085 | 0.330810510 | 0.327920765 | 2.890e-3 | 2.89e-3 | 1.00 |
+| 0.095 | 0.318185850 | 0.305748225 | 1.2438e-2 | 1.244e-2 | 1.00 |
+| 0.105 | 0.318360201 | 0.278135195 | 4.0225e-2 | 4.025e-2 | 0.999 |
+| 0.115 | 0.339832995 | 0.234454321 | 0.10538 | 0.10544 | 0.999 |
+| 0.125 | 0.395620904 | 0.160315710 | 0.23531 | 0.23545 | 0.999 |
+| 0.135 | 0.502338960 | 0.038186190 | 0.46415 | 0.46446 | 0.999 |
+| 0.145 | 0.678658481 | 0.151274326 | 0.52738 | 0.52773 | 0.999 |
+
+GHz. Variances 1-8e-6, ⟨ψ0|ψ1⟩ ≤ 2e-10. The third level at n_g = ½ sits 9.0-9.2 GHz above the ground state at
+z = 0.125-0.145, so ω01(½) is the right pair there. z = 0.045 is at the floor: Δω01 is 17 Hz out of energies printed
+to 1 Hz, ncut 16 reproduces ncut 12 to every digit, and their point is the lowest on the log axis; read it as agreement
+in order of magnitude only. At z ≥ 0.105 ours sits 0.06-0.07 % below theirs, consistently; the integer-step row above rounds the same
+offset to 1.00.
+
 **DMRG on the GPU (2026-11-14, `results/gpu-compare-20261114/`).** z = 0.10, n_g = 0, 8 sweeps, bond cap 150, cutoff
 1e-12, idle machine: GPU (RTX A4500) 241 s, CPU 1 BLAS thread 923 s, CPU 8 BLAS threads 527 s, so 3.8× and 2.2×.
 E0 agrees to 1e-9 GHz; the excited state is unconverged after 8 sweeps (variance 0.02-0.18, bonds 144-150 in all
