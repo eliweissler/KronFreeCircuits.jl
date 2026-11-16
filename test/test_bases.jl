@@ -349,3 +349,16 @@ end
     @test isequal(displacement(400, big"1e400"), fill(complex(NaN, NaN), 400, 400))
     @test displacement(0, 5) isa Matrix{ComplexF64} && size(displacement(0, 1//2)) == (0, 0)
 end
+
+@testset "Bases: displacement of an argument whose square underflows" begin
+    # |α|² is zero in Float64 for |α| ≲ 1e-162, where GSL's U needs a positive argument: D(α) = 1 + α a† - α* a to first order.
+    for α in (1e-200, -1e-200, 1e-200im, 5e-324, 3e-170 - 4e-170im)
+        D = displacement(6, α)
+        @test all(isfinite, D)
+        @test all(isapprox(D[i, i], 1; rtol=1e-14) for i in 1:6)
+        @test D[2, 1] ≈ α rtol=1e-12
+        @test D[1, 2] ≈ -conj(α) rtol=1e-12
+        @test D[4, 3] ≈ sqrt(3) * α rtol=1e-12
+        @test D[3, 1] == 0 && D[1, 3] == 0                  # second order: below the range
+    end
+end
