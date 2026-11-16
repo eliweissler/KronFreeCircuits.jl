@@ -20,6 +20,10 @@ which gives every junction phase its own offset charge in the full form 4 (n −
   offsets, the cosines); site eigenbases from KronFreeCircuits or the raw charge basis; excited state by penalty.
   `KRYLOVDIM`, `EIGMAXITER` set the local eigensolver (ITensorMPS defaults 3 and 1); `DEVICE=gpu` moves the MPO and
   MPSs to the GPU (`adapt(CuArray, ·)`, Float64) and needs the `dmrg_gpu/` environment (the same plus CUDA, Adapt).
+  `ESHIFT` (default `auto`, since 2026-11-15) subtracts a constant inside the MPO, the product state's energy, so the
+  solver works near 0 instead of near −1352 GHz (the energy tolerance and the variance ⟨H²⟩ − E² are then meaningful;
+  printed energies are unshifted); `ESHIFT=0` is the earlier behaviour. `INIT=random SEED=<k>` starts the ground
+  state from a random MPS instead of the product of site ground states.
 
 ## Checks (2026-11-12)
 
@@ -64,8 +68,8 @@ columns are their dashed single-mode curves read from the figure's vector PDF (`
   ⟨T⟩ but not ε0; our Eq. 6 uses the unrenormalized model.
 - The single-mode ω01 lies between the n_g = 0 and ½ DMRG curves at large z, as in Di Paolo's top panel, and 15-40 MHz
   above both at small z (the array treated as a linear inductor).
-- z ≤ 0.07: the site basis D = 10 is too small there; with D = 14 (tightened reruns, below) z = 0.06 and 0.07 land on
-  Di Paolo's DMRG, and z = 0.05 is converged in D but 15 times theirs.
+- z ≤ 0.07: the sweep's site basis (D = 10, ncut 8) is too small there; with D = 14 and charge cutoff 12 (tightened
+  reruns, below) z = 0.05, 0.06 and 0.07 land on Di Paolo's DMRG.
 - z ≥ 0.13 at n_g = ½, rerun with a third level (`NLEV=3`, 1500-sweep cap; `results/rerun3-z*.log`, 2026-11-13): the
   sweep stopped at the 400-sweep cap for the excited state at z = 0.13 and the ground state at z = 0.14, and ω01(½)
   falls 0.202, 0.106, 0.047 GHz then rises to 0.277 at z = 0.15, which could have been the penalty method finding a
@@ -82,9 +86,9 @@ their single-mode Eq. 6 dashed curve, all read from the figure's PDF but ours):
 | z | 0.05 | 0.06 | 0.07 | 0.08 | 0.09 | 0.10 | 0.11 | 0.12 | 0.13 | 0.14 | 0.15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Di Paolo Δω01 (GHz) | 1.46e-7 | 8.3e-6 | 1.45e-4 | 1.21e-3 | 6.25e-3 | 2.307e-2 | 6.66e-2 | 0.160 | 0.335 | 0.534 | 0.522 |
-| ours / theirs | 15 | 0.98 | 1.00 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| ours / theirs | 1.10 | 1.00 | 1.00 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
 
-z ≤ 0.07 are the D = 14 (z = 0.06, 0.07) and D = 18 (z = 0.05) reruns below; the sweep's D = 10 gave 3.5, 2.6, 1.16. Di Paolo converge to an
+z ≤ 0.07 are the D = 14, charge cutoff 12 reruns below; the sweep's D = 10, ncut 8 gave 3.5, 2.6, 1.16. Di Paolo converge to an
 eigenvalue tolerance of 1e-12 with truncation errors of 1e-11 (superfluxo.tex l. 192). Their top panel's ω01 at Φ0/2
 for n_g = 0 and ½ matches ours to the fourth digit at z = 0.10-0.14 (n_g = ½: 0.2932, 0.2592, 0.2023, 0.1065, 0.0469
 theirs, 0.2932, 0.2591, 0.2022, 0.1064, 0.0469 ours), the dip at z = 0.14 included.
@@ -104,12 +108,27 @@ sweep's site basis (D = 10) Δω01 did not move; the site basis is what mattered
 n_g = 0 and ½, so the truncation does not cancel in Δω01; at z = 0.06 and 0.07 D = 14 brings us onto Di Paolo's DMRG
 (within the 2-3 digits of the digitized figure). The sweep's D = 10 is enough from z = 0.08 up (ratios 1.00-1.02).
 
-z = 0.05 is converged in D (D = 14 and 18 agree to 4e-9 GHz in Δω01 and 1e-7 in E0) but is 15 times Di Paolo's and of
-the opposite sign. It is also out of line with the trend: the ground-band splitting E0(0) − E0(½) is −7.1e-5, −5.0e-6,
-−1.0e-5 GHz at z = 0.07, 0.06, 0.05 (D = 14), growing again at the smallest z, where array phase slips should make it
-shrink exponentially. So something other than the site basis sets it: open are the charge cutoff of the site basis
-(ncut 8; the site transmon is about 1.3 charge states wide at z = 0.05, so unlikely), the DMRG's absolute precision at
-energies of 1352 GHz (variances 3-7e-8 GHz²), or the model (the z-independent black-sheep junction).
+z = 0.05 is converged in D (D = 14 and 18 agree to 4e-9 GHz in Δω01) but at ncut 8 it is 15 times Di Paolo's and of
+the opposite sign, and the ground-band splitting E0(0) − E0(½) (−7.1e-5, −5.0e-6, −1.0e-5 GHz at z = 0.07, 0.06, 0.05)
+grows again at the smallest z.
+
+**The charge cutoff (2026-11-15, `results/tight-20261115/`).** D = 14, cutoff 1e-12, `ESHIFT=auto`, otherwise as
+above (15 min to 1 h per run). At z = 0.05 the cutoff-1e-12 runs reproduce the cutoff-1e-14 ones (Δω01 −2.163e-6
+against −2.162e-6, with variances 1.1-1.5e-6 now measured, not at the roundoff floor of the unshifted MPO), and a
+random initial MPS (`INIT=random SEED=7`) reproduces every digit: not DMRG precision, not a local minimum. The site
+charge cutoff was it:
+
+| z | ncut 8 | ncut 12 | ncut 16 | Di Paolo | ours / theirs (ncut 12) |
+|---|---|---|---|---|---|
+| 0.05 | −2.163e-6 | 1.600e-7 | 1.600e-7 | 1.46e-7 | 1.10 |
+| 0.06 | 8.153e-6 | 8.349e-6 | — | 8.34e-6 | 1.00 |
+| 0.07 | 1.444e-4 | 1.445e-4 | — | 1.45e-4 | 1.00 |
+
+Δω01 in GHz (ncut 8 at z = 0.06, 0.07: the D = 14 runs above). E0(0) − E0(½) at z = 0.05 drops from −1.0e-5 to
+−3.5e-8 GHz, back in line with the trend. The site transmon's ground state is only about 1.3 charge states wide, but
+the phase slips that set the dispersion live in the tails of the site eigenstates, which ncut 8 truncates; the effect
+grows as z falls (E_J/E_C of a site rises). At z = 0.05 ours is 1.10 times theirs; their point sits at the bottom of a
+log axis, where the digitized value is least certain.
 
 **DMRG on the GPU (2026-11-14, `results/gpu-compare-20261114/`).** z = 0.10, n_g = 0, 8 sweeps, bond cap 150, cutoff
 1e-12, idle machine: GPU (RTX A4500) 241 s, CPU 1 BLAS thread 923 s, CPU 8 BLAS threads 527 s, so 3.8× and 2.2×.

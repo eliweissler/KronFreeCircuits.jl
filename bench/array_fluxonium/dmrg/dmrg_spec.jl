@@ -11,11 +11,11 @@
 #   julia --project=bench/array_fluxonium/dmrg -t 1 bench/array_fluxonium/dmrg/dmrg_spec.jl
 #
 # Env: SPEC (path), NG (comma list, default 0,0.5), PHIEXT (default π), NLEV (2 or 3), BASIS, D, NCUT, MAXDIM, SWEEPS, CUTOFF, ETOL,
-# WEIGHT, NOISESWEEPS, BLASTHREADS, OUTLEVEL, KRYLOVDIM and EIGMAXITER (the local eigensolver's Krylov dimension and
+# INIT (g | random), SEED, ESHIFT (auto | 0 | a number: a constant subtracted inside the MPO, added back to the printed energies), WEIGHT, NOISESWEEPS, BLASTHREADS, OUTLEVEL, KRYLOVDIM and EIGMAXITER (the local eigensolver's Krylov dimension and
 # restarts; ITensorMPS' defaults 3 and 1), DEVICE (cpu, or gpu: the MPO and MPS on the GPU through ITensors' CUDA
 # extension, Float64 kept; needs the environment ../dmrg_gpu, which adds CUDA and Adapt).
 
-using ITensors, ITensorMPS, KronFreeCircuits, LinearAlgebra, Printf
+using ITensors, ITensorMPS, KronFreeCircuits, LinearAlgebra, Printf, Random
 BLAS.set_num_threads(parse(Int, get(ENV, "BLASTHREADS", "1")))
 const OUTLEVEL = Ref(parse(Int, get(ENV, "OUTLEVEL", "0")))
 const DEVICE = get(ENV, "DEVICE", "cpu")
@@ -91,20 +91,36 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
                       eigen_site(ncut, D, EC[i, i], w[i], site_cos[i])
     end
     sites = [Index(size(SITEMATS[i].n, 1), "Junc,Site,n=$i") for i in 1:N]
-    os = OpSum()
-    for i in 1:N
-        os += "H0", i
-    end
-    for i in 1:N, j in i+1:N
-        if abs(EC[i, j]) > 0
-            os += (8EC[i, j], "N", i, "N", j)
+    function hamiltonian()
+        os = OpSum()
+        for i in 1:N
+            os += "H0", i
         end
+        for i in 1:N, j in i+1:N
+            if abs(EC[i, j]) > 0
+                os += (8EC[i, j], "N", i, "N", j)
+            end
+        end
+        # −(E_Jb/2)(e^{i o} Π U^{ω} + h.c.), e^{i o} = ±1
+        c = -bs.E / 2 * bs.sign
+        os += (c, Iterators.flatten((bs.omega[i] == 1 ? "U" : "Ud", i) for i in 1:N)...)
+        os += (c, Iterators.flatten((bs.omega[i] == 1 ? "Ud" : "U", i) for i in 1:N)...)
+        return todevice(MPO(os, sites))
     end
-    # −(E_Jb/2)(e^{i o} Π U^{ω} + h.c.), e^{i o} = ±1
-    c = -bs.E / 2 * bs.sign
-    os += (c, Iterators.flatten((bs.omega[i] == 1 ? "U" : "Ud", i) for i in 1:N)...)
-    os += (c, Iterators.flatten((bs.omega[i] == 1 ? "Ud" : "U", i) for i in 1:N)...)
-    t0 = time(); H = todevice(MPO(os, sites)); tmpo = time() - t0
+    t0 = time(); H = hamiltonian(); tmpo = time() - t0
+    # Energy shift (ESHIFT, default "auto" = the MPO energy of the product state "g"; "0" = none, as in runs before
+    # 2026-11-15): −ESHIFT/N on every site's h0, so the MPO's energies sit near 0 instead of near −1352 GHz. The physics
+    # is unchanged; ETOL then acts on a number near 0 (at −1352 GHz 1e-13 is half an ulp) and the variance
+    # ⟨H²⟩ − E² no longer cancels two numbers of size 1.8e6 (a roundoff floor of about 1e-8 GHz²).
+    es = get(ENV, "ESHIFT", "auto")
+    shift = es == "auto" ? real(inner(todevice(MPS(sites, fill("g", N)))', H, todevice(MPS(sites, fill("g", N))))) : parse(Float64, es)
+    if shift != 0
+        for i in 1:N
+            m = SITEMATS[i]
+            SITEMATS[i] = (; m..., h0=m.h0 - shift / N * I)
+        end
+        t0 = time(); H = hamiltonian(); tmpo += time() - t0
+    end
 
     sw = Sweeps(sweeps)
     setmaxdim!(sw, maxdim...)
@@ -115,7 +131,13 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
     obs0 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
     obs1 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
     t0 = time()
-    E0, ψ0 = dmrg(H, todevice(MPS(sites, fill("g", N))), sw; outputlevel=OUTLEVEL[], observer=obs0, KRYLOV...)
+    # initial ground state (INIT): "g" = the product of site ground states (default), "random" = random_mps(linkdims 10)
+    # seeded by SEED (default 1); the excited state always starts random
+    init = get(ENV, "INIT", "g")
+    init in ("g", "random") || error("INIT: g or random")
+    Random.seed!(parse(Int, get(ENV, "SEED", "1")))
+    ψinit = init == "g" ? MPS(sites, fill("g", N)) : random_mps(sites; linkdims=10)
+    E0, ψ0 = dmrg(H, todevice(ψinit), sw; outputlevel=OUTLEVEL[], observer=obs0, KRYLOV...)
     E1, ψ1 = dmrg(H, [ψ0], todevice(random_mps(sites; linkdims=10)), sw; weight, outputlevel=OUTLEVEL[], observer=obs1, KRYLOV...)
     E2 = NaN; var2 = NaN; ov2 = NaN; nsw2 = 0
     if parse(Int, get(ENV, "NLEV", "2")) >= 3          # a third level, penalized against both lower states: a missed
@@ -124,18 +146,18 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
         var2 = inner(H, ψ2, H, ψ2) - E2^2
         ov2 = max(abs(inner(ψ0, ψ2)), abs(inner(ψ1, ψ2)))
         nsw2 = length(ITensorMPS.energies(obs2))
-        E2 += const_
+        E2 += const_ + shift
     end
     tdmrg = time() - t0
     var0 = inner(H, ψ0, H, ψ0) - E0^2
     var1 = inner(H, ψ1, H, ψ1) - E1^2
-    E0 += const_; E1 += const_
+    E0 += const_ + shift; E1 += const_ + shift
     isnan(E2) || @printf("   third level: E2 = %.9f ω02 = %.9f ω12 = %.9f  var %.1e  max overlap with ψ0, ψ1 %.1e  sweeps %d\n",
                          E2, E2 - E0, E2 - E1, var2, ov2, nsw2)
-    @printf("DMRG %s N=%d%s θ=%s: E0 = %.9f E1 = %.9f ω01 = %.9f  maxlink %d/%d  MPO bond %d  ⟨ψ0|ψ1⟩ = %.1e  var %.1e/%.1e  sweeps %d/%d  (MPO %.1f s, DMRG %.1f s)\n",
+    @printf("DMRG %s N=%d%s θ=%s: E0 = %.9f E1 = %.9f ω01 = %.9f  maxlink %d/%d  MPO bond %d  ⟨ψ0|ψ1⟩ = %.1e  var %.1e/%.1e  sweeps %d/%d  shift %.6f  (MPO %.1f s, DMRG %.1f s)\n",
             basis, N, basis == "eigen" ? " D=$D" : " ncut=$ncut", θ, E0, E1, E1 - E0, maxlinkdim(ψ0), maxlinkdim(ψ1),
             maxlinkdim(H), abs(inner(ψ0, ψ1)), var0, var1, length(ITensorMPS.energies(obs0)), length(ITensorMPS.energies(obs1)),
-            tmpo, tdmrg)
+            shift, tmpo, tdmrg)
     flush(stdout)
     return E0, E1
 end
