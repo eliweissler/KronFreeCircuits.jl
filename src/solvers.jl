@@ -100,7 +100,7 @@ function lanczos_solve(s::Lanczos, H::KronFreeOperator, m::Int)
     p = sortperm(E)
     V = Matrix{eltype(H)}(undef, n, m)
     for (j, i) in enumerate(p)
-        copyto!(view(V, :, j), vecs[i])                              # host matrix from either storage
+        copyto!(view(V, :, j), Array(vecs[i]))                       # host matrix from either storage (a device vector comes over whole)
     end
     return Vector{Float64}(E[p]), V, info
 end
