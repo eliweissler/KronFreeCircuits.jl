@@ -1,0 +1,244 @@
+{
+  "format": "kronfree-spec",
+  "version": 1,
+  "units": "GHz",
+  "parameters": [
+    "n_g1",
+    "n_g4",
+    "varphi_ext1",
+    "varphi_ext2"
+  ],
+  "modes": [
+    {
+      "name": "theta1",
+      "type": "c"
+    },
+    {
+      "name": "phi1",
+      "type": "e"
+    },
+    {
+      "name": "zeta1",
+      "type": "h"
+    },
+    {
+      "name": "theta2",
+      "type": "c"
+    },
+    {
+      "name": "phi2",
+      "type": "e"
+    },
+    {
+      "name": "zeta2",
+      "type": "h"
+    }
+  ],
+  "E_C": [
+    [
+      "71107473225171022500000000000000 // 807441139754946217008683899791281",
+      "0",
+      "0",
+      "3125000000000000000000000000000 // 807441139754946217008683899791281",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "2500000000000000 // 4692989290068409",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "500000000000000 // 5835345405767941",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "3125000000000000000000000000000 // 807441139754946217008683899791281",
+      "0",
+      "0",
+      "71107473225171022500000000000000 // 807441139754946217008683899791281",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "2500000000000000 // 4692989290068409",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "500000000000000 // 5835345405767941"
+    ]
+  ],
+  "E_L": [
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "377 // 500",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "377 // 500",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "377 // 500",
+      "0"
+    ],
+    [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "377 // 500"
+    ]
+  ],
+  "flux_linear": [
+    "0",
+    "0",
+    "0",
+    "0",
+    "0",
+    "0"
+  ],
+  "n_g": [
+    "n_g1",
+    "0",
+    "0",
+    "n_g4",
+    "0",
+    "0"
+  ],
+  "cosines": [
+    {
+      "energy": "6013 // 1000",
+      "omega": [
+        -1,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext1 / 2"
+    },
+    {
+      "energy": "6013 // 1000",
+      "omega": [
+        1,
+        -1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "offset": "-varphi_ext1 / 2"
+    },
+    {
+      "energy": "1353 // 250",
+      "omega": [
+        0,
+        0,
+        0,
+        -1,
+        -1,
+        0
+      ],
+      "offset": "-varphi_ext2 / 2"
+    },
+    {
+      "energy": "1353 // 250",
+      "omega": [
+        0,
+        0,
+        0,
+        1,
+        -1,
+        0
+      ],
+      "offset": "-varphi_ext2 / 2"
+    }
+  ],
+  "constant": "0",
+  "_generator": {
+    "package": "circuit-quantization",
+    "version": "0.2.0",
+    "branches": [
+      "C1a",
+      "C1b",
+      "C2a",
+      "C2b",
+      "Cc1_1",
+      "Cc1_4",
+      "Cc1_2",
+      "Cc1_3",
+      "Cc2_5",
+      "Cc2_8",
+      "Cc2_6",
+      "Cc2_7",
+      "Cg1",
+      "Cg2",
+      "Cg3",
+      "Cg4",
+      "Cg5",
+      "Cg6",
+      "Cg7",
+      "Cg8",
+      "J1a",
+      "J1b",
+      "J2a",
+      "J2b",
+      "L1a",
+      "L1b",
+      "L2a",
+      "L2b"
+    ],
+    "script": "bench/coupled_zero_pi/quantize.py /home/eweissler/src/two_qubit_gate_for_zero_pi_qubit/data/Two_qubit_data_Sorted_Truc/params_truc_default.yaml"
+  },
+  "_comment": [
+    "Two capacitively coupled zero-pis, the circuit and Ztransform_2zeropi of the two-qubit gate study's params_truc_default.yaml.",
+    "Modes theta1, phi1, zeta1, theta2, phi2, zeta2 are the pipeline's columns 1, 3, 4, 5, 7, 8; columns 2, 6, 9, 10 are free.",
+    "Ring fluxes varphi_ext1, varphi_ext2 on the junctions (test/fixtures/generate_specs.py's gauge)."
+  ]
+}

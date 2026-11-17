@@ -1,0 +1,13 @@
+range warnings: 0
+materialize 1.8928 ± 0.1334 s, first derivatives alone 0.7320 ± 0.2139 s, derivatives (first and second, 5 params, 10 mixed pairs) 2.4863 ± 0.2249 s (10 trials)
+derivatives trials (ms): 2175.5 2494.1 2363.3 2241.4 2781.2 2197.2 2656.8 2689.9 2636.4 2627.3
+materialize trials (ms): 1771.7 1799.9 1981.1 1735.5 1927.0 2009.6 2007.3 1822.8 2120.5 1752.2
+first_derivatives trials (ms): 524.6 717.9 1045.9 531.1 696.8 1029.7 973.0 523.8 740.7 536.1
+omega01      = +6.781063824e-01   J: +2.8480e-05 +1.7406e+00 +5.7591e-02 +8.0493e+00 -1.0123e-11
+alpha        = -5.504551888e-01   J: -1.4385e-02 -2.6448e+00 -6.3941e-02 -7.4529e+00 +3.0967e-11
+|n1_01|^2    = +3.879415826e-02   J: -3.3309e-03 -1.7247e-02 -4.8086e-02 +4.2447e-01 -3.4682e-12
+|n2_01|^2    = +2.825557149e-04   J: -2.4282e-05 -1.9147e-03 +1.9456e-04 +2.9639e-03 -2.0978e-14
+|phi1_01|^2  = +6.019231314e-01   J: -5.1734e-02 -3.4374e+00 +2.2828e-02 -7.7097e+00 -3.6460e-11
+|phi2_01|^2  = +2.826714412e+00   J: -2.4313e-01 -3.1645e+01 +1.3095e+00 -3.7313e+01 -1.1030e-10
+Jacobian vs central differences: max deviation 1.2e-08 of each row's largest entry
+Hessian vs central differences of the Jacobian: max deviation 5.8e-06 of each Hessian's largest entry

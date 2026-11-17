@@ -1,0 +1,6 @@
+threads: 8; GPU: NVIDIA RTX A4500
+Dense (CPU)     materialize  1.563 ± 0.057 s   Jacobian  0.103 ± 0.003 s   Hessian  0.456 ± 0.075 s   max rel. diff vs Dense 0.0e+00
+Lanczos (CPU)   materialize  0.235 ± 0.066 s   Jacobian  0.132 ± 0.051 s   Hessian  0.531 ± 0.093 s   max rel. diff vs Dense 1.2e-11
+Lanczos (GPU)   materialize  0.671 ± 0.073 s   Jacobian  0.301 ± 0.057 s   Hessian  1.184 ± 0.099 s   max rel. diff vs Dense 8.5e-12
+LOBPCG (CPU)    materialize  0.280 ± 0.078 s   Jacobian  0.149 ± 0.077 s   Hessian  0.564 ± 0.147 s   max rel. diff vs Dense 4.7e-10
+LOBPCG (GPU)    materialize  0.916 ± 0.166 s   Jacobian  0.316 ± 0.112 s   Hessian  1.181 ± 0.131 s   max rel. diff vs Dense 4.7e-10

@@ -1,0 +1,8 @@
+/home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_fluxonium/sq_grad.py:81: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /home/task_179331722330938/croot/libtorch_1793317299911/work/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  return float(loop.internal_value) / 0.1          # internal per Phi_0
+/home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/functions.py:407: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /home/task_179333869444034/croot/libtorch_1793338741864/work/aten/src/ATen/Context.cpp:916.)
+  coo_tensor = torch.sparse_coo_tensor(
+one solve: 0.0229 ± 0.0010 s (10 trials)
+central-difference Jacobian: 0.1925 ± 0.0073 s (10 trials)
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_fluxonium/results/sqcircuit_quiet.json

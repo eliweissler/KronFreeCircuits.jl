@@ -528,6 +528,7 @@ end
 # The array storage a solver's block lives on.
 storage(::Solver) = Array
 storage(s::LOBPCG) = s.on
+storage(s::Lanczos) = s.on
 storage(::ShiftInvert) = Array
 storage(s::ChebyshevFilter) = s.on
 storage(a::Auto) = a.on
@@ -675,11 +676,6 @@ function _solve_stats(s::LOBPCG, H, m, prev, dims)
     X0 = _initial_block(prev, dims, m, eltype(H))
     E, V, res = lobpcg_solve(s, H, m; X0)
     return E, V, (; iterations=size(res.residual_history, 2) - 1, n_matvec=res.n_matvec, warm=X0 !== nothing)
-end
-# Lanczos: `iterations` counts KrylovKit's restarts, `n_matvec` its operator applications (single vectors).
-function _solve_stats(s::Lanczos, H, m, prev, dims)
-    E, V, info = lanczos_solve(s, H, m)
-    return E, V, (; iterations=info.numiter, n_matvec=info.numops, warm=false)
 end
 
 # Per-node records of `node_timings`: `nothing` outside it (no cost), else the vector the nodes are pushed to.

@@ -15,14 +15,12 @@
 #   HENSEL3_RUNGS   "kM,kM2;kM,kM2;..." of the four-level tree (default 240,240;480,480;480,960)
 #   HENSEL3_K       "k1j,k1f,k2,kf" (default 40,20,60,4)
 #   HENSEL_TOL      LOBPCG tolerance, GHz (default 1e-6)
+#   HENSEL3_QGRID   qubit grid "a,N": ±aπ with N points (default 5,301)
+#   HENSEL3_CGRID   coupler grid "a,N": ±aπ with N points (default 4,241)
 #   HENSEL3_STAGE   ladder (default: the four-level tree) or flat (the flat reference, trees.jl `flat_root`)
 #   HENSEL3_FLAT    "kq,kc,kf;..." rungs of the flat reference (qubit-pair, coupler-pair kept states, loose Fock levels;
 #                   default 16,32,4;24,48,4)
 #   HENSEL3_GUARD   LOBPCG guard columns at the flat root (default 4; 0 saves memory)
-#   HENSEL3_SOLVER  the flat root's solver: lobpcg (default) or lanczos (KrylovKit, single vector; far less memory)
-#   HENSEL3_KRYLOVDIM  the Lanczos Krylov dimension (default 0: 2·8 + 10 = 26)
-#   HENSEL3_QGRID   qubit grid half-width in units of π, at spacing π/30 (default 5: ±5π, 301 points)
-#   HENSEL3_CGRID   coupler grid half-width in units of π, at spacing π/30 (default 4: ±4π, 241 points)
 #   HENSEL3_DRYRUN  1: print each flat rung's dimension and estimated memory, solve nothing
 
 include(joinpath(@__DIR__, "..", "common.jl"))
@@ -53,17 +51,17 @@ if STAGE == "flat"
              [Tuple(parse.(Int, split(r, ","))) for r in split(get(ENV, "HENSEL3_FLAT", "16,32,4;24,48,4"), ";")]
     guard = parse(Int, get(ENV, "HENSEL3_GUARD", "4"))
     for (kq, kc, kf) in frungs
-        @printf("flat rung kq %d kc %d kf %d: dimension %.3e, estimated eigensolver memory %.1f GB (%s, guard %d)\n", kq, kc, kf,
-                Float64(flat_dim(kq, kc, kf)), Float64(flat_bytes(kq, kc, kf; compute=NLEVELS, guard)) / 1e9, FLAT_SOLVER, guard)
+        @printf("flat rung kq %d kc %d kf %d: dimension %.3e, estimated eigensolver memory %.1f GB (guard %d)\n", kq, kc, kf,
+                Float64(flat_dim(kq, kc, kf)), Float64(flat_bytes(kq, kc, kf; compute=NLEVELS, guard)) / 1e9, guard)
     end
     flush(stdout)
     get(ENV, "HENSEL3_DRYRUN", "0") == "1" && exit(0)
     flat = Any[]
     for (kq, kc, kf) in frungs
         root = flat_root(B, PARTNER, LOOSE; kq, kc, kf, compute=NLEVELS, guard, smoke=SMOKE)
-        run = sweep!(REC, "flat $FRAME kq $kq kc $kc kf $kf" * (FLAT_SOLVER == "lobpcg" ? "" : " $FLAT_SOLVER"), root, SPEC, [0.0], θ_work;
-                     settings=Dict("tree" => "flat", "frame" => FRAME, "qgrid_half_pi" => QGRID_HALF, "cgrid_half_pi" => CGRID_HALF, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard,
-                                   "solver" => FLAT_SOLVER, "krylovdim" => KRYLOVDIM, "dim" => string(flat_dim(kq, kc, kf))))
+        run = sweep!(REC, "flat $FRAME kq $kq kc $kc kf $kf", root, SPEC, [0.0], θ_work;
+                     settings=Dict("tree" => "flat", "frame" => FRAME, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard,
+                                   "dim" => string(flat_dim(kq, kc, kf))))
         p = run["points"][end]
         if haskey(p, "transitions")
             tr = p["transitions"]
@@ -86,7 +84,7 @@ ladder = Any[]
 for (kM, kM2) in rungs
     root = fourlevel_root(B, PARTNER, LOOSE; k1j, k1f, k2, kM, kM2, kf, compute=NLEVELS, smoke=SMOKE)
     run = sweep!(REC, "fourlevel $FRAME kM $kM kM2 $kM2", root, SPEC, [0.0], θ_work;
-                 settings=Dict("tree" => "four-level", "frame" => FRAME, "qgrid_half_pi" => QGRID_HALF, "cgrid_half_pi" => CGRID_HALF, "k1j" => k1j, "k1f" => k1f, "k2" => k2,
+                 settings=Dict("tree" => "four-level", "frame" => FRAME, "k1j" => k1j, "k1f" => k1f, "k2" => k2,
                                "kM" => kM, "kM2" => kM2, "kf" => kf))
     p = run["points"][end]
     if haskey(p, "transitions")

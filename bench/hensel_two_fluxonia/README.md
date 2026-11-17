@@ -115,3 +115,11 @@ the flat million-state reference (8.0 vs 36.7 s) and the paper's 7.5 M space.
   reach the low levels.
 - The paper-space GPU run keeps six columns and no guard (memory), as in the 2026-11-06 study; the host CPU solve of
   that space (24 to 43 min per point on 8 cores, 2026-11-06) was not repeated.
+
+## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+
+Ladder per point (kM 120 / kM 240 / largest rung): H200 0.53 / 0.64 / 1.94 s, A100 0.83 / 1.00 / 4.09 s, A4500
+2.56 / 3.38 / 17.5 s; same rung changes everywhere. scqubits on the tree with torch-cuda, six points: H200 139 s
+(kM 120) and 284 s (kM 240), A100 786 s and 985 s (the CPU pair nodes and the scipy fallback dominate).
+Grid: the default ±3π/181 grid warns on states 11-24 of q1, q2, and ±5π/301 still warns on the k1 60 rungs (states
+47-60, edge 0.0099); ±7π/421 (`HENSEL_GRID=7,421`) has no warnings on any rung and the same rung changes.

@@ -1,0 +1,15 @@
+{
+ "truc_total": 1000,
+ "runs": [
+  {
+   "build": 1080.9612426757812,
+   "qubit1": 0.6582481861114502,
+   "root": 2349.70831656456,
+   "total": 3431.3278074264526,
+   "levels": 1000,
+   "worst_dev_vs_reference": 4.1735503941708885e-12
+  }
+ ],
+ "cpu_count": 16,
+ "env": "/home/eweissler/anaconda3/envs/qutip4/bin/python"
+}

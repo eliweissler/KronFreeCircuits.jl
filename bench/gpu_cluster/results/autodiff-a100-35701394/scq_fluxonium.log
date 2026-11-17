@@ -1,0 +1,7 @@
+scqubits 4.3.1; fluxonium; solver torch-cuda; H = 4*EC11*Q1**2 - EJ1*cos(θ1) + EL11*θ1**2/2
+UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/Context.cpp:916.)
+ /projects/elwe6267/src/KronFreeCircuits.jl/bench/scqubits_solve/scq_solve.py: 106levels (GHz, from E0): [0.         1.06815985 1.42257751 3.91302695 4.03753352 5.07341612]
+omega01 1.068159851 (KronFree 1.068159851, diff -2.4e-13); alpha -0.713742195 (KronFree -0.713742195, diff 6.3e-13)
+build circuit + diagonalize: 1.4181 ± 0.0014 s (10 trials after 3 warm-ups; 1418 1418 1415 1417 1419 1418 1418 1421 1418 1418 ms)
+set parameters + diagonalize: 1.6636 ± 0.1954 s (10 trials after 3 warm-ups; 1425 1785 1451 1784 1501 1871 1504 1872 1540 1905 ms)
+wrote /projects/elwe6267/kronfree-bench-gpu/results/autodiff-a100-35701394/scqubits_fluxonium_torch-cuda.json

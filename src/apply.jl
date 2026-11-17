@@ -318,44 +318,12 @@ function _apply_dense!(dst::AbstractArray, data::AbstractMatrix, src::AbstractAr
         s = _contraction_operand(src, work)
         mul!(ITensors.itensor(dst, (rest..., ik′)), ITensors.itensor(s, (rest..., ik)), A, one(T), zero(T))
     else
-        # (left, d, right) -> (d, left, right), contract, and back
-        GC.@preserve dst src work begin
-            d_, s_, w_ = length(dst) < _THREADED_MIN ? (nothing, nothing, nothing) :
-                         (_host_alias(dst), _host_alias(src), _host_alias(work))
-            if d_ === nothing || s_ === nothing || w_ === nothing
-                permutedims!(reshape(dst, d, left, right), reshape(src, left, d, right), (2, 1, 3))
-                mul!(ITensors.itensor(work, (ik′, rest...)), A, ITensors.itensor(dst, (ik, rest...)), one(T), zero(T))
-                permutedims!(reshape(dst, left, d, right), reshape(work, d, left, right), (2, 1, 3))
-            else
-                blk = rest[end]
-                ITensors.itensor(d_, (ik, rest...)) .= ITensors.itensor(s_, (H.inds[1:k-1]..., ik, H.inds[k+1:end]..., blk))
-                mul!(ITensors.itensor(w_, (ik′, rest...)), A, ITensors.itensor(d_, (ik, rest...)), one(T), zero(T))
-                ITensors.itensor(d_, (H.inds[1:k-1]..., ik′, H.inds[k+1:end]..., blk)) .= ITensors.itensor(w_, (ik′, rest...))
-            end
-        end
+        front = reshape(dst, d, left, right)
+        permutedims!(front, reshape(src, left, d, right), (2, 1, 3))
+        mul!(ITensors.itensor(work, (ik′, rest...)), A, ITensors.itensor(front, (ik, rest...)), one(T), zero(T))
+        permutedims!(reshape(dst, left, d, right), reshape(work, d, left, right), (2, 1, 3))
     end
     return dst
-end
-
-# Below this many entries the permutes and the accumulation run as serial Base `permutedims!` and broadcasts (which
-# allocate nothing); above it, as ITensor assignments, which NDTensors runs through Strided on Julia's threads (Base's
-# forms run on one thread: 0.33 s a permute on a 2e8-entry state, most of a large root's apply). The ITensor forms
-# allocate a few hundred bytes per thread in task metadata.
-const _THREADED_MIN = 1 << 16
-
-# `A` as a plain `Array` sharing its memory, or `nothing`. NDTensors permutes and broadcasts in place, threaded
-# (Strided), only between `Array`s: a view or reshaped view is converted to a common storage type first, which copies
-# the destination, so the result would land in a temporary. Contiguous host views (the active-column buffers and
-# the solver's block views) are aliased with `unsafe_wrap`; the caller keeps the parent alive (`GC.@preserve`). Any
-# other storage (a device array, a strided non-contiguous view) gets `nothing`, and the Base forms are used: on a
-# device those are parallel already.
-function _host_alias(A::AbstractArray)
-    A isa Array && return A
-    A isa StridedArray || return nothing
-    p = pointer(A)
-    p isa Ptr || return nothing
-    strides(A) == Base.size_to_strides(1, size(A)...) || return nothing
-    return unsafe_wrap(Array, p, size(A))
 end
 
 # The array a contraction in `_apply_dense!` reads in place of `src`: `src` itself, or a copy of it
@@ -378,15 +346,7 @@ function _accumulate_term!(Y::AbstractArray, term::_OperatorTerm, X::AbstractArr
         src = dst
         dst, other = other, dst
     end
-    GC.@preserve Y src begin
-        Y_, s_ = length(Y) < _THREADED_MIN ? (nothing, nothing) : (_host_alias(Y), _host_alias(src))
-        if Y_ === nothing || s_ === nothing
-            Y .+= term.coeff .* src
-        else
-            is = (H.inds..., _block_index(H, size(Y, ndims(Y))))
-            ITensors.itensor(Y_, is) .+= term.coeff .* ITensors.itensor(s_, is)
-        end
-    end
+    Y .+= term.coeff .* src
     return Y
 end
 

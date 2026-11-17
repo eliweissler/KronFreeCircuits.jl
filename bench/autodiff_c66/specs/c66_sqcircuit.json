@@ -1,0 +1,78 @@
+{
+ "format": "kronfree-spec",
+ "version": 1,
+ "units": "GHz",
+ "parameters": [
+  "E_C23",
+  "E_L13",
+  "E_L23",
+  "varphi_ext",
+  "E_J"
+ ],
+ "modes": [
+  {
+   "name": "varphi1",
+   "type": "h"
+  },
+  {
+   "name": "varphi2",
+   "type": "e"
+  }
+ ],
+ "E_C": [
+  [
+   "8 * E_C23 ./ (E_C23 + 32)",
+   "-2 * E_C23 ./ (E_C23 + 32)"
+  ],
+  [
+   "-2 * E_C23 ./ (E_C23 + 32)",
+   "(8 * E_C23 + 240) ./ (E_C23 + 32)"
+  ]
+ ],
+ "E_L": [
+  [
+   "4 * E_L13 + 4 * E_L23",
+   "2 * E_L13"
+  ],
+  [
+   "2 * E_L13",
+   "E_L13"
+  ]
+ ],
+ "flux_linear": [
+  "-2 * E_L23 .* varphi_ext",
+  "0"
+ ],
+ "n_g": [
+  "0",
+  "0"
+ ],
+ "cosines": [
+  {
+   "energy": "E_J",
+   "omega": [
+    0,
+    -1
+   ],
+   "offset": "0"
+  }
+ ],
+ "constant": "0",
+ "_generator": {
+  "package": "circuit-quantization",
+  "version": "0.2.0",
+  "branches": [
+   "C23",
+   "Cg1",
+   "Cg2",
+   "Cg3",
+   "J",
+   "L13",
+   "L23"
+  ],
+  "script": "bench/autodiff_c66/quantize.py (SQcircuit model)"
+ },
+ "_comment": [
+  "n3_g1_c66 with sircuitenum's explicit ground (E_CG = 20 GHz on every node) and E_CJ = 10 GHz; the appendix's coordinates; irrotational flux."
+ ]
+}
