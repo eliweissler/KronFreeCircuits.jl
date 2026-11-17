@@ -8,7 +8,7 @@ Cases (one directory each):
 | case | reference times | status |
 |---|---|---|
 | `hensel_two_fluxonia/` | Hensel et al., arXiv:2611.05627 Sec. IV (published); our flat solve of their space; scqubits on the same tree | done: 1 MHz in 0.84 s per point (8 CPU cores) |
-| `hensel_three_fluxonia/` | arXiv:2611.05627 Sec. V DMRG (published) | done: 1 MHz in 153 s per point (A4500); flat reference pending (needs the 2 TB server) |
+| `hensel_three_fluxonia/` | arXiv:2611.05627 Sec. V DMRG (published) | done: 1 MHz in 153 s per point (A4500), 225 s (CPU, 32 threads); flat reference converged to 10 kHz (2.8 h, 60 GB) |
 | `coupled_zero_pi/` | Eli's Python pipeline (arXiv:2609.16630, scqubits), same machine | done: 1000 levels in 80.9 s CPU, 42.9 s GPU, against 3303 s |
 | `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | done (idle machine, mean ± std of 10) |
 | `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | done (idle machine) |

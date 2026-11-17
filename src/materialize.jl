@@ -677,6 +677,11 @@ function _solve_stats(s::LOBPCG, H, m, prev, dims)
     E, V, res = lobpcg_solve(s, H, m; X0)
     return E, V, (; iterations=size(res.residual_history, 2) - 1, n_matvec=res.n_matvec, warm=X0 !== nothing)
 end
+# Lanczos: `iterations` counts KrylovKit's restarts, `n_matvec` its operator applications (single vectors).
+function _solve_stats(s::Lanczos, H, m, prev, dims)
+    E, V, info = lanczos_solve(s, H, m)
+    return E, V, (; iterations=info.numiter, n_matvec=info.numops, warm=false)
+end
 
 # Per-node records of `node_timings`: `nothing` outside it (no cost), else the vector the nodes are pushed to.
 const _NODE_LOG = Base.ScopedValues.ScopedValue{Union{Nothing,Vector{Any}}}(nothing)

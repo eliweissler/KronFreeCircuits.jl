@@ -1,0 +1,31 @@
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4, :q3, :f6, :c2, :f2, :f5]: kept state 3 has joint-peak amplitude 8.56304654901774e-5, ratio 0.3888321855107114 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4, :q3, :f6, :c2, :f2, :f5]: kept state 3 has joint-peak amplitude 8.563046549016117e-5, ratio 0.38883218551063764 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4, :q3, :f6, :c2, :f2, :f5]: kept state 3 has joint-peak amplitude 8.563046549006672e-5, ratio 0.388832185510384 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4, :q3, :f6, :c2, :f2, :f5]: kept state 3 has joint-peak amplitude 8.56304654894976e-5, ratio 0.38883218550749693 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+	Command being timed: "julia +1.13.1 --project=bench -t 32 --gcthreads=1 bench/hensel_three_fluxonia/run.jl"
+	User time (seconds): 168804.28
+	System time (seconds): 2461.62
+	Percent of CPU this job got: 4190%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:08:06
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 5878112
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 29
+	Minor (reclaiming a frame) page faults: 49952292
+	Voluntary context switches: 24229117
+	Involuntary context switches: 132679
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 496
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,25 @@
+case hensel_three_fluxonia: device cpu, threads 32, BLAS 32, commit 33d55761, smoke false, out bench/hensel_three_fluxonia/results/hal-flat-12-24-kf-lanczos-t32
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+flat rung kq 12 kc 24 kf 4: dimension 3.981e+06, estimated eigensolver memory 1.5 GB (lanczos, guard 4)
+flat rung kq 12 kc 24 kf 6: dimension 5.972e+06, estimated eigensolver memory 2.2 GB (lanczos, guard 4)
+flat rung kq 12 kc 24 kf 8: dimension 7.963e+06, estimated eigensolver memory 3.0 GB (lanczos, guard 4)
+flat rung kq 12 kc 24 kf 10: dimension 9.953e+06, estimated eigensolver memory 3.7 GB (lanczos, guard 4)
+flat rule kq 12 kc 24 kf 4 lanczos       p = 0.0    E1-E0 = 0.420811 GHz   602.12 s (first 602.1)  root 3981312, 34 it, 351 matvec
+   transitions (GHz) 0.42081 0.70381 0.81479 1.03555 1.21758 1.47425 1.76827
+   vs paper (MHz)    -1.19 -1.19 -1.21 -2.45 -2.42 -2.75 -2.73
+flat rule kq 12 kc 24 kf 6 lanczos       p = 0.0    E1-E0 = 0.420811 GHz   860.21 s (first 860.2)  root 5971968, 36 it, 372 matvec
+   transitions (GHz) 0.42081 0.70381 0.81479 1.03555 1.21758 1.47425 1.76827
+   vs paper (MHz)    -1.19 -1.19 -1.21 -2.45 -2.42 -2.75 -2.73
+flat rule kq 12 kc 24 kf 8 lanczos       p = 0.0    E1-E0 = 0.420811 GHz  1164.21 s (first 1164.2)  root 7962624, 41 it, 420 matvec
+   transitions (GHz) 0.42081 0.70381 0.81479 1.03555 1.21758 1.47425 1.76827
+   vs paper (MHz)    -1.19 -1.19 -1.21 -2.45 -2.42 -2.75 -2.73
+flat rule kq 12 kc 24 kf 10 lanczos      p = 0.0    E1-E0 = 0.420811 GHz  1440.02 s (first 1440.0)  root 9953280, 37 it, 397 matvec
+   transitions (GHz) 0.42081 0.70381 0.81479 1.03555 1.21758 1.47425 1.76827
+   vs paper (MHz)    -1.19 -1.19 -1.21 -2.45 -2.42 -2.75 -2.73
+ladder flat, rule frame: accurate rung flat rule kq 12 kc 24 kf 4 lanczos (change 5.68e-13 GHz < 1e-04), 602.12 s per point (check 860.21 s)
+   flat rule kq 12 kc 24 kf 4 lanczos       change to next 5.68e-13      602.12 s/pt
+   flat rule kq 12 kc 24 kf 6 lanczos       change to next 2.42e-13      860.21 s/pt
+   flat rule kq 12 kc 24 kf 8 lanczos       change to next 3.55e-13     1164.21 s/pt
+   flat rule kq 12 kc 24 kf 10 lanczos      change to next -            1440.02 s/pt
+results: bench/hensel_three_fluxonia/results/hal-flat-12-24-kf-lanczos-t32/results.json
+exit 0

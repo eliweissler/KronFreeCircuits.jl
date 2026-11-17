@@ -93,17 +93,42 @@ no range warning and moves every transition by at most 1.9e-13 GHz from the tabl
 | paper, exact HD | not run (estimate 66 h, 2.2 TB) |
 | this, four-level tree, rule frame, (480, 480): accurate at 1 MHz | 153 s per point, A4500 |
 | this, the check rung (480, 960) | 462 s per point, A4500 |
+| this, four-level tree, (480, 480), CPU (2× EPYC 7713, 32 threads) | 225 s per point |
+| this, flat reference converged to 10 kHz, (24, 48, 4), CPU | 2.8 h, 60 GB |
 
 Against the paper's solve that its table comes from (cap 128, 13 h), the tree's accurate rung is about 300× faster;
-against its cap-32 solve (81 min), about 32×. Different hardware (one GPU against a 16-core CPU node); the CPU timing of
-the tree is pending.
+against its cap-32 solve (81 min), about 32×. Different hardware (one GPU against a 16-core CPU node); on a CPU node the tree's accurate rung takes 225 s.
 
-## Pending
+## Flat reference (2026-11-10 to 14, hal: 2× AMD EPYC 7713, 2 TB; rule frame)
 
-- **Flat reference** (large-memory server, 2 TB, 128 cores): `HENSEL3_STAGE=flat` at two consecutive rungs (likely
-  kq, kc, kf = 32, 64, 4 and 40, 80, 4: 5.4e8 and 1.6e9 states, real arithmetic), after smoke runs that measure memory
-  and time per state on that machine.
-- **CPU timing** of the tree ladder.
+One root over the five junction–partner leaves and f5 (`HENSEL3_STAGE=flat`), KrylovKit Lanczos (tol 1e-6 GHz), 32
+threads, qubit grids ±5π and coupler grids ±4π (no range warnings). Raw records in `results/hal-flat-*/`; run with
+`HENSEL3_SOLVER=lanczos` on the threaded CPU apply (ITensors permutes in place of Base's serial `permutedims!`).
+
+| (kq, kc, kf) | dimension | wall | root matvecs × s | peak RSS | largest change from the previous rung |
+|---|---|---|---|---|---|
+| (16, 32, 4) | 1.7e7 | 32 min | 338 × 5.5 | 12 GB | – |
+| (24, 48, 4) | 1.3e8 | 2.8 h | 427 × 23 | 60 GB | 244 kHz |
+| (32, 64, 4) | 5.4e8 | 14.2 h | 433 × 118 | 260 GB | 2.8 kHz |
+| (32, 64, 6) | 8.1e8 | 20.6 h | 476 × 155 | 363 GB | < 1 Hz (kf only) |
+
+Converged transitions (GHz) at (32, 64): 0.420734, 0.703767, 0.814692, 1.035187, 1.217428, 1.474016, 1.767461; against
+the paper −1.27, −1.23, −1.31, −2.81, −2.57, −2.98, −3.54 MHz.
+
+- **Converged to 10 kHz** at (24, 48, 4), checked by (32, 64, 4), which moves no transition by more than 2.8 kHz. The
+  loose f5 at 4 levels is enough: 6 levels at (32, 64) change nothing to 1 Hz (and 4 to 10 levels at (12, 24) nothing to
+  1e-3 Hz). Wider grids (couplers ±2π → ±3π → ±4π, qubits ±3π → ±5π) moved nothing by 1e-3 kHz. (40, 80, 4), projected
+  at 44 h and 790 GB, was stopped before its first solve.
+- **The tree agrees:** the rule frame at (480, 960) is within 5.2 kHz of it, at (480, 480) within 21 kHz. So the 1.2 to
+  3.5 MHz offset from the paper is the paper's, most likely its four stiff modes kept at 4 Fock levels.
+- **Threads** (16, 32, 4, before the grids were widened): 16 / 32 / 64 / 128 threads take 6.5 / 5.3 / 5.0 / 5.5 s per
+  matvec; the apply is memory-bandwidth bound, so 32 was used. LOBPCG on the same rung: 627 matvecs, 47 min, 35 GB
+  (Lanczos 33 min, 8 GB).
+
+## CPU timing of the tree (2026-11-14, hal, 32 threads)
+
+Rule frame ladder, one repeat (`results/hal-ladder-t32/`), same levels as the GPU runs: (240, 240) 59 s, (480, 480)
+225 s, (480, 960) 574 s per point; 31 min wall, 7.5 GB peak.
 
 ## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
 

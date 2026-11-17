@@ -1,0 +1,29 @@
+┌ Warning: PhaseGrid on mode :c1 is too small: kept states [32] have edge support up to 1.0303009431635608e-6 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:904
+┌ Warning: PhaseGrid on mode :c2 is too small: kept states [24, 27, 30, 31] have edge support up to 2.6974898070216108e-6 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:904
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4, :q3, :f6, :c2, :f2, :f5]: kept state 3 has joint-peak amplitude 8.562460835672743e-5, ratio 0.38881488076820336 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+	Command being timed: "julia +1.13.1 --project=bench -t 16 --gcthreads=1 bench/hensel_three_fluxonia/run.jl"
+	User time (seconds): 54047.92
+	System time (seconds): 395.43
+	Percent of CPU this job got: 2136%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 42:28.56
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 8902264
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 12
+	Minor (reclaiming a frame) page faults: 37413824
+	Voluntary context switches: 2811220
+	Involuntary context switches: 47111
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 560
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

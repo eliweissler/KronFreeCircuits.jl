@@ -1,0 +1,7 @@
+case hensel_three_fluxonia: device cpu, threads 16, BLAS 16, commit 4d2f6932, smoke false, out bench/hensel_three_fluxonia/results/hal-flat-dryrun-guard0
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+flat rung kq 16 kc 32 kf 4: dimension 1.678e+07, estimated eigensolver memory 15.6 GB (guard 0)
+flat rung kq 24 kc 48 kf 4: dimension 1.274e+08, estimated eigensolver memory 118.2 GB (guard 0)
+flat rung kq 32 kc 64 kf 4: dimension 5.369e+08, estimated eigensolver memory 498.2 GB (guard 0)
+flat rung kq 40 kc 80 kf 4: dimension 1.638e+09, estimated eigensolver memory 1520.4 GB (guard 0)
+exit 0

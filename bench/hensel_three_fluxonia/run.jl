@@ -21,6 +21,8 @@
 #   HENSEL3_FLAT    "kq,kc,kf;..." rungs of the flat reference (qubit-pair, coupler-pair kept states, loose Fock levels;
 #                   default 16,32,4;24,48,4)
 #   HENSEL3_GUARD   LOBPCG guard columns at the flat root (default 4; 0 saves memory)
+#   HENSEL3_SOLVER  the flat root's solver: lobpcg (default) or lanczos (KrylovKit, single vector; far less memory)
+#   HENSEL3_KRYLOVDIM  the Lanczos Krylov dimension (default 0: 2·8 + 10 = 26)
 #   HENSEL3_DRYRUN  1: print each flat rung's dimension and estimated memory, solve nothing
 
 include(joinpath(@__DIR__, "..", "common.jl"))
@@ -51,16 +53,16 @@ if STAGE == "flat"
              [Tuple(parse.(Int, split(r, ","))) for r in split(get(ENV, "HENSEL3_FLAT", "16,32,4;24,48,4"), ";")]
     guard = parse(Int, get(ENV, "HENSEL3_GUARD", "4"))
     for (kq, kc, kf) in frungs
-        @printf("flat rung kq %d kc %d kf %d: dimension %.3e, estimated eigensolver memory %.1f GB (guard %d)\n", kq, kc, kf,
-                Float64(flat_dim(kq, kc, kf)), Float64(flat_bytes(kq, kc, kf; compute=NLEVELS, guard)) / 1e9, guard)
+        @printf("flat rung kq %d kc %d kf %d: dimension %.3e, estimated eigensolver memory %.1f GB (%s, guard %d)\n", kq, kc, kf,
+                Float64(flat_dim(kq, kc, kf)), Float64(flat_bytes(kq, kc, kf; compute=NLEVELS, guard)) / 1e9, FLAT_SOLVER, guard)
     end
     flush(stdout)
     get(ENV, "HENSEL3_DRYRUN", "0") == "1" && exit(0)
     flat = Any[]
     for (kq, kc, kf) in frungs
         root = flat_root(B, PARTNER, LOOSE; kq, kc, kf, compute=NLEVELS, guard, smoke=SMOKE)
-        run = sweep!(REC, "flat $FRAME kq $kq kc $kc kf $kf", root, SPEC, [0.0], θ_work;
-                     settings=Dict("tree" => "flat", "frame" => FRAME, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard,
+        run = sweep!(REC, "flat $FRAME kq $kq kc $kc kf $kf" * (FLAT_SOLVER == "lobpcg" ? "" : " $FLAT_SOLVER"), root, SPEC, [0.0], θ_work;
+                     settings=Dict("tree" => "flat", "frame" => FRAME, "kq" => kq, "kc" => kc, "kf" => kf, "guard" => guard, "solver" => FLAT_SOLVER, "krylovdim" => KRYLOVDIM,
                                    "dim" => string(flat_dim(kq, kc, kf))))
         p = run["points"][end]
         if haskey(p, "transitions")
