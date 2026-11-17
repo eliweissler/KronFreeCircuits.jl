@@ -160,6 +160,15 @@ E0 agrees to 1e-9 GHz; the excited state is unconverged after 8 sweeps (variance
 three), so ω01 differs by a few MHz. The production sweeps run 8 points at once on 8 cores, which beats one GPU in
 throughput, and their converged bonds (34-50) favour the GPU less than this test's 150.
 
+**DMRG on the GPU at production settings (2026-11-16, `results/gpu-compare-20261116/`).** z = 0.095, n_g = 0, D = 14,
+ncut 12, cutoff 1e-12, `ESHIFT=auto`, 13 sweeps fixed (what the production run needed), idle machine, run one after
+another: GPU (RTX A4500) 423 s, CPU 8 BLAS threads 1648 s, CPU 1 BLAS thread 2184 s, so 3.9× and 5.2×. All three
+agree with the production run to every printed digit (E0, E1, variances, bond 35). In the production sweep the same
+run took 5855 s with 8 runs sharing the 8 cores, i.e. one finished point per 732 s; one GPU at 423 s per point beats
+that in throughput too, unlike the z = 0.10 test above. The same point on Alpine (`bench/gpu_cluster/results/dmrg-*`): H200 202 s
+(node CPU, EPYC 9555, 8 BLAS threads 1147 s), A100 80 GB 320 s (EPYC 7502, 2842 s); every digit the same. cuBLAS FP64
+emulation (eager) on the A4500 was over 15× slower (3 sweeps: 97.5 s native, unfinished after 24 min).
+
 **Their single-mode model is renormalized.** Their dashed ω01 lies 25-27 MHz below our single-mode model's. Their
 effective model (superfluxo.tex l. 317-424, `eq: effective fluxonium model`) multiplies each array cosine by
 x_i = Π_n exp(−π v_ni² z_n / 2), the zero-point motion of the N − 1 internal array modes traced out. At C_0 = 0 the

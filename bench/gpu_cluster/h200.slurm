@@ -13,4 +13,4 @@
 #SBATCH --error=kfb-h200-%j.err
 # One case on one full H200: sbatch [--time=...] h200.slurm <case>   (results/<case>-h200-<jobid>/)
 set -uo pipefail
-exec bash "${SLURM_SUBMIT_DIR:?}/case.sh" "${1:?case: hensel2 hensel2_scq hensel3 zeropi autodiff}" h200
+exec bash "${SLURM_SUBMIT_DIR:?}/case.sh" "${1:?case: hensel2 hensel2_scq hensel3 zeropi autodiff dmrg}" h200

@@ -10,6 +10,11 @@ GPU timings of the first five suite cases (bench/README.md, branch bench-harness
   (1000 levels, LOBPCG root; leaves on the CPU, then on the GPU; 5 repeats), hensel2 (ladder, reference, paper's flat
   space), hensel2_scq (scqubits on the same tree, torch.lobpcg on the GPU, kM 120 and 240), hensel3 (the four-level
   ladder, rule frame).
+- DMRG cases (2026-11-16; need bench-harness 54755a4 or later for `specs/array_N40_z0.095.json` and `ESHIFT`):
+  `dmrg_setup` instantiates and precompiles `bench/array_fluxonium/dmrg` and `dmrg_gpu` (ITensors, CUDA); `dmrg` times
+  the N = 40 array fluxonium at z = 0.095, n_g = 0 at the production settings (D 14, ncut 12, cutoff 1e-12, shift), 13
+  sweeps fixed (1 at smoke size), on the GPU and then on the node's CPU with 8 BLAS threads. Desktop: A4500 423 s, i7
+  8 threads 1648 s, 1 thread 2184 s (`bench/array_fluxonium/README.md`). `sbatch smoke.slurm dmrg_setup dmrg` first.
 - `smoke.slurm [cases]`: smoke sizes on a 20 GB A100 slice (gpu-testing, 1 h).
 - `h200.slurm <case>`: full size on one H200 (gpu-normal).
 - `a100.slurm <case>`: full size on one 80 GB A100 (gpu-normal).
@@ -44,6 +49,7 @@ results of each case (i7-11700K, 8 cores; RTX A4500), from the case READMEs.
 | | first and second derivatives (5 params) | 1.41 ± 0.22 s | 2.49 ± 0.22 s | — | **0.53 ± 0.08 s** |
 | scqubits_solve, build + diagonalize (10 trials) | fluxonium, torch-cuda / default CPU | 0.64 ± 0.00 s | 1.42 ± 0.00 s | — | **0.17 ± 0.01 s** |
 | | c66, torch-cuda / default CPU | 3.5 ± 0.8 s | 7.1 ± 1.9 s | — | **0.99 ± 0.03 s** |
+| array_fluxonium DMRG, N = 40, z = 0.095 (13 sweeps) | GPU / node CPU, 8 BLAS threads | **202 s** / 1147 s | 320 s / 2842 s | 423 s | 1648 s (8 threads), 2184 s (1) |
 
 - Agreement: zero-pi's 1000 levels match the pipeline's reference to 1.26e-11 GHz on both GPUs; the Hensel ladders give
   the same rung-to-rung changes (1.70e-4, 4.65e-7, 3.44e-6 GHz) and E1 - E0 on every machine; three fluxonia
@@ -59,5 +65,10 @@ results of each case (i7-11700K, 8 cores; RTX A4500), from the case READMEs.
 - Edge warnings: none, except the default ±3π/181 grid in hensel2 (states 11-24 on q1, q2; both GPUs) and the ±5π/301
   grid on the A100 (the k1 60 rungs). The H200 job also ran the ladder on ±7π/421 (`hensel2_grid7.log`): no warnings,
   same rung changes. Ladder times in the table: H200 and A4500 on ±7π/421, A100 on ±5π/301 (`hensel2_grid5.log`).
+- array_fluxonium DMRG (2026-11-16, jobs 35781815 (H200) and 35781817 (A100); `results/dmrg-*`): ITensors with the MPS and MPO on
+  the GPU, production settings (D 14, ncut 12, cutoff 1e-12, shift), sweeps fixed. All five runs (two GPUs, two node
+  CPUs, the desktop) give the same E0, E1, variances and bonds to every printed digit. The GPU gain is modest (bond 35,
+  site dimension 14: small contractions); the H200 is 2.1× the A4500. Node CPUs: EPYC 9555 (H200) 1.4× the desktop i7,
+  EPYC 7502 (A100) 1.7× slower. FP64 emulation on the A4500 (cuBLAS eager) was over 15× slower for 3 sweeps (stopped).
 - First calls (compile included) are not in the table: e.g. zero-pi 52 s / 92 s (H200), the autodiff fluxonium step
   523 s of wall time on the A100.

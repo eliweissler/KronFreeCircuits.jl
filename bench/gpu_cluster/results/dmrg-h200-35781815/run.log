@@ -1,0 +1,16 @@
+case dmrg mode h200 job 35781815 host c3gpu-g5-u1 2026-11-16T11:58:55-07:00
+repo 54755a4 1 changed files
+GPU 0: NVIDIA H200 NVL (UUID: GPU-f0b41f40-5d94-5ea1-f3b0-db8d0c6512dc)
+NVIDIA H200 NVL, 595.112.07, 143771 MiB
+CPU(s):              128
+Model name:          AMD EPYC 9555 64-Core Processor
+==== dmrg_gpu  2026-11-16T11:58:56-07:00
+==== dmrg_gpu  exit 0  416 s
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 6.9 s, DMRG 202.1 s)
+==== dmrg_cpu8  2026-11-16T12:05:52-07:00
+==== dmrg_cpu8  exit 0  1186 s
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 5.9 s, DMRG 1146.7 s)
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 5.9 s, DMRG 1146.7 s)
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 6.9 s, DMRG 202.1 s)
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE dmrg h200 status 0 2026-11-16T12:25:38-07:00

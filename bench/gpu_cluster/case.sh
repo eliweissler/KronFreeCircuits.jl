@@ -64,6 +64,20 @@ case "$CASE" in
     step kf_c66 env KF_DEVICE=gpu KF_OUT="$OUT/kronfree_c66_gpu.json" "${J[@]}" "$REPO/bench/autodiff_c66/kronfree.jl"
     step scq_fluxonium env SCQ_SOLVER=torch-cuda SCQ_OUT="$OUT/scqubits_fluxonium_torch-cuda.json" "$PY" "$REPO/bench/scqubits_solve/scq_solve.py" fluxonium $n
     step scq_c66 env SCQ_SOLVER=torch-cuda SCQ_OUT="$OUT/scqubits_c66_torch-cuda.json" "$PY" "$REPO/bench/scqubits_solve/scq_solve.py" c66 $n ;;
+  dmrg_setup)  # instantiate and precompile the array-fluxonium DMRG environments (ITensors; CPU, and GPU with CUDA)
+    AF="$REPO/bench/array_fluxonium"
+    step dmrg_instantiate_cpu "$JULIA_BIN" +1.13.2 --startup-file=no --project="$AF/dmrg" -e 'using Pkg; Pkg.instantiate(); Pkg.precompile(); using ITensorMPS, KronFreeCircuits'
+    step dmrg_instantiate_gpu "$JULIA_BIN" +1.13.2 --startup-file=no --project="$AF/dmrg_gpu" -e 'using Pkg; Pkg.instantiate(); Pkg.precompile(); using ITensorMPS, CUDA, Adapt, KronFreeCircuits; CUDA.versioninfo()' ;;
+  dmrg)        # array fluxonium N = 40, z = 0.095, n_g = 0 at the production settings, 13 sweeps fixed (desktop 2026-11-16:
+               # A4500 423 s, i7 8 BLAS threads 1648 s, 1 thread 2184 s); GPU, then this node's CPU with 8 BLAS threads
+    AF="$REPO/bench/array_fluxonium"
+    sweeps=13; [ $SMOKE = 1 ] && sweeps=1
+    [ -f "$AF/specs/array_N40_z0.095.json" ] || { echo "missing $AF/specs/array_N40_z0.095.json: pull bench-harness"; exit 2; }
+    common=(SPEC="$AF/specs/array_N40_z0.095.json" NG=0 D=14 NCUT=12 ESHIFT=auto MAXDIM=150 CUTOFF=1e-12 ETOL=0
+            KRYLOVDIM=20 EIGMAXITER=4 SWEEPS=$sweeps)
+    step dmrg_gpu env "${common[@]}" DEVICE=gpu "$JULIA_BIN" +1.13.2 --startup-file=no --project="$AF/dmrg_gpu" -t 1 "$AF/dmrg/dmrg_spec.jl"
+    step dmrg_cpu8 env "${common[@]}" BLASTHREADS=8 "$JULIA_BIN" +1.13.2 --startup-file=no --project="$AF/dmrg" -t 1 "$AF/dmrg/dmrg_spec.jl"
+    grep -h "DMRG eigen" "$OUT"/dmrg_*.log ;;
   *) echo "unknown case $CASE"; exit 2 ;;
 esac
 echo "edge warnings (PhaseGrid range): $(grep -l 'PhaseGrid on mode' "$OUT"/*.log 2>/dev/null | wc -l) logs; $(grep -h 'PhaseGrid on mode' "$OUT"/*.log 2>/dev/null | wc -l) lines"

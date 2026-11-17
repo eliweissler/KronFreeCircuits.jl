@@ -1,0 +1,16 @@
+case dmrg mode a100 job 35781817 host c3gpu-a9-u29-1 2026-11-16T12:25:17-07:00
+repo 54755a4 1 changed files
+GPU 0: NVIDIA A100 80GB PCIe (UUID: GPU-6e8dd19e-c8ca-3ae3-3224-8f104f110690)
+NVIDIA A100 80GB PCIe, 590.48.01, 81920 MiB
+CPU(s):              64
+Model name:          AMD EPYC 7502 32-Core Processor
+==== dmrg_gpu  2026-11-16T12:25:18-07:00
+==== dmrg_gpu  exit 0  674 s
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 12.5 s, DMRG 319.8 s)
+==== dmrg_cpu8  2026-11-16T12:36:32-07:00
+==== dmrg_cpu8  exit 0  2911 s
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 10.9 s, DMRG 2842.0 s)
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 10.9 s, DMRG 2842.0 s)
+DMRG eigen N=40 D=14 θ=(n_g = 0.0, varphi_ext = 3.141592653589793): E0 = -604.092458694 E1 = -603.774272844 ω01 = 0.318185850  maxlink 35/34  MPO bond 5  ⟨ψ0|ψ1⟩ = 1.5e-12  var 4.5e-06/7.0e-06  sweeps 13/13  shift -600.075402  (MPO 12.5 s, DMRG 319.8 s)
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE dmrg a100 status 0 2026-11-16T13:25:03-07:00

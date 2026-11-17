@@ -13,4 +13,4 @@
 #SBATCH --error=kfb-a100-%j.err
 # One case on one full 80 GB A100: sbatch [--time=...] a100.slurm <case>   (results/<case>-a100-<jobid>/)
 set -uo pipefail
-exec bash "${SLURM_SUBMIT_DIR:?}/case.sh" "${1:?case: hensel2 hensel2_scq hensel3 zeropi autodiff}" a100
+exec bash "${SLURM_SUBMIT_DIR:?}/case.sh" "${1:?case: hensel2 hensel2_scq hensel3 zeropi autodiff dmrg}" a100

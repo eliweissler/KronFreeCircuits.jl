@@ -1,0 +1,32 @@
+JobId=35781815 JobName=kfb-h200
+   UserId=elwe6267(914987) GroupId=elwe6267pgrp(914987) MCS_label=N/A
+   Priority=17513 Nice=0 Account=ucb795_asc1 QOS=gpu-normal
+   JobState=RUNNING Reason=None Dependency=(null)
+   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:0
+   RunTime=00:00:05 TimeLimit=02:00:00 TimeMin=N/A
+   SubmitTime=2026-11-16T11:58:31 EligibleTime=2026-11-16T11:58:31
+   AccrueTime=2026-11-16T11:58:31
+   StartTime=2026-11-16T11:58:51 EndTime=2026-11-16T13:58:51 Deadline=N/A
+   PreemptEligibleTime=2026-11-16T11:58:51 PreemptTime=None
+   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-11-16T11:58:51 Scheduler=Backfill
+   Partition=ah200 AllocNode:Sid=login-ci5:3826336
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=c3gpu-g5-u1
+   BatchHost=c3gpu-g5-u1
+   NumNodes=1 NumCPUs=12 NumTasks=1 CPUs/Task=12 ReqB:S:C:T=0:0:*:*
+   ReqTRES=cpu=8,mem=128G,node=1,billing=381,gres/gpu:h200=1
+   AllocTRES=cpu=12,mem=128G,node=1,billing=383,gres/gpu:h200=1
+   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+   MinCPUsNode=12 MinMemoryNode=128G MinTmpDiskNode=0
+   Features=(null) DelayBoot=00:00:00
+   OverSubscribe=OK Contiguous=0 Licenses=(null) Network=(null)
+   Command=/projects/elwe6267/kronfree-bench-gpu/h200.slurm
+   WorkDir=/projects/elwe6267/kronfree-bench-gpu
+   StdErr=/projects/elwe6267/kronfree-bench-gpu/kfb-h200-35781815.err
+   StdIn=/dev/null
+   StdOut=/projects/elwe6267/kronfree-bench-gpu/kfb-h200-35781815.out
+   Switches=1@7-00:00:00
+   TresPerNode=gres/gpu:h200:1
+   TresPerTask=cpu=8
+   
+
