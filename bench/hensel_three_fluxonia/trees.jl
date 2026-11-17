@@ -59,6 +59,12 @@ const CGRID = haskey(ENV, "HENSEL3_CGRID") ?
 nfock(m) = m in (:f1, :f2) ? 30 : 20
 const TOL = parse(Float64, get(ENV, "HENSEL_TOL", "1e-6"))
 lobpcg(; guard=4) = LOBPCG(; tol=TOL, maxiter=3000, guard, on=ON)
+# the flat root's solver: `lobpcg` (block, Jacobi-preconditioned, `guard` extra columns) or `lanczos` (KrylovKit,
+# single-vector thick restart, a Krylov space of `krylovdim` vectors; 0 lets it choose 2·compute + 10)
+const FLAT_SOLVER = get(ENV, "HENSEL3_SOLVER", "lobpcg")
+FLAT_SOLVER in ("lobpcg", "lanczos") || error("HENSEL3_SOLVER must be lobpcg or lanczos, got $FLAT_SOLVER")
+const KRYLOVDIM = parse(Int, get(ENV, "HENSEL3_KRYLOVDIM", "0"))
+flatsolver(; guard=4) = FLAT_SOLVER == "lanczos" ? Lanczos(; tol=TOL, krylovdim=KRYLOVDIM, maxiter=1000, on=ON) : lobpcg(; guard)
 const DENSE_MAX = parse(Int, get(ENV, "HENSEL_DENSE_MAX", "5000"))
 
 """
@@ -91,7 +97,7 @@ end
 Flat reference (no intermediate truncation): one root over the five two-mode leaves (J, partner(J)), each solved exactly
 (Dense) on its full product basis (fluxonium grid × Fock, coupler grid × Fock) and keeping `kq` (qubit pairs) or `kc`
 (coupler pairs) states, and the loose frame mode as a raw Fock axis of `kf` levels; the root, of dimension
-kq³ kc² kf, is solved by LOBPCG for `compute` levels with `guard` guard columns. The leaves' truncation is the only one,
+kq³ kc² kf, is solved for `compute` levels by LOBPCG with `guard` guard columns, or by Lanczos (HENSEL3_SOLVER). The leaves' truncation is the only one,
 so two sizes that agree make a converged reference in these coordinates.
 """
 function flat_root(B, partner, loose; kq, kc, kf, compute=8, guard=4, smoke=false)
@@ -102,11 +108,16 @@ function flat_root(B, partner, loose; kq, kc, kf, compute=8, guard=4, smoke=fals
     leaf2(J, k) = Node([J => basis(J), partner[J] => basis(partner[J])]; solver=Dense(), compute=k, keep=lowest(k))
     kids = Any[leaf2(:q1, kq), leaf2(:c1, kc), leaf2(:q2, kq), leaf2(:q3, kq), leaf2(:c2, kc)]
     push!(kids, loose => FockBasis(kf; phi_zpf=B.σ[idx[loose]]))
-    return Node(kids; solver=lobpcg(; guard), compute, keep=lowest(compute))
+    return Node(kids; solver=flatsolver(; guard), compute, keep=lowest(compute))
 end
 
 "Root dimension of the flat reference, and its estimated eigensolver memory in bytes (real arithmetic)."
 flat_dim(kq, kc, kf) = big(kq)^3 * big(kc)^2 * kf
 # 14 vectors per block column, measured on the two-fluxonia flat solve (7.5 M states, 6 columns, 10.3 GB complex),
 # plus the Kronecker apply's scratch; real arithmetic (the working point is real): 8 bytes per entry
-flat_bytes(kq, kc, kf; compute=8, guard=4) = flat_dim(kq, kc, kf) * 8 * (14 * (compute + guard) + 4)
+# Lanczos: the Krylov space (krylovdim + 1 vectors), the `compute` eigenvectors built from it and their sorted copy, and
+# the apply's scratch (estimated 376 bytes per state at compute 8;
+# measured on hal 470-480, so the estimate is about 25% low)
+flat_bytes(kq, kc, kf; compute=8, guard=4) =
+    FLAT_SOLVER == "lanczos" ? flat_dim(kq, kc, kf) * 8 * (max(2compute + 10, KRYLOVDIM) + 1 + 2compute + 4) :
+    flat_dim(kq, kc, kf) * 8 * (14 * (compute + guard) + 4)

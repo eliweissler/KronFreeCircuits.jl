@@ -102,9 +102,8 @@ against its cap-32 solve (81 min), about 32×. Different hardware (one GPU again
 ## Flat reference (2026-11-10 to 14, hal: 2× AMD EPYC 7713, 2 TB; rule frame)
 
 One root over the five junction–partner leaves and f5 (`HENSEL3_STAGE=flat`), KrylovKit Lanczos (tol 1e-6 GHz), 32
-threads, qubit grids ±5π and coupler grids ±4π (no range warnings). Raw records in `results/hal-flat-*/`; these runs
-used the threaded CPU apply and the `HENSEL3_SOLVER=lanczos` option of commits 6dd43b6–33d5576, which are in this
-branch's history but not in its current code.
+threads, qubit grids ±5π and coupler grids ±4π (no range warnings). Raw records in `results/hal-flat-*/`; run with
+`HENSEL3_SOLVER=lanczos` on the threaded CPU apply (ITensors permutes in place of Base's serial `permutedims!`).
 
 | (kq, kc, kf) | dimension | wall | root matvecs × s | peak RSS | largest change from the previous rung |
 |---|---|---|---|---|---|
