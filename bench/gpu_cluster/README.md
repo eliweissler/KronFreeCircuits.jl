@@ -33,20 +33,20 @@ results of each case (i7-11700K, 8 cores; RTX A4500), from the case READMEs.
 | coupled_zero_pi, 1000 levels (5 repeats) | leaves and root on the GPU | **8.4 ± 0.2 s** | 19.5 ± 0.4 s | 42.9 ± 0.4 s | — |
 | | root on the GPU, leaves on the CPU | 41.6 ± 0.4 s | 90.2 ± 0.5 s | 102.2 ± 0.9 s | — |
 | | KronFree CPU / the study's Python pipeline | — | — | — | 80.9 ± 0.6 s / 3303 ± 117 s |
-| hensel_three_fluxonia, per point | ladder (240, 240) | **8.4 s** | 17.1 s | 32 s | — |
-| | accurate (480, 480) | **15.4 s** | 30.9 s | 153 s | — |
-| | check (480, 960) | **33.5 s** | 71.4 s | 462 s | — |
-| hensel_two_fluxonia, per point | ladder kM 120 (1 MHz rung) | **0.53 s** | 0.83 s | 2.56 s | — |
-| | ladder kM 240 (10 kHz rung) | **0.64 s** | 1.00 s | 3.38 s | — |
-| | k1 60/30, kM 480 (largest rung) | **1.94 s** | 4.09 s | 17.5 s | — |
+| hensel_three_fluxonia, per point | ladder (240, 240) | **8.4 s** | 17.1 s | 30.5 s | 42.5 s |
+| | accurate (480, 480) | **15.4 s** | 30.9 s | 153 s | 217 s |
+| | check (480, 960) | **33.5 s** | 71.4 s | 461 s | 603 s |
+| hensel_two_fluxonia, per point | ladder kM 120 (1 MHz rung) | **0.53 s** | 0.83 s | 1.25 s | 0.86 s |
+| | ladder kM 240 (10 kHz rung) | **0.64 s** | 1.00 s | 1.98 s | 1.83 s |
+| | k1 60/30, kM 480 (largest rung) | **1.94 s** | 4.09 s | 9.78 s | 11.27 s |
 | | flat reference (1.47 M states) | 1.0-1.4 s | 1.8-2.5 s | — | — |
 | | paper's flat space, m = 14 (7.5 M states) | 6.6-14.1 s | 13-26 s | — | — |
 | hensel_two_fluxonia scqubits (torch-cuda), 6 points | kM 120 | **139 s** | 786 s | — | — |
 | | kM 240 | **284 s** | 985 s | — | — |
-| autodiff_fluxonium (10 trials) | materialize | 0.20 ± 0.04 s | 0.37 ± 0.12 s | 0.43 s | **0.030 ± 0.004 s** |
-| | first and second derivatives | 0.48 ± 0.14 s | 0.94 ± 0.25 s | — | **0.027 ± 0.004 s** |
-| autodiff_c66 (10 trials) | materialize | 1.15 ± 0.08 s | 1.89 ± 0.13 s | 2.3 s | **0.24 ± 0.06 s** |
-| | first and second derivatives (5 params) | 1.41 ± 0.22 s | 2.49 ± 0.22 s | — | **0.53 ± 0.08 s** |
+| autodiff_fluxonium (10 trials) | materialize | 0.20 ± 0.04 s | 0.37 ± 0.12 s | 0.44 ± 0.09 s | **0.030 ± 0.004 s** |
+| | first and second derivatives | 0.48 ± 0.14 s | 0.94 ± 0.25 s | 1.19 ± 0.14 s | **0.027 ± 0.004 s** |
+| autodiff_c66 (10 trials) | materialize | 1.15 ± 0.08 s | 1.89 ± 0.13 s | 2.28 ± 0.11 s | **0.24 ± 0.06 s** |
+| | first and second derivatives (5 params) | 1.41 ± 0.22 s | 2.49 ± 0.22 s | 2.13 ± 0.12 s | **0.53 ± 0.08 s** |
 | scqubits_solve, build + diagonalize (10 trials) | fluxonium, torch-cuda / default CPU | 0.64 ± 0.00 s | 1.42 ± 0.00 s | — | **0.17 ± 0.01 s** |
 | | c66, torch-cuda / default CPU | 3.5 ± 0.8 s | 7.1 ± 1.9 s | — | **0.99 ± 0.03 s** |
 | array_fluxonium DMRG, N = 40, z = 0.095 (13 sweeps) | GPU / node CPU, 8 BLAS threads | **202 s** / 1147 s | 320 s / 2842 s | 423 s | 1648 s (8 threads), 2184 s (1) |
@@ -64,7 +64,12 @@ results of each case (i7-11700K, 8 cores; RTX A4500), from the case READMEs.
   there, 0.1 s on the H200 node), so its numbers here are pessimistic.
 - Edge warnings: none, except the default ±3π/181 grid in hensel2 (states 11-24 on q1, q2; both GPUs) and the ±5π/301
   grid on the A100 (the k1 60 rungs). The H200 job also ran the ladder on ±7π/421 (`hensel2_grid7.log`): no warnings,
-  same rung changes. Ladder times in the table: H200 and A4500 on ±7π/421, A100 on ±5π/301 (`hensel2_grid5.log`).
+  same rung changes. autodiff desktop A4500 cells: 2026-11-17, `KF_DEVICE=gpu`, commit `c94938d` plus the device-Lanczos copy fix
+  (`../autodiff_{fluxonium,c66}/results/kronfree_gpu_desktop.{json,log}`); derivatives match central differences as on the CPU.
+  hensel_three_fluxonia desktop columns: 2026-11-17, commit `c94938d`, clean grids (`../hensel_three_fluxonia/results/{gpu,cpu}-rule-20261117/`).
+  Ladder times in the table: H200 and A4500 on ±7π/421, A100 on ±5π/301 (`hensel2_grid5.log`). The desktop A4500 and CPU columns are the
+  2026-11-16/17 runs on ±7π/421 (`../hensel_two_fluxonia/results/{gpu-ladder-grid7-20261116,cpu-ladder-grid7-20261117-merged}/`);
+  an earlier unrecorded A4500 run on that grid had given 2.56, 3.38, 17.5 s.
 - array_fluxonium DMRG (2026-11-16, jobs 35781815 (H200) and 35781817 (A100); `results/dmrg-*`): ITensors with the MPS and MPO on
   the GPU, production settings (D 14, ncut 12, cutoff 1e-12, shift), sweeps fixed. All five runs (two GPUs, two node
   CPUs, the desktop) give the same E0, E1, variances and bonds to every printed digit. The GPU gain is modest (bond 35,

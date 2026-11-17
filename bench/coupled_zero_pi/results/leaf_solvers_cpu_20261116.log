@@ -1,0 +1,5 @@
+BLAS threads 8, Julia threads 8
+ShiftInvert     rep 1: leaves 22.1, 24.7 s (dim 54300, 300 pairs), root 29.9 s, total 82.9 s, max|ΔE| vs ShiftInvert 0.0e+00 GHz
+ShiftInvert     rep 2: leaves 22.3, 22.5 s (dim 54300, 300 pairs), root 30.9 s, total 81.4 s, max|ΔE| vs ShiftInvert 2.1e-13 GHz
+ChebyshevFilter rep 1: leaves 56.8, 55.5 s (dim 54300, 300 pairs), root 29.7 s, total 148.2 s, max|ΔE| vs ShiftInvert 3.2e-13 GHz
+ChebyshevFilter rep 2: leaves 56.7, 54.6 s (dim 54300, 300 pairs), root 29.7 s, total 147.1 s, max|ΔE| vs ShiftInvert 3.2e-13 GHz

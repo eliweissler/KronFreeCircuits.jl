@@ -86,9 +86,10 @@ their single-mode Eq. 6 dashed curve, all read from the figure's PDF but ours):
 | z | 0.05 | 0.06 | 0.07 | 0.08 | 0.09 | 0.10 | 0.11 | 0.12 | 0.13 | 0.14 | 0.15 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Di Paolo Δω01 (GHz) | 1.46e-7 | 8.3e-6 | 1.45e-4 | 1.21e-3 | 6.25e-3 | 2.307e-2 | 6.66e-2 | 0.160 | 0.335 | 0.534 | 0.522 |
-| ours / theirs | 1.10 | 1.00 | 1.00 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| ours / theirs (D = 10 sweep; z ≤ 0.07 D = 14) | 1.10 | 1.00 | 1.00 | 1.02 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| ours / theirs (D = 14, ncut 12 throughout) | 1.099 | 1.001 | 1.000 | 1.000 | 0.999 | 0.999 | 0.999 | 0.999 | 0.999 | 0.999 | 0.999 |
 
-z ≤ 0.07 are the D = 14, charge cutoff 12 reruns below; the sweep's D = 10, ncut 8 gave 3.5, 2.6, 1.16. Di Paolo converge to an
+The second ratio row is the figure's: every z at D = 14, charge cutoff 12 (2026-11-16, below). In the first, z ≤ 0.07 are the D = 14, charge cutoff 12 reruns below; the sweep's D = 10, ncut 8 gave 3.5, 2.6, 1.16. Di Paolo converge to an
 eigenvalue tolerance of 1e-12 with truncation errors of 1e-11 (superfluxo.tex l. 192). Their top panel's ω01 at Φ0/2
 for n_g = 0 and ½ matches ours to the fourth digit at z = 0.10-0.14 (n_g = ½: 0.2932, 0.2592, 0.2023, 0.1065, 0.0469
 theirs, 0.2932, 0.2591, 0.2022, 0.1064, 0.0469 ours), the dip at z = 0.14 included.
@@ -153,6 +154,15 @@ z = 0.125-0.145, so ω01(½) is the right pair there. z = 0.045 is at the floor:
 to 1 Hz, ncut 16 reproduces ncut 12 to every digit, and their point is the lowest on the log axis; read it as agreement
 in order of magnitude only. At z ≥ 0.105 ours sits 0.06-0.07 % below theirs, consistently; the integer-step row above rounds the same
 offset to 1.00.
+
+**The integer points at the converged settings (2026-11-16, `results/tight-20261116-gpu/`).** z = 0.08 to 0.15 rerun
+at D = 14, ncut 12, cutoff 1e-12, `ESHIFT=auto` (z ≥ 0.13: 1500-sweep cap and a third level at n_g = ½), on the A4500
+(`DEVICE=gpu`), one run at a time: 16 runs in 3.1 h (6-17 min each), against 0.5-8 h per run on one CPU core for the
+half-steps. Variances 2-8e-6; the third level 8.90-9.17 GHz above the ground state. Δω01 moved from the D = 10 sweep's
+by at most 2 % (z = 0.08: 1.2372e-3 → 1.2097e-3) and the ratio to Di Paolo is now 0.999-1.000 from z = 0.07 to 0.15;
+ω01(½) at z = 0.13-0.15 reproduces the third-level reruns above to 1e-6 GHz (0.106435, 0.046893, 0.277379). With these
+the figure (`results/dmrg_vs_dipaolo.{png,pdf}`) uses one setting for all 22 points (D = 14; ncut 12, or 16 at z = 0.045
+and 0.05, which equal ncut 12 to every digit).
 
 **DMRG on the GPU (2026-11-14, `results/gpu-compare-20261114/`).** z = 0.10, n_g = 0, 8 sweeps, bond cap 150, cutoff
 1e-12, idle machine: GPU (RTX A4500) 241 s, CPU 1 BLAS thread 923 s, CPU 8 BLAS threads 527 s, so 3.8× and 2.2×.

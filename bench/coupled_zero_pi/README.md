@@ -48,6 +48,15 @@ for GPU leaves (`Auto(on=CuArray)`, i.e. `ChebyshevFilter`). Pipeline: `pipeline
 - KronFree is 41× (CPU) and 77× (GPU) faster. Every run reproduces the reference: KronFree ≤ 1.3×10⁻¹¹ GHz over 1000
   levels with identical kept sets, the pipeline ≤ 4.5×10⁻¹² GHz. No grid-edge warnings; each KronFree run prints 10
   "heavy hybridization" phase-fixing warnings at the root (sign conventions only).
+- Leaf solver on the CPU (2026-11-16, `leaf_solvers.jl`, `results/leaf_solvers_cpu_20261116.log`; 8 threads, idle,
+  two repeats): `ShiftInvert` (sparse Cholesky of the 54 300-state leaf, Lanczos on the inverse) 22.1-24.7 s per leaf,
+  81-83 s per tree; the matrix-free `ChebyshevFilter` 54.6-56.8 s per leaf, 147-148 s per tree (2.5× slower; on the
+  A4500 it is 4.6-4.8 s). The 1000 levels agree to 3e-13 GHz. So `Auto` picks the right leaf solver on each device.
+- Seed quality bound for the root (2026-11-16, `warm_start.jl`, `results/warm_start_gpu_20261116.log`; A4500, three
+  repeats): cold (product-state seed) 140 iterations, 6931 matvecs, 22.0 s; warm-started from its own converged
+  eigenvectors (√eps perturbed) 192 iterations, 3774 matvecs, 10.3-11.2 s; levels equal to 6e-13 GHz. No seed can do
+  better than the second, so a better cold seed (e.g. perturbation theory) can save at most about half the root solve;
+  the guard columns, still product states in a warm start, set the warm run's iteration count.
 - In GPU mode the harness sets BLAS to 1 thread, so CPU leaves slow from 22 s to 34 s; that costs more than the GPU
   saves at the root. The root's LOBPCG: 23 870 states, 134–140 iterations, about 6 930 matvecs.
 - The earlier `Dense` root (2026-11-12, loaded machine) took 552 s of a 658 s point.

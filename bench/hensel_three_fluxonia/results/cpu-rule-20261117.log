@@ -1,0 +1,36 @@
+case hensel_three_fluxonia: device cpu, threads 8, BLAS 8, commit c94938d4, smoke false, out bench/hensel_three_fluxonia/results/cpu-rule-20261117
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+fourlevel rule kM 240 kM2 240            p = 0.0    E1-E0 = 0.420784 GHz    42.51 s (first 82.8)  root 230400, 19 it, 176 matvec
+   transitions (GHz) 0.4208 0.7039 0.8148 1.0357 1.2182 1.4745 1.7703
+   vs paper (MHz)    -1.22 -1.14 -1.22 -2.33 -1.82 -2.52 -0.65
+fourlevel rule kM 480 kM2 480            p = 0.0    E1-E0 = 0.420738 GHz   217.04 s (first 218.3)  root 921600, 20 it, 183 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.26 -1.23 -1.30 -2.80 -2.56 -2.96 -3.52
+fourlevel rule kM 480 kM2 960            p = 0.0    E1-E0 = 0.420734 GHz   602.95 s (first 603.9)  root 1843200, 20 it, 181 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.27 -1.23 -1.31 -2.81 -2.57 -2.98 -3.53
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 72 has joint-peak amplitude 0.006187594298597998, ratio 0.4417367692310355 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 159 has joint-peak amplitude 0.006553091290133424, ratio 0.4642428087882697 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 164 has joint-peak amplitude 0.0007234358681157561, ratio 0.06795092420437528 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 40 has joint-peak amplitude 0.02775328721578001, ratio 0.3889411234176078 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 42 has joint-peak amplitude 0.03343331214724474, ratio 0.45933669771433916 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 46 has joint-peak amplitude 0.02456489974685684, ratio 0.35984768209400414 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 52 has joint-peak amplitude 0.03126598638657305, ratio 0.44729419046366414 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 17 has joint-peak amplitude 0.0007211622315179485, ratio 0.228846981188398 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 24 has joint-peak amplitude 0.0004422518866502227, ratio 0.173410046523661 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 25 has joint-peak amplitude 0.0009285770011122358, ratio 0.43331550488399484 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+ladder four-level, rule frame: accurate rung fourlevel rule kM 480 kM2 480 (change 1.68e-05 GHz < 1e-03), 217.04 s per point (check 602.95 s)
+   fourlevel rule kM 240 kM2 240            change to next 2.87e-03       42.51 s/pt
+   fourlevel rule kM 480 kM2 480            change to next 1.68e-05      217.04 s/pt
+   fourlevel rule kM 480 kM2 960            change to next -             602.95 s/pt
+results: bench/hensel_three_fluxonia/results/cpu-rule-20261117/results.json

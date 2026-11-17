@@ -1,0 +1,6 @@
+cold  rep 1: dim 23870, 140 iterations, 6931 matvecs, solve 22.0 s, warm=false
+warm  rep 1: dim 23870, 192 iterations, 3774 matvecs, solve 11.2 s, warm=true, max|ΔE| 6.4e-13 GHz
+cold  rep 2: dim 23870, 140 iterations, 6931 matvecs, solve 22.0 s, warm=false
+warm  rep 2: dim 23870, 192 iterations, 3774 matvecs, solve 10.3 s, warm=true, max|ΔE| 6.4e-13 GHz
+cold  rep 3: dim 23870, 140 iterations, 6931 matvecs, solve 22.1 s, warm=false
+warm  rep 3: dim 23870, 192 iterations, 3774 matvecs, solve 10.4 s, warm=true, max|ΔE| 6.4e-13 GHz

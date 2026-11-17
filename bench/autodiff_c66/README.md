@@ -17,6 +17,7 @@ KronFreeCircuits' perturbative derivatives and from SQcircuit's PyTorch autodiff
 - `sq_neig_sweep.py`: SQcircuit's autodiff Jacobian against the number of computed eigenpairs n_eig;
   writes `results/sqcircuit_neig.json`.
 - `root_solvers.jl`: the KronFree tree with each root solver, CPU and GPU.
+- `convergence.jl`: the tree's truncations refined one at a time and together (`results/convergence.json`).
 - `sq_retime.py`: SQcircuit's one solve and central-difference Jacobian, re-timed (`results/sqcircuit_quiet.json`).
 - `sq_solve_trials.py`: SQcircuit's one solve, 10 trials (`results/sqcircuit_solve_trials.json`).
 - The single-mode companion is `../autodiff_fluxonium/`.
@@ -32,6 +33,24 @@ KronFreeCircuits' perturbative derivatives and from SQcircuit's PyTorch autodiff
   eigenpairs only, so they converge with n_eig (table below). The ω01 and α Hessians agree to 7e-5 and 2e-4.
 - |n2_01|² stays 9 % off in SQcircuit's autodiff at every n_eig (its E_J, E_L13 and E_C23 columns), against both
   KronFree and SQcircuit's own central differences; not pursued.
+
+## Convergence of the KronFree tree (2026-11-16, `convergence.jl`)
+
+Each truncation refined in turn against the production tree (Fock 60 keeping 40; grid ±24π, 1153 points, keeping
+60); largest change of the values (absolute), and of each Jacobian row and Hessian over its largest entry:
+
+| refinement | values | Jacobian | Hessian |
+|---|---|---|---|
+| Fock 80, keep 60 | ≤ 9e-14 | ≤ 8e-13 | ≤ 1e-12 |
+| grid 1537 points on ±24π (finer) | ≤ 1.4e-9 | ≤ 5e-10 | ≤ 1.4e-9 |
+| grid ±32π, 1537 points (wider) | ≤ 2.6e-12 | ≤ 6e-12 | ≤ 5e-12 |
+| grid leaf keeps 80 | ≤ 5.1e-8 (ω01 4e-9 GHz) | ≤ 3.7e-7; \|n2_01\|² 1.3e-5 | ≤ 2.6e-6; \|n2_01\|² 1.4e-4 |
+| all at once (Fock 80/60, ±32π, 2049 points, keep 80) | same as keep 80 | same | same |
+
+No grid-edge warnings in any variant. The binding truncation is the grid leaf's 60 kept states, and then only for the
+|n2_01|² derivatives (the junction charge, whose matrix element couples to high leaf states); ω01 and α are converged
+to 4e-9 and 6e-9 GHz with their Jacobians to 4e-8. Every number compared with SQcircuit (8e-5 relative in values,
+4e-4 in its central-difference Jacobian) is converged well below those differences.
 
 ## Timing (ewdesktop, idle machine, 2026-11-13)
 
@@ -73,8 +92,10 @@ n_eig 4-32) were 4-30 % slower.
 
 Solve times against scqubits in the same coordinates and truncation: `../scqubits_solve/`.
 
-## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
+## GPUs (Alpine 2026-11-14, `../gpu_cluster/`; desktop A4500 2026-11-17)
 
 KronFree with `KF_DEVICE=gpu` (grid leaf LOBPCG and root Lanczos on the GPU, Fock leaf Dense): materialize 1.15 s
 (H200), 1.89 s (A100); first and second derivatives 1.41 s and 2.49 s, against 0.24 s and 0.53 s on the desktop CPU.
 scqubits torch-cuda (complex root through the real embedding) build + diagonalize 3.5 s (H200), 7.1 s (A100).
+A4500 (desktop, 2026-11-17, `results/kronfree_gpu_desktop.json`): materialize 2.28 ± 0.11 s, first and second derivatives
+2.13 ± 0.12 s (first alone 0.61 s); Jacobian and Hessian against central differences 1.1e-8 and 5.8e-6, no range warning.

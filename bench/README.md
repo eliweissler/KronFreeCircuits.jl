@@ -7,16 +7,18 @@ Cases (one directory each):
 
 | case | reference times | status |
 |---|---|---|
-| `hensel_two_fluxonia/` | Hensel et al., arXiv:2611.05627 Sec. IV (published); our flat solve of their space; scqubits on the same tree | done: 1 MHz in 0.84 s per point (8 CPU cores) |
-| `hensel_three_fluxonia/` | arXiv:2611.05627 Sec. V DMRG (published) | done: 1 MHz in 153 s per point (A4500), 225 s (CPU, 32 threads); flat reference converged to 10 kHz (2.8 h, 60 GB) |
-| `coupled_zero_pi/` | Eli's Python pipeline (arXiv:2609.16630, scqubits), same machine | done: 1000 levels in 80.9 s CPU, 42.9 s GPU, against 3303 s |
-| `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | done (idle machine, mean ± std of 10) |
+| `hensel_two_fluxonia/` | Hensel et al., arXiv:2611.05627 Sec. IV (published); our flat solve of their space; scqubits on the same tree | done: 1 MHz in 0.86 s per point (8 CPU cores), 1.25 s (A4500), on the warning-free ±7π/421 grid; 10 kHz in 1.83 s |
+| `hensel_three_fluxonia/` | arXiv:2611.05627 Sec. V DMRG (published) | done: 1 MHz in 153 s per point (A4500), 217 s (8 CPU cores; hal 32 threads 225 s); flat reference converged to 10 kHz (2.8 h, 60 GB) |
+| `coupled_zero_pi/` | Eli's Python pipeline (arXiv:2609.16630, scqubits), same machine | done: 1000 levels in 80.9 s CPU, 42.9 s GPU (8.4 s H200), against 3303 s; leaf-solver and seed studies |
+| `autodiff_c66/` (J, L, CL; two modes) and `autodiff_fluxonium/` (one mode) | SQcircuit dev-ew (PyTorch autodiff), conda env `sqcircuit-bench`, same machine | done (idle machine, mean ± std of 10): c66 solve 0.24 s vs 62 s, converged Jacobian 0.37 s vs 2063 s; tree convergence checked (`convergence.jl`) |
 | `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | done (idle machine) |
-| `array_fluxonium/` | Di Paolo et al., arXiv:1912.01018 Fig. 3 (digitized) | compared (DMRG and Eq. 6); not yet a timed case |
+| `array_fluxonium/` | Di Paolo et al., arXiv:1912.01018 Fig. 3 (digitized) | done: all 22 z of their Fig. 3 at one setting (D 14, ncut 12), 0.999-1.01 of theirs for z = 0.055-0.15; DMRG GPU vs CPU timed (H200 202 s, A4500 423 s, CPU 1648 s per point) |
 | KITE | scqubits `Circuit`, same machine | planned |
 | `current_mirror/`, full circuit | none (exact diagonalization stops at N = 3) | shelved (next: a momentum-sector root) |
 
-GPU timings of the first five cases on CU Boulder Alpine (one H200, one A100 80 GB): `gpu_cluster/README.md`.
+GPU timings of the first five cases and the DMRG on CU Boulder Alpine (one H200, one A100 80 GB): `gpu_cluster/README.md`.
+
+For writing up: `THESIS_RESULTS.md` maps the thesis cases to their numbers and files, and lists what is still to run.
 
 ## Environment
 

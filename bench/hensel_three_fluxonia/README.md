@@ -94,6 +94,7 @@ no range warning and moves every transition by at most 1.9e-13 GHz from the tabl
 | this, four-level tree, rule frame, (480, 480): accurate at 1 MHz | 153 s per point, A4500 |
 | this, the check rung (480, 960) | 462 s per point, A4500 |
 | this, four-level tree, (480, 480), CPU (2× EPYC 7713, 32 threads) | 225 s per point |
+| this, four-level tree, (480, 480), desktop CPU (i7-11700K, 8 threads) | 217 s per point |
 | this, flat reference converged to 10 kHz, (24, 48, 4), CPU | 2.8 h, 60 GB |
 
 Against the paper's solve that its table comes from (cap 128, 13 h), the tree's accurate rung is about 300× faster;
@@ -124,6 +125,23 @@ the paper −1.27, −1.23, −1.31, −2.81, −2.57, −2.98, −3.54 MHz.
 - **Threads** (16, 32, 4, before the grids were widened): 16 / 32 / 64 / 128 threads take 6.5 / 5.3 / 5.0 / 5.5 s per
   matvec; the apply is memory-bandwidth bound, so 32 was used. LOBPCG on the same rung: 627 matvecs, 47 min, 35 GB
   (Lanczos 33 min, 8 GB).
+
+## This machine on the clean grids (2026-11-17, ewdesktop, commit `c94938d`)
+
+The rule-frame ladder rerun on the current code and the default warning-free grids (qubits ±5π/301, couplers ±4π/241),
+one timed repeat after the first call, idle machine (`results/gpu-rule-20261117/`, `results/cpu-rule-20261117/`). No
+range warnings; every transition and every deviation from the paper as in the table above to the printed digit; the
+(480, 480) rung within 21 kHz and (480, 960) within 6 kHz of the flat reference at (32, 64, 4).
+
+| rung (kM, kM2) | A4500 (s per point) | CPU, i7-11700K, 8 threads (s per point) |
+|---|---|---|
+| (240, 240) | 30.5 | 42.5 |
+| **(480, 480)**, accurate at 1 MHz | **153** | **217** |
+| (480, 960), the check | 461 | 603 |
+
+Peak RSS 6.3 GB (GPU run; 6.1 GB on the device) and 7.5 GB (CPU run). The A4500 times equal the 2026-11-12 ones on the
+old grids (32 / 153 / 462 s), so the table above and the cost table stand. The desktop's 8 cores match hal's 32 threads
+(225 s): the apply is memory-bandwidth bound (see the thread scan above).
 
 ## CPU timing of the tree (2026-11-14, hal, 32 threads)
 
