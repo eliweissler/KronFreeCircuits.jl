@@ -65,6 +65,30 @@ for GPU leaves (`Auto(on=CuArray)`, i.e. `ChebyshevFilter`). Pipeline: `pipeline
 Results: `results/overnight_{cpu,gpu_root,gpu_all}/`, `results/pipeline_timing_1000.json` (5 runs),
 `results/pipeline_timing_1000_single.json` (one run on 2026-11-13), logs `results/overnight_*.log`.
 
+## The derivatives' linear solve: built-in block CG against library solvers (2026-11-17)
+
+`derivatives` solves `Q (H − E_j) Q x = Q R_j` on the complement of each iterative node's computed states (the
+Sternheimer step; `_complement_solve` in `src/resolvent.jl`) with a built-in block preconditioned CG: all columns in
+lockstep, one block apply of H per iteration, each column with its own shift, CG scalars and stopping. We tried replacing
+it with libraries (`isolate_solve.jl` here and in `../autodiff_c66/` capture each solve of one `derivatives` call and
+replay it in isolation). Derivatives along n_g1, 200 root levels:
+
+| solve | built-in | Krylov.jl `cg`, all columns stacked (one block apply, shared scalars) | Krylov.jl `cg`, one column at a time |
+|---|---|---|---|
+| A4500: leaves (54 300 states, 154 / 155 columns) | **26.7 / 21.8 s** (379 / 300 it.) | 105 / 95 s (775 / 686 it.) | 34.7 / 35.9 s (379 / 300 it.) |
+| A4500: root (23 870 states, 200 columns) | **0.82 s** (18 it.) | 2.15 s (29 it.) | 2.56 s (18 it.) |
+| CPU, 8 threads: leaves | **84 / 72 s** (344 / 298 it.) | 174 / 145 s (641 / 546 it.) | 338 / 340 s |
+| CPU, 8 threads: root | **2.5 s** | 4.6 s | 12.2 s |
+
+All agree to 6e-11 relative. On c66 (`../autodiff_c66/isolate_solve.jl`) the GPU grid leaf (1153 states, 60 columns)
+took 0.14 s built-in, 0.30 s stacked and 3.2 s column by column (kernel-launch bound); the CPU root (2400 states, 6
+columns) about 0.01-0.04 s with any of them. KrylovKit's `linsolve` has no preconditioner, curvature flag or callback,
+and failed the solver's own tests (the missing-state error and the round-off-floor case); LinearSolve.jl calls
+Krylov.jl for a matrix-free operator. Stacking shares CG's step sizes across columns and doubles the iterations;
+one column at a time loses the block apply (launch overhead on the GPU, the threaded block apply on the CPU). No library
+we found does per-column scalars over one block apply, so the built-in solver stays; a batched CG upstream in Krylov.jl
+would let it go.
+
 ## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
 
 1000 levels, 5 repeats: all on the GPU 8.4 ± 0.2 s (H200), 19.5 ± 0.4 s (A100 80 GB); GPU root with CPU

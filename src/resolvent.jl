@@ -146,6 +146,9 @@ and one containing "not positive on the complement" when `H − shifts[j]` is no
 function _complement_solve(H::KronFreeOperator, D::AbstractVector, basis::AbstractMatrix, B::AbstractMatrix,
                            shifts::Vector{Float64}; tol::Real, maxiter::Int, eta::Real=0.01,
                            scale::Union{Nothing,AbstractVector{<:Real}}=nothing)
+    _capture!(H, D, basis, B, shifts, tol, maxiter, eta, scale)
+    (be = _complement_backend()) === :builtin ||
+        return _complement_solve_lib(be, H, D, basis, B, shifts; tol, maxiter, eta, scale)   # experimental, see complement_backends.jl
     n = size(B, 2)
     length(shifts) == n || throw(DimensionMismatch("$n columns and $(length(shifts)) shifts"))
     scale = scale === nothing ? vec(Array(_colnorms(B))) : collect(Float64, scale)
