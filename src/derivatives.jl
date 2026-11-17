@@ -390,7 +390,8 @@ Keywords:
 - `order`: `1` (first derivatives) or `2` (also the second derivative along each parameter of `wrt` alone).
 - `mixed`: the pairs of parameters whose mixed second derivatives are wanted, a collection of pairs such as
   `((:E_J, :varphi_ext),)`, each of two different parameters of `wrt`; a pair given in either order is the same pair.
-  A nonempty `mixed` needs `order = 2`.
+  `mixed = :all` asks for every pair of `wrt` (the full Hessian with `order = 2`; n(n − 1)/2 second-order passes for n
+  parameters). A nonempty `mixed` needs `order = 2`.
 - `scale`: a `NamedTuple` of typical displacements `δx` of parameters in `wrt`, positive and finite, for the
   near-degeneracy test `|⟨ψ_l|∂H/∂x|ψ_i⟩| δx > r |E_i − E_l|`.
 - `r`: the ratio of that test, positive.
@@ -496,10 +497,11 @@ function derivatives(sys::System; wrt, order::Int=1, mixed=(), scale::NamedTuple
     return Derivatives(sys, params, order, mixed_pairs, first, second, _collect_blocks(search), boundary, linear_solves)
 end
 
-# `mixed` as a vector of distinct `_pairkey`s, each of two different parameters of `params`.
+# `mixed` as a vector of distinct `_pairkey`s, each of two different parameters of `params`; `:all` is every pair.
 function _check_mixed(mixed, params::Vector{Symbol})
+    mixed === :all && return [_pairkey(params[i], params[j]) for i in eachindex(params) for j in i+1:lastindex(params)]
     mixed isa Union{AbstractVector,Tuple,AbstractSet} ||
-        throw(ArgumentError("`mixed` must be a collection of pairs of parameter names, got $(repr(mixed))"))
+        throw(ArgumentError("`mixed` must be a collection of pairs of parameter names or :all, got $(repr(mixed))"))
     out = Tuple{Symbol,Symbol}[]
     for p in mixed
         p isa Union{Tuple,AbstractVector} && length(p) == 2 && all(s -> s isa Symbol, p) ||
