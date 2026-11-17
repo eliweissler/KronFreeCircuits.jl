@@ -2,10 +2,10 @@
 # the complement (Sternheimer) at large iterative nodes, the 54 300-state (θ, φ) leaves and the 23 870-state root.
 # Same tree as run.jl (root by LOBPCG); ZP_NTOTAL levels at the root (default 200).
 #
-#   [KRONFREE_LINSOLVE=builtin|krylov] BENCH_DEVICE=cpu|gpu julia --project=bench -t 8 --gcthreads=1 bench/coupled_zero_pi/derivatives.jl
+#   BENCH_DEVICE=cpu|gpu julia --project=bench -t 8 --gcthreads=1 bench/coupled_zero_pi/derivatives.jl
 #
-# Writes ZP_DERIV_OUT (default results/derivatives-<device>-<backend>.json): times, the per-node solve records and the
-# root's energy derivatives, so two back ends can be compared entry by entry.
+# Writes ZP_DERIV_OUT (default results/derivatives-<device>.json): times, the per-node solve records and the root's
+# energy derivatives.
 
 include(joinpath(@__DIR__, "..", "common.jl"))
 import JSON3
@@ -13,7 +13,6 @@ import JSON3
 const SPEC = load_spec(joinpath(@__DIR__, "specs", "coupled_zero_pi.json"))
 const NTOTAL = parse(Int, get(ENV, "ZP_NTOTAL", "200"))
 const TRUNC, THRESH, NCUT, NPHI = 300, 1e-5, 90, 300
-const BACKEND = get(ENV, "KRONFREE_LINSOLVE", "builtin")
 const WRT = (:n_g1, :varphi_ext1)
 θ = (n_g1=0.0, n_g4=0.0, varphi_ext1=0.0, varphi_ext2=0.0)
 leafsolver = DEVICE == "gpu" ? Auto(on=ON) : Auto()
@@ -22,7 +21,7 @@ qubit(q) = Node([Symbol("theta$q") => ChargeBasis(NCUT), Symbol("phi$q") => Phas
 root = Node([qubit(1), qubit(2), :zeta1 => FockBasis(1; phi_zpf=1.0), :zeta2 => FockBasis(1; phi_zpf=1.0)];
             solver=LOBPCG(; tol=1e-8, maxiter=3000, guard=8, on=ON), compute=NTOTAL, keep=lowest(NTOTAL), retain=:always)
 
-println("device $DEVICE, backend $BACKEND, levels $NTOTAL, threads $(Threads.nthreads())")
+println("device $DEVICE, levels $NTOTAL, threads $(Threads.nthreads())")
 t_mat = @elapsed sys = materialize(root, SPEC, θ)
 t_first = @elapsed d = derivatives(sys; wrt=WRT)                                  # includes compilation
 times = [@elapsed(d = derivatives(sys; wrt=WRT)) for _ in 1:2]
@@ -34,8 +33,8 @@ for s in solves
             join(s.modes, ","), s.columns, s.iterations, s.residual, s.n_from_start, s.n_at_floor)
 end
 dE = Dict(string(x) => energies(d, x) for x in WRT)
-out = get(ENV, "ZP_DERIV_OUT", joinpath(@__DIR__, "results", "derivatives-$DEVICE-$BACKEND.json"))
+out = get(ENV, "ZP_DERIV_OUT", joinpath(@__DIR__, "results", "derivatives-$DEVICE.json"))
 mkpath(dirname(out))
-open(io -> JSON3.write(io, Dict("device" => DEVICE, "backend" => BACKEND, "levels" => NTOTAL, "materialize_s" => t_mat,
+open(io -> JSON3.write(io, Dict("device" => DEVICE, "levels" => NTOTAL, "materialize_s" => t_mat,
                                  "derivatives_first_s" => t_first, "derivatives_s" => times, "solves" => solves, "dE" => dE)), out, "w")
 println("wrote $out")

@@ -1,7 +1,7 @@
-# Isolate one linear solve on the complement (the Sternheimer step of `derivatives`) of the c66 tree and replay it with
-# each back end, for debugging. Runs `derivatives` once along ISO_WRT with the capture hook on, lists every solve it
-# made, then replays solve ISO_SOLVE (default: the largest) with the built-in block CG and with Krylov.jl, one column at
-# a time, and compares the solutions.
+# Isolate one linear solve on the complement (the Sternheimer step of `derivatives`) of the c66 tree and replay it, for
+# debugging. Runs `derivatives` once along ISO_WRT with the capture hook on, lists every solve it made, then replays solve
+# ISO_SOLVE (default: the largest) and reports its time, iterations and residuals. (The library back ends compared
+# with it on 2026-11-17 are in commit fcc0812.)
 #
 #   KF_DEVICE=cpu|gpu ISO_WRT=E_J ISO_SOLVE=<k> julia --project=bench -t 8 --gcthreads=1 bench/autodiff_c66/isolate_solve.jl
 #
@@ -33,9 +33,7 @@ end
 wrt = Symbol(get(ENV, "ISO_WRT", "E_J"))
 sys = materialize(tree(), SPEC, θof(P0))
 KF._CAPTURE[] = Any[]
-withenv("KRONFREE_LINSOLVE" => "builtin") do
-    derivatives(sys; wrt)
-end
+derivatives(sys; wrt)
 caps = KF._CAPTURE[]; KF._CAPTURE[] = nothing
 println("device $DEVICE, derivatives along :$wrt: $(length(caps)) solve(s) on the complement")
 for (k, c) in enumerate(caps)
@@ -52,20 +50,10 @@ if haskey(ENV, "ISO_SAVE")
                                 B=Array(c.B), shifts=c.shifts, c.tol, c.maxiter, c.eta, c.scale))
     println("saved its inputs to $(ENV["ISO_SAVE"])")
 end
-replay(be) = withenv("KRONFREE_LINSOLVE" => be) do
-    KF._complement_solve(c.H, c.D, c.basis, c.B, c.shifts; tol=c.tol, maxiter=c.maxiter, eta=c.eta, scale=c.scale)
-end
-sols = Dict{String,Any}()
-for be in split(get(ENV, "ISO_BACKENDS", "builtin,krylov,krylov_stacked"), ",")
-    replay(be)                                                                       # compile
-    GPU && CUDA.synchronize()
-    t = @elapsed (r = withenv(() -> replay(be), "KRONFREE_LINSOLVE_VERBOSE" => get(ENV, "ISO_VERBOSE", "0")))
-    X, iterations, residuals, from_start, at_floor = r
-    sols[be] = Array(X)
-    @printf("%-8s %.3f s, iterations %d (built-in: in lockstep; Krylov.jl: the largest column), residuals %s, from start %s, at floor %s\n",
-            be, t, iterations, join((@sprintf("%.1e", x) for x in residuals), " "), from_start, at_floor)
-end
-for (be, X) in sols
-    be == "builtin" || haskey(sols, "builtin") &&
-        @printf("max |X_%s − X_builtin| / max |X_builtin| = %.1e\n", be, maximum(abs, X .- sols["builtin"]) / maximum(abs, sols["builtin"]))
-end
+replay() = KF._complement_solve(c.H, c.D, c.basis, c.B, c.shifts; tol=c.tol, maxiter=c.maxiter, eta=c.eta, scale=c.scale)
+replay()                                                                             # compile
+GPU && CUDA.synchronize()
+t = @elapsed (r = replay(); GPU && CUDA.synchronize())
+X, iterations, residuals, from_start, at_floor = r
+@printf("%.3f s, %d iterations (all columns in lockstep), residuals %s, from start %s, at floor %s\n",
+        t, iterations, join((@sprintf("%.1e", x) for x in residuals), " "), from_start, at_floor)

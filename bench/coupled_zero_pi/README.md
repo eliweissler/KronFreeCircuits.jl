@@ -87,7 +87,8 @@ and failed the solver's own tests (the missing-state error and the round-off-flo
 Krylov.jl for a matrix-free operator. Stacking shares CG's step sizes across columns and doubles the iterations;
 one column at a time loses the block apply (launch overhead on the GPU, the threaded block apply on the CPU). No library
 we found does per-column scalars over one block apply, so the built-in solver stays; a batched CG upstream in Krylov.jl
-would let it go.
+would let it go. The library back ends (`KRONFREE_LINSOLVE`) are in commit `fcc0812` and were removed after it;
+the capture hook and the isolate scripts stay, replaying the built-in solver.
 
 ## Alpine GPUs (2026-11-14; `../gpu_cluster/`)
 
