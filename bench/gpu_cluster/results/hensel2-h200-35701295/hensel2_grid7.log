@@ -1,0 +1,67 @@
+normal modes ω_μ/2π (GHz): [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]   paper: [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]
+local oscillators Ω_μ (GHz): [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]   paper: [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]
+junction q1: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction q2: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction c: N_eff = 1.13 (paper: qubits 2.0, coupler 1.1)
+local coordinates: E_C diag [0.5534, 0.5534, 0.7748, 0.3874, 0.3874, 0.3874], E_L diag [1.635, 1.635, 12.113, 3.269, 7.56, 68.387]
+case hensel_two_fluxonia: device gpu, threads 8, BLAS 1, commit f6048397, smoke false, out /projects/elwe6267/kronfree-bench-gpu/results/hensel2-h200-35701295/hensel2_grid7
+binary sheared k1 40/20 k2 60 kM 120     p = 0.0    E1-E0 = 0.000859 GHz     0.43 s (first 43.2)  root 7200, 14 it, 120 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.1    E1-E0 = 0.379069 GHz     0.54 s (first 2.7)  root 7200, 56 it, 258 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.2    E1-E0 = 0.837706 GHz     0.49 s (first 1.0)  root 7200, 20 it, 156 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.3    E1-E0 = 1.075980 GHz     0.53 s (first 1.0)  root 7200, 35 it, 221 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.4    E1-E0 = 0.918544 GHz     0.60 s (first 0.6)  root 7200, 37 it, 291 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.5    E1-E0 = 0.000458 GHz     0.53 s (first 0.8)  root 7200, 16 it, 166 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.0    E1-E0 = 0.000859 GHz     0.55 s (first 1.1)  root 14400, 14 it, 124 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.1    E1-E0 = 0.379071 GHz     0.63 s (first 0.6)  root 14400, 46 it, 256 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.2    E1-E0 = 0.837736 GHz     0.65 s (first 0.7)  root 14400, 23 it, 161 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.3    E1-E0 = 1.075983 GHz     0.62 s (first 0.9)  root 14400, 35 it, 205 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.4    E1-E0 = 0.918547 GHz     0.69 s (first 1.2)  root 14400, 38 it, 308 matvec
+binary sheared k1 40/20 k2 60 kM 240     p = 0.5    E1-E0 = 0.000458 GHz     0.64 s (first 0.6)  root 14400, 17 it, 168 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.0    E1-E0 = 0.000859 GHz     0.81 s (first 1.1)  root 24000, 14 it, 124 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.1    E1-E0 = 0.379071 GHz     0.89 s (first 1.2)  root 24000, 46 it, 256 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.2    E1-E0 = 0.837736 GHz     0.92 s (first 0.9)  root 24000, 23 it, 161 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.3    E1-E0 = 1.075983 GHz     0.88 s (first 0.9)  root 24000, 35 it, 201 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.4    E1-E0 = 0.918547 GHz     0.96 s (first 1.2)  root 24000, 39 it, 321 matvec
+binary sheared k1 60/30 k2 100 kM 240    p = 0.5    E1-E0 = 0.000458 GHz     0.91 s (first 0.9)  root 24000, 17 it, 168 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.0    E1-E0 = 0.000859 GHz     1.82 s (first 1.9)  root 48000, 14 it, 125 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.1    E1-E0 = 0.379071 GHz     1.94 s (first 1.9)  root 48000, 57 it, 267 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.2    E1-E0 = 0.837736 GHz     1.91 s (first 1.9)  root 48000, 21 it, 159 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.3    E1-E0 = 1.075983 GHz     2.01 s (first 2.0)  root 48000, 35 it, 215 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.4    E1-E0 = 0.918547 GHz     2.01 s (first 2.0)  root 48000, 36 it, 300 matvec
+binary sheared k1 60/30 k2 100 kM 480    p = 0.5    E1-E0 = 0.000458 GHz     1.90 s (first 1.9)  root 48000, 17 it, 168 matvec
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.882819219272471e-8, ratio 1.635328368689786e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.003672603411278931, ratio 0.14407589052799896 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7698194501879492e-8, ratio 1.1817220774492277e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361941340835, ratio 0.14151405430405561 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.882819219272471e-8, ratio 1.635328368689786e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.003672603411278931, ratio 0.14407589052799896 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7698194501879492e-8, ratio 1.1817220774492277e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361941340835, ratio 0.14151405430405561 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.882819219272471e-8, ratio 1.635328368689786e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.003672603411278931, ratio 0.14407589052799896 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits /projects/elwe6267/src/KronFreeCircuits.jl/src/materialize.jl:863
+ladder binary sheared: accurate rung binary sheared k1 40/20 k2 60 kM 120 (change 1.70e-04 GHz < 1e-03), 0.53 s per point (check 0.64 s)
+   binary sheared k1 40/20 k2 60 kM 120     change to next 1.70e-04        0.53 s/pt
+   binary sheared k1 40/20 k2 60 kM 240     change to next 4.65e-07        0.64 s/pt
+   binary sheared k1 60/30 k2 100 kM 240    change to next 3.44e-06        0.91 s/pt
+   binary sheared k1 60/30 k2 100 kM 480    change to next -               1.94 s/pt
+ladder binary sheared: accurate rung binary sheared k1 40/20 k2 60 kM 240 (change 4.65e-07 GHz < 1e-05), 0.64 s per point (check 0.91 s)
+   binary sheared k1 40/20 k2 60 kM 120     change to next 1.70e-04        0.53 s/pt
+   binary sheared k1 40/20 k2 60 kM 240     change to next 4.65e-07        0.64 s/pt
+   binary sheared k1 60/30 k2 100 kM 240    change to next 3.44e-06        0.91 s/pt
+   binary sheared k1 60/30 k2 100 kM 480    change to next -               1.94 s/pt
+
+published (arXiv:2611.05627v1 Table tab:cost, 16-core Xeon 6517P), per grid point:
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel2-h200-35701295/hensel2_grid7/results.json

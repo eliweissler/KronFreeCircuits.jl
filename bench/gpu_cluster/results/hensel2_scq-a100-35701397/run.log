@@ -1,0 +1,20 @@
+case hensel2_scq mode a100 job 35701397 host c3gpu-a9-u29-1 2026-11-14T14:01:17-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA A100 80GB PCIe (UUID: GPU-6e8dd19e-c8ca-3ae3-3224-8f104f110690)
+NVIDIA A100 80GB PCIe, 590.48.01, 81920 MiB
+CPU(s):              64
+Model name:          AMD EPYC 7502 32-Core Processor
+==== scq_kM120  2026-11-14T14:01:18-07:00
+==== scq_kM120  exit 0  863 s
+Φc = 0.2:  43.79 s (solves  28.51 s, rest  15.28 s)  E1-E0 = 0.837706  dense n=800: 18.65, dense n=400: 6.71, torch-cuda n=3600: 1.95, torch-cuda n=7200: 1.19
+Φc = 0.3:  80.90 s (solves  66.13 s, rest  14.77 s)  E1-E0 = 1.075980  dense n=800: 52.55, dense n=400: 10.20, torch-cuda n=7200: 2.08, torch-cuda n=3600: 1.31
+Φc = 0.4:  40.18 s (solves  22.97 s, rest  17.22 s)  E1-E0 = 0.918544  dense n=800: 15.68, dense n=400: 4.19, torch-cuda n=3600: 1.58, torch-cuda n=7200: 1.51
+Φc = 0.5: 258.78 s (solves 246.13 s, rest  12.64 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 195.81, dense n=800: 26.78, dense n=400: 17.15, lobpcg (complex, torch fallback) n=7200: 6.39
+==== scq_kM240  2026-11-14T14:15:41-07:00
+==== scq_kM240  exit 0  1037 s
+Φc = 0.2:  83.14 s (solves  34.89 s, rest  48.25 s)  E1-E0 = 0.837736  dense n=800: 25.01, torch-cuda n=3600: 4.40, torch-cuda n=14400: 4.16, dense n=400: 1.32
+Φc = 0.3:  90.47 s (solves  45.21 s, rest  45.27 s)  E1-E0 = 1.075983  dense n=800: 21.60, torch-cuda n=3600: 15.42, torch-cuda n=14400: 5.79, dense n=400: 2.39
+Φc = 0.4: 123.89 s (solves  78.56 s, rest  45.34 s)  E1-E0 = 0.918547  torch-cuda n=3600: 41.44, dense n=800: 30.24, torch-cuda n=14400: 6.23, dense n=400: 0.64
+Φc = 0.5: 305.63 s (solves 273.05 s, rest  32.58 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 228.48, dense n=800: 26.97, lobpcg (complex, torch fallback) n=14400: 14.64, dense n=400: 2.96
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE hensel2_scq a100 status 0 2026-11-14T14:32:58-07:00

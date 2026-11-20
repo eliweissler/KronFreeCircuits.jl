@@ -89,6 +89,17 @@ end
     c3 = dc_chain3(); d3 = derivatives(dc_solve(c3); wrt=(:g12, :E_J3), order=2, mixed=((:g12, :E_J3),))
     @test all(iszero, energies(d3, :g12, :E_J3, c3.inner)) && all(iszero, energies(d3, :g12, :E_J3, c3.third))
     @test norm(energies(d3, :g12, :E_J3), Inf) > 0
+    # mixed = :all: every pair of `wrt`, the same as listing them
+    s3 = dc_solve(c3); w3 = (:g12, :E_J3, :n_g2)
+    dall = derivatives(s3; wrt=w3, order=2, mixed=:all)
+    dlist = derivatives(s3; wrt=w3, order=2, mixed=((:g12, :E_J3), (:g12, :n_g2), (:E_J3, :n_g2)))
+    @test length(dall.mixed) == 3 && Set(dall.mixed) == Set(dlist.mixed)
+    for (x, λ) in ((:g12, :E_J3), (:g12, :n_g2), (:E_J3, :n_g2))
+        @test energies(dall, x, λ) == energies(dlist, x, λ)
+    end
+    @test isempty(derivatives(s3; wrt=:g12, order=2, mixed=:all).mixed)                 # one parameter: no pairs
+    @test_throws ArgumentError derivatives(s3; wrt=w3, mixed=:all)                       # needs order = 2
+    @test_throws ArgumentError derivatives(s3; wrt=w3, order=2, mixed=:none)             # only :all is a keyword
 end
 
 @testset "second order: joint ports of a child along both parameters; clashes and first-order NaN columns" begin

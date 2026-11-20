@@ -1,0 +1,63 @@
+normal modes ω_μ/2π (GHz): [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]   paper: [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]
+local oscillators Ω_μ (GHz): [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]   paper: [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]
+junction q1: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction q2: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction c: N_eff = 1.13 (paper: qubits 2.0, coupler 1.1)
+local coordinates: E_C diag [0.5534, 0.5534, 0.7748, 0.3874, 0.3874, 0.3874], E_L diag [1.635, 1.635, 12.113, 3.269, 7.56, 68.387]
+case hensel_two_fluxonia: device cpu, threads 8, BLAS 8, commit 4f35e626, smoke false, out bench/hensel_two_fluxonia/results/cpu-memory-rung1
+binary sheared k1 40/20 k2 60 kM 120     p = 0.0    E1-E0 = 0.000859 GHz     0.74 s (first 31.8)  root 7200, 14 it, 120 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.1    E1-E0 = 0.379069 GHz     0.82 s (first 1.6)  root 7200, 56 it, 258 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.2    E1-E0 = 0.837706 GHz     0.91 s (first 0.9)  root 7200, 20 it, 156 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.3    E1-E0 = 1.075980 GHz     0.85 s (first 0.8)  root 7200, 35 it, 221 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.4    E1-E0 = 0.918544 GHz     0.93 s (first 0.9)  root 7200, 38 it, 312 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.5    E1-E0 = 0.000458 GHz     0.87 s (first 0.9)  root 7200, 16 it, 166 matvec
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.8828806718516073e-8, ratio 1.635354250760622e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.0036726034107247597, ratio 0.14407589051279657 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7700253403539765e-8, ratio 1.1818099189484493e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361940789231, ratio 0.14151405428882335 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.8828806718516073e-8, ratio 1.635354250760622e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.0036726034107247597, ratio 0.14407589051279657 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7700253403539765e-8, ratio 1.1818099189484493e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361940789231, ratio 0.14151405428882335 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3]: kept state 2 has joint-peak amplitude 0.0032729104522605246, ratio 0.025144951409452866 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3]: kept state 4 has joint-peak amplitude 0.003135511083983883, ratio 0.0243963828612987 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.2728977509806316 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+ladder binary sheared: no rung reaches 1.0 MHz
+   binary sheared k1 40/20 k2 60 kM 120     change to next -               0.87 s/pt
+ladder binary sheared: no rung reaches 0.01 MHz
+   binary sheared k1 40/20 k2 60 kM 120     change to next -               0.87 s/pt
+
+published (arXiv:2611.05627v1 Table tab:cost, 16-core Xeon 6517P), per grid point:
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: bench/hensel_two_fluxonia/results/cpu-memory-rung1/results.json

@@ -1,0 +1,53 @@
+{
+ "format": "kronfree-spec",
+ "version": 1,
+ "units": "GHz",
+ "parameters": [
+  "varphi_ext"
+ ],
+ "modes": [
+  {
+   "name": "phi",
+   "type": "e"
+  }
+ ],
+ "E_C": [
+  [
+   "47536480861769814000000 // 19212754780010019842159"
+  ]
+ ],
+ "E_L": [
+  [
+   "250000000000000 // 753982236861551"
+  ]
+ ],
+ "flux_linear": [
+  "0"
+ ],
+ "n_g": [
+  "0"
+ ],
+ "cosines": [
+  {
+   "energy": "89 // 10",
+   "omega": [
+    1
+   ],
+   "offset": "varphi_ext"
+  }
+ ],
+ "constant": "0",
+ "_generator": {
+  "package": "circuit-quantization",
+  "version": "0.2.0",
+  "branches": [
+   "Ca",
+   "Jb",
+   "L"
+  ],
+  "script": "bench/array_fluxonium/quantize_single.py 40 0.15"
+ },
+ "_comment": [
+  "Single-mode fluxonium for the N = 40, z = 0.15 array: C = C_Jb + C_J/N, E_L = E_J/N, junction C_Jb = 7.5 fF, E_Jb = 8.9 GHz; loop flux varphi_ext on the junction."
+ ]
+}

@@ -20,7 +20,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid, PeriodicGrid,
        FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense,
        Lanczos, LOBPCG, ShiftInvert, ChebyshevFilter, lowest, indices, connected, follow, within, materialize,
-       System, energies, port, eigenvectors, materialized, bare_labels,
+       System, energies, port, eigenvectors, materialized, node_timings, bare_labels,
        bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
        SelectionContext, GivenSystem, gershgorin_bound,
        separable_eigenbases, product_seed, infnorm,
@@ -57,6 +57,7 @@ include("meanfield.jl")
 include("augment.jl")
 include("derivoperator.jl")
 include("resolvent.jl")
+include("complement_capture.jl")
 include("derivatives.jl")
 include("derivblocks.jl")
 include("spectrum.jl")

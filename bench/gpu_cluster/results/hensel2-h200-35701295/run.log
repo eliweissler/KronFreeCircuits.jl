@@ -1,0 +1,20 @@
+case hensel2 mode h200 job 35701295 host c3gpu-g5-u13 2026-11-14T19:45:15-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA H200 NVL (UUID: GPU-a9c83e8c-954a-d48f-3abb-a7a1cc8df44f)
+NVIDIA H200 NVL, 595.112.07, 143771 MiB
+CPU(s):              128
+Model name:          AMD EPYC 9555 64-Core Processor
+==== hensel2  2026-11-14T19:45:15-07:00
+==== hensel2  exit 0  472 s
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel2-h200-35701295/hensel2/results.json
+==== hensel2_grid7  2026-11-14T19:53:07-07:00
+==== hensel2_grid7  exit 0  182 s
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel2-h200-35701295/hensel2_grid7/results.json
+edge warnings (PhaseGrid range): 1 logs; 10 lines
+DONE hensel2 h200 status 0 2026-11-14T19:56:09-07:00

@@ -1,0 +1,12 @@
+trial 1: 62.37 s
+trial 2: 63.36 s
+trial 3: 65.33 s
+trial 4: 61.19 s
+trial 5: 59.33 s
+trial 6: 62.57 s
+trial 7: 60.18 s
+trial 8: 63.74 s
+trial 9: 63.49 s
+trial 10: 60.77 s
+one solve: 62.23 ± 1.85 s (10 trials)
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_c66/results/sqcircuit_solve_trials.json

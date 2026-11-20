@@ -1,0 +1,442 @@
+{
+    "runs": [
+        {
+            "flat_dim": "7529536",
+            "points": [
+                {
+                    "bytes_allocated": 14124068656,
+                    "first_seconds": 341.024516352,
+                    "gc_seconds": 1.342104537,
+                    "energies": [
+                        13.645041779268436,
+                        13.646024672243106,
+                        13.808202085375253,
+                        13.808974745161823,
+                        16.728831253595793,
+                        16.729766046028352
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 345,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 1.744759325,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": false,
+                            "real": false,
+                            "iterations": 147,
+                            "assemble_seconds": 4.303074479,
+                            "solve_seconds": 331.828549221,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 341.024516352,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.9618218818000001,
+                    "transitions": [
+                        0.0009828929746706905,
+                        0.16316030610681764,
+                        0.16393296589338746,
+                        3.0837894743273573,
+                        3.084724266759917
+                    ],
+                    "point": 0,
+                    "memory": {
+                        "gpu_used_bytes": 10300729940,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 6782963712,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                },
+                {
+                    "bytes_allocated": 9338892896,
+                    "first_seconds": 178.63516217,
+                    "gc_seconds": 0.828029404,
+                    "energies": [
+                        13.721663211834493,
+                        14.100801548920865,
+                        14.100831432659149,
+                        14.769713554800992,
+                        16.80494905282406,
+                        17.18161075144156
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 219,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 0.117052078,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": true,
+                            "real": false,
+                            "iterations": 63,
+                            "assemble_seconds": 2.227563844,
+                            "solve_seconds": 176.016352197,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 178.63516217,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.8037276356027397,
+                    "transitions": [
+                        0.37913833708637235,
+                        0.3791682208246563,
+                        1.0480503429664996,
+                        3.083285840989568,
+                        3.459947539607068
+                    ],
+                    "point": 0.1,
+                    "memory": {
+                        "gpu_used_bytes": 10300715160,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 9149513728,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                },
+                {
+                    "bytes_allocated": 9138532752,
+                    "first_seconds": 100.931035332,
+                    "gc_seconds": 0.701426301,
+                    "energies": [
+                        14.528948915503314,
+                        15.366652898947796,
+                        15.366749767576193,
+                        16.38211680872746,
+                        17.606750812236296,
+                        18.43779210511693
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 149,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 0.108454087,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": true,
+                            "real": false,
+                            "iterations": 32,
+                            "assemble_seconds": 2.218026313,
+                            "solve_seconds": 98.60431806,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 100.931035332,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.6617739467114093,
+                    "transitions": [
+                        0.8377039834444826,
+                        0.8378008520728795,
+                        1.8531678932241462,
+                        3.077801896732982,
+                        3.9088431896136164
+                    ],
+                    "point": 0.2,
+                    "memory": {
+                        "gpu_used_bytes": 10300712344,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 9149513728,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                },
+                {
+                    "bytes_allocated": 9142404640,
+                    "first_seconds": 98.204647913,
+                    "gc_seconds": 0.711547875,
+                    "energies": [
+                        16.046911282207663,
+                        17.12299375941381,
+                        17.12310838353228,
+                        18.163840061793703,
+                        19.111628874801102,
+                        20.175246167818976
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 148,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 0.108142649,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": true,
+                            "real": false,
+                            "iterations": 34,
+                            "assemble_seconds": 2.231117901,
+                            "solve_seconds": 95.865187839,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 98.204647913,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.6477377556689189,
+                    "transitions": [
+                        1.0760824772061461,
+                        1.0761971013246168,
+                        2.11692877958604,
+                        3.064717592593439,
+                        4.128334885611313
+                    ],
+                    "point": 0.3,
+                    "memory": {
+                        "gpu_used_bytes": 10300710144,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 9149513728,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                },
+                {
+                    "bytes_allocated": 9134041888,
+                    "first_seconds": 89.210117774,
+                    "gc_seconds": 0.690531809,
+                    "energies": [
+                        17.847612937719756,
+                        18.766399158674943,
+                        18.7665529665612,
+                        19.34654508853525,
+                        20.88914624330679,
+                        21.790545462304408
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 145,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 0.106674221,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": true,
+                            "real": false,
+                            "iterations": 30,
+                            "assemble_seconds": 2.221070315,
+                            "solve_seconds": 86.882166935,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 89.210117774,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.5991873581724138,
+                    "transitions": [
+                        0.9187862209551874,
+                        0.918940028841444,
+                        1.4989321508154951,
+                        3.041533305587034,
+                        3.942932524584652
+                    ],
+                    "point": 0.4,
+                    "memory": {
+                        "gpu_used_bytes": 10300715328,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 9149513728,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                },
+                {
+                    "bytes_allocated": 9243406256,
+                    "first_seconds": 238.112576701,
+                    "gc_seconds": 0.863948681,
+                    "energies": [
+                        19.20918787555319,
+                        19.209716075990066,
+                        19.469738730540545,
+                        19.470087543427343,
+                        22.222634146530172,
+                        22.22307367600203
+                    ],
+                    "nodes": [
+                        {
+                            "dims": [
+                                14,
+                                14,
+                                14,
+                                14,
+                                14,
+                                14
+                            ],
+                            "n_matvec": 258,
+                            "dim": 7529536,
+                            "kept": 6,
+                            "operator_seconds": 0.106364204,
+                            "modes": [
+                                "m1",
+                                "m2",
+                                "m3",
+                                "m4",
+                                "m5",
+                                "m6"
+                            ],
+                            "compute": 6,
+                            "warm": true,
+                            "real": false,
+                            "iterations": 82,
+                            "assemble_seconds": 2.219560435,
+                            "solve_seconds": 235.786422637,
+                            "solver": "LOBPCG"
+                        }
+                    ],
+                    "seconds": 238.112576701,
+                    "root_dim": 7529536,
+                    "root_seconds_per_matvec": 0.9139008629341084,
+                    "transitions": [
+                        0.0005282004368751814,
+                        0.2605508549873541,
+                        0.26089966787415264,
+                        3.0134462709769814,
+                        3.01388580044884
+                    ],
+                    "point": 0.5,
+                    "memory": {
+                        "gpu_used_bytes": 10300711048,
+                        "gpu_cached_bytes": 14696841216,
+                        "maxrss_bytes": 9149513728,
+                        "system_bytes": 723003880
+                    },
+                    "repeat_seconds": [
+                    ]
+                }
+            ],
+            "label": "paper's space, m = 14",
+            "settings": {
+                "tree": "flat, normal-mode Fock (paper's construction)",
+                "compute": 6,
+                "guard": 0,
+                "m": 14
+            }
+        }
+    ],
+    "environment": {
+        "commit": "4f35e6267ffd0f7898fa2adb5a8efd1dc3e12106",
+        "date": "2026-11-11T19:27:46.832",
+        "tol": 1.0e-6,
+        "smoke": false,
+        "cpu": "11th Gen Intel(R) Core(TM) i7-11700K @ 3.60GHz",
+        "threads": 8,
+        "blas_threads": 1,
+        "host": "eliweissler-Precision-3650-Tower",
+        "repeats": 0,
+        "julia": "1.13.2",
+        "device": "gpu",
+        "gpu": "NVIDIA RTX A4500",
+        "fluxes": [
+            0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5
+        ],
+        "dirty": false,
+        "cores": 16,
+        "case": "hensel_two_fluxonia",
+        "package_version": "0.1.0"
+    },
+    "published": [
+        {
+            "source": "arXiv:2611.05627v1 Table tab:cost, sum over grid points 2-6 / 5",
+            "solver": "exact HD, Lanczos, m = 14 (7.5 M states)",
+            "peak_GB": 16,
+            "seconds_per_point": 816
+        },
+        {
+            "source": "arXiv:2611.05627v1 Table tab:cost, sum over grid points 2-6 / 5",
+            "solver": "TN, bond cap 8",
+            "peak_GB": 0.66,
+            "seconds_per_point": 144
+        },
+        {
+            "source": "arXiv:2611.05627v1 Table tab:cost, sum over grid points 2-6 / 5",
+            "solver": "TN, bond cap 64",
+            "peak_GB": 2.1,
+            "seconds_per_point": 1044
+        }
+    ],
+    "summaries": [
+    ]
+}

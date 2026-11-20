@@ -1,0 +1,14 @@
+/home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_fluxonium/sq_grad.py:81: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /home/task_179331722330938/croot/libtorch_1793317299911/work/torch/csrc/autograd/generated/python_variable_methods.cpp:820.)
+  return float(loop.internal_value) / 0.1          # internal per Phi_0
+/home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/functions.py:407: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /home/task_179333869444034/croot/libtorch_1793338741864/work/aten/src/ATen/Context.cpp:916.)
+  coo_tensor = torch.sparse_coo_tensor(
+SQcircuit /home/eweissler/anaconda3/envs/sqcircuit-bench/lib/python3.14/site-packages/SQcircuit/__init__.py; truncation [120]; n_eig 4; loop flux internal per Phi_0 = 6.283185307179586
+one solve 0.0 s; solve + autodiff Jacobian 0.2 s
+omega01      = +1.068159341e+00   J: +1.0650e-01 -9.6682e-03 +1.5631e+01 -2.3580e-14
+alpha        = -7.137430349e-01   J: +1.7674e-01 -1.3876e-01 -1.5955e+01 +4.3165e-14
+|n_01|^2     = +1.812978836e-02   J: -4.1675e-03 +1.3320e-03 +1.5461e-01 -4.4652e-16
+|phi_01|^2   = +6.192973536e+00   J: +3.6543e+00 -1.5054e+00 -1.1671e+02 -5.3464e-14
+autodiff Jacobian vs central differences of values: max deviation 2.0e-01 of each row's largest entry (0 s)
+Hessian by central differences of the autodiff Jacobian: 1 s
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/autodiff_fluxonium/results/sqcircuit_neig4.json

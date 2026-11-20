@@ -1,0 +1,80 @@
+current mirror N = 3, DMRG on 5 sites (rung coordinates, charge basis ncut 10), MPO bond 10 [10.8 s]; 8 levels by penalty, maxdim 200, weight 100.0
+  level 1: E = -18.231767336 GHz (from E0 0.000000)  var 1.6e-04  max overlap 0.0e+00  maxlink 42  sweeps 7  [118.4 s]
+  level 2: E = -15.955316492 GHz (from E0 2.276451)  var 1.4e-04  max overlap 2.8e-09  maxlink 54  sweeps 7  [213.1 s]
+  level 3: E = -15.955316480 GHz (from E0 2.276451)  var 1.7e-04  max overlap 1.7e-09  maxlink 53  sweeps 9  [238.8 s]
+  level 4: E = -13.819736744 GHz (from E0 4.412031)  var 1.9e-04  max overlap 3.1e-08  maxlink 63  sweeps 135  [4456.3 s]
+
+[371991] signal 15: Terminated
+in expression starting at /home/eweissler/src/KronFreeCircuits-bench/bench/current_mirror/dmrg_cm.jl:81
+getindex at ./essentials.jl:975 [inlined]
+macro expansion at ./multidimensional.jl:1695 [inlined]
+macro expansion at ./cartesian.jl:65 [inlined]
+macro expansion at ./multidimensional.jl:1691 [inlined]
+permutedims! at ./multidimensional.jl:1677
+permutedims at ./multidimensional.jl:1663
+permutedims at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/array/permutedims.jl:8 [inlined]
+_contract! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/abstractarray/tensoralgebra/contract.jl:141
+_contract! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/dense/tensoralgebra/contract.jl:230
+contract! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/dense/tensoralgebra/contract.jl:213 [inlined]
+contract! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:166 [inlined]
+contract! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:166 [inlined]
+_contract!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:144
+_contract!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:132 [inlined]
+contract!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:220 [inlined]
+contract!! at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:189 [inlined]
+contract at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:113
+unknown function (ip: 0x7dc5985f01f2) at (unknown file)
+contract at /home/eweissler/.julia/packages/NDTensors/9ENPn/src/tensoroperations/generic_tensor_operations.jl:91
+contract at /home/eweissler/.julia/packages/SimpleTraits/nEtvW/src/SimpleTraits.jl:332 [inlined]
+_contract at /home/eweissler/.julia/packages/ITensors/rRwEF/src/tensor_operations/tensor_algebra.jl:3
+unknown function (ip: 0x7dc598543b87) at (unknown file)
+_contract at /home/eweissler/.julia/packages/ITensors/rRwEF/src/tensor_operations/tensor_algebra.jl:9
+contract at /home/eweissler/.julia/packages/ITensors/rRwEF/src/tensor_operations/tensor_algebra.jl:76
+* at /home/eweissler/.julia/packages/ITensors/rRwEF/src/tensor_operations/tensor_algebra.jl:63 [inlined]
+product at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/abstractprojmpo/projmps.jl:48
+product at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/abstractprojmpo/projmpo_mps.jl:36
+ProjMPO_MPS at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/abstractprojmpo/projmpo_mps.jl:49 [inlined]
+apply at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/apply.jl:2 [inlined]
+lanczosrecurrence at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:327
+#expand!#23 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:258
+expand! at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/factorizations/lanczos.jl:250
+unknown function (ip: 0x7dc59819b2a8) at (unknown file)
+#eigsolve#54 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/lanczos.jl:78
+eigsolve at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/lanczos.jl:1 [inlined]
+#eigsolve#51 at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/eigsolve.jl:235 [inlined]
+eigsolve at /home/eweissler/.julia/packages/KrylovKit/bEE7W/src/eigsolve/eigsolve.jl:209 [inlined]
+macro expansion at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:238 [inlined]
+macro expansion at /home/eweissler/.julia/packages/TimerOutputs/yLvLd/src/macros.jl:257 [inlined]
+macro expansion at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:237 [inlined]
+macro expansion at ./timing.jl:463 [inlined]
+#dmrg#609 at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:205
+dmrg at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:157 [inlined]
+#dmrg#608 at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:55
+dmrg at /home/eweissler/.julia/packages/ITensorMPS/Ebt09/src/dmrg.jl:41
+unknown function (ip: 0x7dc598180e54) at (unknown file)
+jl_apply at /cache/build/builder-amdci4-4/julialang/julia-ci/src/julia.h:2319 [inlined]
+do_call at /cache/build/builder-amdci4-4/julialang/julia-ci/src/interpreter.c:123
+eval_value at /cache/build/builder-amdci4-4/julialang/julia-ci/src/interpreter.c:243
+eval_body at /cache/build/builder-amdci4-4/julialang/julia-ci/src/interpreter.c:581
+jl_interpret_toplevel_thunk at /cache/build/builder-amdci4-4/julialang/julia-ci/src/interpreter.c:884
+jl_toplevel_eval_flex at /cache/build/builder-amdci4-4/julialang/julia-ci/src/toplevel.c:742
+jl_eval_toplevel_stmts at /cache/build/builder-amdci4-4/julialang/julia-ci/src/toplevel.c:585
+jl_toplevel_eval_flex at /cache/build/builder-amdci4-4/julialang/julia-ci/src/toplevel.c:683
+ijl_toplevel_eval at /cache/build/builder-amdci4-4/julialang/julia-ci/src/toplevel.c:754
+ijl_toplevel_eval_in at /cache/build/builder-amdci4-4/julialang/julia-ci/src/toplevel.c:799
+eval at ./boot.jl:489
+include_string at ./loading.jl:3045
+_include at ./loading.jl:3105
+include at ./Base.jl:309
+exec_options at ./client.jl:344
+_start at ./client.jl:577
+jfptr__start_60477.1 at /home/eweissler/.julia/juliaup/julia-1.13.2+0.x64.linux.gnu/lib/julia/sys.so (unknown line)
+jl_apply at /cache/build/builder-amdci4-4/julialang/julia-ci/src/julia.h:2319 [inlined]
+true_main at /cache/build/builder-amdci4-4/julialang/julia-ci/src/jlapi.c:985
+jl_repl_entrypoint at /cache/build/builder-amdci4-4/julialang/julia-ci/src/jlapi.c:1152
+main at /cache/build/builder-amdci4-4/julialang/julia-ci/cli/loader_exe.c:58
+unknown function (ip: 0x7dc5cd62a1c9) at /lib/x86_64-linux-gnu/libc.so.6
+__libc_start_main at /lib/x86_64-linux-gnu/libc.so.6 (unknown line)
+unknown function (ip: 0x4010b8) at /workspace/srcdir/glibc-2.17/csu/../sysdeps/x86_64/start.S
+unknown function (ip: (nil)) at (unknown file)
+Allocations: 266215113 (Pool: 266213951; Big: 1162); GC: 38959

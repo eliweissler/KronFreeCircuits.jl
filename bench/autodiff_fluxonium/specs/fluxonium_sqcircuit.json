@@ -1,0 +1,57 @@
+{
+ "format": "kronfree-spec",
+ "version": 1,
+ "units": "GHz",
+ "parameters": [
+  "E_C",
+  "E_L",
+  "varphi_ext",
+  "E_J"
+ ],
+ "modes": [
+  {
+   "name": "varphi",
+   "type": "e"
+  }
+ ],
+ "E_C": [
+  [
+   "40 * E_C ./ (E_C + 40)"
+  ]
+ ],
+ "E_L": [
+  [
+   "E_L"
+  ]
+ ],
+ "flux_linear": [
+  "-E_L .* varphi_ext"
+ ],
+ "n_g": [
+  "0"
+ ],
+ "cosines": [
+  {
+   "energy": "E_J",
+   "omega": [
+    -1
+   ],
+   "offset": "0"
+  }
+ ],
+ "constant": "0",
+ "_generator": {
+  "package": "circuit-quantization",
+  "version": "0.2.0",
+  "branches": [
+   "Cg1",
+   "Cg2",
+   "J",
+   "L"
+  ],
+  "script": "bench/autodiff_fluxonium/quantize.py"
+ },
+ "_comment": [
+  "The enumeration's optimized fluxonium with sircuitenum's explicit ground (E_CG = 20 GHz on both nodes), no junction capacitance; varphi = phi_2 - phi_1; irrotational flux."
+ ]
+}

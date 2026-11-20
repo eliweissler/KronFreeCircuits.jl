@@ -1,0 +1,32 @@
+case autodiff mode h200 job 35701292 host c3gpu-g5-u13 2026-11-14T19:18:08-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA H200 NVL (UUID: GPU-a9c83e8c-954a-d48f-3abb-a7a1cc8df44f)
+NVIDIA H200 NVL, 595.112.07, 143771 MiB
+CPU(s):              128
+Model name:          AMD EPYC 9555 64-Core Processor
+==== kf_fluxonium  2026-11-14T19:18:10-07:00
+==== kf_fluxonium  exit 0  266 s
+|n_01|^2     = +1.812977980e-02   J: +1.4474e-03 -4.8673e-03 +1.9244e-01 -1.7419e-14
+|phi_01|^2   = +6.192996255e+00   J: +3.6784e+00 -1.5505e+00 -1.1552e+02 -1.4207e-12
+Jacobian vs central differences: max deviation 6.5e-09 of each row's largest entry
+Hessian vs central differences of the Jacobian: max deviation 1.3e-06 of each Hessian's largest entry
+==== kf_c66  2026-11-14T19:22:36-07:00
+==== kf_c66  exit 0  151 s
+|phi1_01|^2  = +6.019231314e-01   J: -5.1734e-02 -3.4374e+00 +2.2828e-02 -7.7097e+00 +1.9829e-11
+|phi2_01|^2  = +2.826714412e+00   J: -2.4313e-01 -3.1645e+01 +1.3095e+00 -3.7313e+01 +4.8248e-11
+Jacobian vs central differences: max deviation 1.2e-08 of each row's largest entry
+Hessian vs central differences of the Jacobian: max deviation 5.8e-06 of each Hessian's largest entry
+==== scq_fluxonium  2026-11-14T19:25:07-07:00
+==== scq_fluxonium  exit 0  118 s
+omega01 1.068159851 (KronFree 1.068159851, diff -2.4e-13); alpha -0.713742195 (KronFree -0.713742195, diff 7.7e-14)
+build circuit + diagonalize: 0.6423 ± 0.0015 s (10 trials after 3 warm-ups; 641 643 644 645 642 641 643 641 640 641 ms)
+set parameters + diagonalize: 0.6308 ± 0.0421 s (10 trials after 3 warm-ups; 638 641 652 623 723 583 638 584 640 585 ms)
+wrote /projects/elwe6267/kronfree-bench-gpu/results/autodiff-h200-35701292/scqubits_fluxonium_torch-cuda.json
+==== scq_c66  2026-11-14T19:27:05-07:00
+==== scq_c66  exit 0  111 s
+omega01 0.678106382 (KronFree 0.678106382, diff 1.0e-12); alpha -0.550455189 (KronFree -0.550455189, diff -1.5e-12)
+build circuit + diagonalize: 3.4958 ± 0.8463 s (10 trials after 3 warm-ups; 3458 3445 1239 4156 4325 3464 3649 3754 3834 3634 ms)
+set parameters + diagonalize: 4.1523 ± 1.0707 s (10 trials after 3 warm-ups; 3577 3452 3931 4475 3738 3705 6971 4625 3450 3598 ms)
+wrote /projects/elwe6267/kronfree-bench-gpu/results/autodiff-h200-35701292/scqubits_c66_torch-cuda.json
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE autodiff h200 status 0 2026-11-14T19:28:56-07:00

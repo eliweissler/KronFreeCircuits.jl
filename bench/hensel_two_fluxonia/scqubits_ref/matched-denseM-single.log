@@ -1,0 +1,2 @@
+scqubits 4.3.1, frame shear, kM 120, solver dense-M: setup 7.3 s
+Φc = 0.3:  21.21 s (solves  11.39 s, rest   9.82 s)  E1-E0 = 1.075980  arpack n=7200: 7.10, dense M n=3600: 3.58, dense n=800: 0.65, dense n=400: 0.07

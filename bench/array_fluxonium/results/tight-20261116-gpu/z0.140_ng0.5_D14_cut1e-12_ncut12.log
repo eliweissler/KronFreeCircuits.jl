@@ -1,0 +1,2 @@
+   third level: E2 = -331.117046143 ω02 = 9.035695837 ω12 = 8.988802580  var 1.5e-05  max overlap with ψ0, ψ1 1.0e-10  sweeps 15
+DMRG eigen N=40 D=14 θ=(n_g = 0.5, varphi_ext = 3.141592653589793): E0 = -340.152741981 E1 = -340.105848724 ω01 = 0.046893257  maxlink 46/50  MPO bond 5  ⟨ψ0|ψ1⟩ = 9.3e-15  var 7.5e-06/1.9e-06  sweeps 8/10  shift -336.036935  (MPO 7.8 s, DMRG 973.1 s)

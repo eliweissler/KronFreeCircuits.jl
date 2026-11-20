@@ -78,18 +78,29 @@ _residual_floor(hbound::Real, E1::Real) = 10 * eps(float(typeof(hbound))) * max(
 const _DENSE_WARN_DIM = 10_000
 _dense_too_large(solver::Solver, n::Integer) = solver isa Dense && n > _DENSE_WARN_DIM
 
-function solve(s::Lanczos, H::KronFreeOperator, m::Int)
+solve(s::Lanczos, H::KronFreeOperator, m::Int) = lanczos_solve(s, H, m)[1:2]
+
+# `solve(::Lanczos)` plus KrylovKit's `ConvergenceInfo` (`numops` operator applications, `numiter` restarts), for
+# `node_timings`. The eigenvectors are copied once into the returned host matrix, in energy order.
+function lanczos_solve(s::Lanczos, H::KronFreeOperator, m::Int)
     n = size(H, 1)
     m >= 1 || throw(ArgumentError("Lanczos requires m >= 1, got $m"))
     m <= n || throw(ArgumentError("Lanczos: m = $m exceeds the operator dimension $n"))
+    if s.on !== Array && Base.get_extension(KronFreeCircuits, :KronFreeCircuitsCUDAExt) === nothing
+        throw(ArgumentError("Lanczos(on=$(s.on)) needs `using CUDA, cuTENSOR` so the KronFreeCircuits CUDA extension loads"))
+    end
     krylovdim = max(2m + 10, s.krylovdim)
-    vals, vecs, info = KrylovKit.eigsolve(v -> H * v, randn(eltype(H), n), m, :SR;
+    H = _on_storage(H, s.on; capacity=max(1, _block_capacity(H)))   # the operator lives with the Krylov vectors
+    vals, vecs, info = KrylovKit.eigsolve(v -> H * v, adapt(s.on, randn(eltype(H), n)), m, :SR;
                                           ishermitian=true, tol=s.tol, krylovdim=krylovdim,
                                           maxiter=s.maxiter, verbosity=s.verbosity)
     length(vals) >= m && info.converged >= m ||
         error("Lanczos: only $(info.converged) of $m eigenpairs converged (normres = $(info.normres))")
     E = real.(vals[1:m])
-    V = reduce(hcat, vecs[1:m])
     p = sortperm(E)
-    return Vector{Float64}(E[p]), Matrix{eltype(H)}(V[:, p])
+    V = Matrix{eltype(H)}(undef, n, m)
+    for (j, i) in enumerate(p)
+        copyto!(view(V, :, j), Array(vecs[i]))                       # host matrix from either storage (a device vector comes over whole)
+    end
+    return Vector{Float64}(E[p]), V, info
 end

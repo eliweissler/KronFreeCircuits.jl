@@ -1,0 +1,14 @@
+case hensel3 mode a100 job 35701400 host c3gpu-a9-u29-1 2026-11-14T14:18:14-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA A100 80GB PCIe (UUID: GPU-a23cb765-7331-3917-d5c3-9a520e66af13)
+NVIDIA A100 80GB PCIe, 590.48.01, 81920 MiB
+CPU(s):              64
+Model name:          AMD EPYC 7502 32-Core Processor
+==== hensel3  2026-11-14T14:18:14-07:00
+==== hensel3  exit 0  596 s
+   fourlevel rule kM 240 kM2 240            change to next 2.87e-03       17.12 s/pt
+   fourlevel rule kM 480 kM2 480            change to next 1.68e-05       30.86 s/pt
+   fourlevel rule kM 480 kM2 960            change to next -              71.36 s/pt
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel3-a100-35701400/hensel3/results.json
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE hensel3 a100 status 0 2026-11-14T14:28:10-07:00

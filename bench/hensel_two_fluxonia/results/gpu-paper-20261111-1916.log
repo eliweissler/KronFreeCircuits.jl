@@ -1,0 +1,19 @@
+normal modes ω_μ/2π (GHz): [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]   paper: [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]
+local oscillators Ω_μ (GHz): [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]   paper: [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]
+junction q1: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction q2: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction c: N_eff = 1.13 (paper: qubits 2.0, coupler 1.1)
+local coordinates: E_C diag [0.5534, 0.5534, 0.7748, 0.3874, 0.3874, 0.3874], E_L diag [1.635, 1.635, 12.113, 3.269, 7.56, 68.387]
+case hensel_two_fluxonia: device gpu, threads 8, BLAS 1, commit 4f35e626, smoke false, out bench/hensel_two_fluxonia/results/gpu-paper-20261111-1916
+paper's space, m = 14                    p = 0.0    E1-E0 = 0.000983 GHz   341.02 s (first 341.0)  root 7529536, 147 it, 345 matvec
+paper's space, m = 14                    p = 0.1    E1-E0 = 0.379138 GHz   178.64 s (first 178.6)  root 7529536, 63 it, 219 matvec
+paper's space, m = 14                    p = 0.2    E1-E0 = 0.837704 GHz   100.93 s (first 100.9)  root 7529536, 32 it, 149 matvec
+paper's space, m = 14                    p = 0.3    E1-E0 = 1.076082 GHz    98.20 s (first 98.2)  root 7529536, 34 it, 148 matvec
+paper's space, m = 14                    p = 0.4    E1-E0 = 0.918786 GHz    89.21 s (first 89.2)  root 7529536, 30 it, 145 matvec
+paper's space, m = 14                    p = 0.5    E1-E0 = 0.000528 GHz   238.11 s (first 238.1)  root 7529536, 82 it, 258 matvec
+
+published (arXiv:2611.05627v1 Table tab:cost, 16-core Xeon 6517P), per grid point:
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: bench/hensel_two_fluxonia/results/gpu-paper-20261111-1916/results.json

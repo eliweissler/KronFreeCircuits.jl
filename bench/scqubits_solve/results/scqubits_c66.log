@@ -1,0 +1,6 @@
+scqubits 4.3.1; c66; H = 4*EC11*Q1**2 + 8*EC12*Q1*Q2 + 4*EC22*Q2**2 - EJ1*cos(θ2) + EL11*θ1**2/2 + EL12*θ1*θ2 + EL22*θ2**2/2
+levels (GHz, from E0): [0.         0.67810638 0.80575758 1.41499446 1.98731554 1.99797522]
+omega01 0.678106382 (KronFree 0.678106382, diff 8.5e-13); alpha -0.550455189 (KronFree -0.550455189, diff -8.1e-13)
+build circuit + diagonalize: 0.9904 ± 0.0280 s (10 trials after 3 warm-ups; 1030 987 988 1006 992 926 982 1021 992 979 ms)
+set parameters + diagonalize: 0.9816 ± 0.0442 s (10 trials after 3 warm-ups; 966 917 1037 1020 973 1031 906 977 1003 987 ms)
+wrote /home/eweissler/src/KronFreeCircuits-bench/bench/scqubits_solve/results/scqubits_c66.json

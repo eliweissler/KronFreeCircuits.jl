@@ -75,6 +75,25 @@ end
     @test energies(sg) ≈ energies(sd) atol=1e-7
 end
 
+@testset "Lanczos on the device equals Dense on the host (complex and real; a tree root with derivatives)" begin
+    Random.seed!(65)
+    for H in (three_oscillators(6), real_three_oscillators(6))
+        Ed, _ = solve(Dense(), H, 0)
+        E, V = solve(Lanczos(tol=1e-11, on=CuArray), H, 6)
+        @test E isa Vector{Float64} && V isa Matrix{eltype(H)}
+        @test E ≈ Ed[1:6] atol=1e-8
+        check_eigenpairs(H, E, V; tol=1e-8)
+    end
+    θ = two_zero_pi_params(; g=0.05); spec = load_spec(fixture("two_zero_pi.json"))
+    leaf(i) = Node([Symbol("theta$i") => ChargeBasis(6), Symbol("phi$i") => PhaseGrid(-6π, 6π, 101; order=6)]; solver=Dense(), keep=lowest(10))
+    root(s) = Node([leaf(1), leaf(2)]; solver=s, compute=6, keep=lowest(6), retain=:always)
+    sd = materialize(root(Dense()), spec, θ)
+    sg = materialize(root(Lanczos(tol=1e-11, on=CuArray)), spec, θ)
+    @test energies(sg) ≈ energies(sd) atol=1e-8
+    dd = derivatives(sd; wrt=(:g,)); dg = derivatives(sg; wrt=(:g,))
+    @test energies(dg, :g) ≈ energies(dd, :g) atol=1e-7
+end
+
 @testset "ChebyshevFilter on the device equals Dense; a filtered block apply allocates nothing" begin
     Random.seed!(64)
     θ = zero_pi_params(); spec = load_spec(fixture("zero_pi.json"))

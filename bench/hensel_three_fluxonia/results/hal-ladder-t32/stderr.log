@@ -1,0 +1,43 @@
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 72 has joint-peak amplitude 0.0061875942986004, ratio 0.4417367692311436 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 159 has joint-peak amplitude 0.006553091290132753, ratio 0.46424280878821894 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 164 has joint-peak amplitude 0.0007234358681142201, ratio 0.06795092420424284 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 40 has joint-peak amplitude 0.027753287215778282, ratio 0.3889411234175846 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 42 has joint-peak amplitude 0.03343331214725565, ratio 0.45933669771446733 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 46 has joint-peak amplitude 0.0245648997468518, ratio 0.35984768209395207 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 52 has joint-peak amplitude 0.03126598638656379, ratio 0.4472941904635773 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 17 has joint-peak amplitude 0.0007211622315178408, ratio 0.2288469811883953 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 24 has joint-peak amplitude 0.00044225188665499406, ratio 0.17341004652551378 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 25 has joint-peak amplitude 0.0009285770011139818, ratio 0.4333155048852257 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits.jl/src/materialize.jl:867
+	Command being timed: "julia +1.13.1 --project=bench -t 32 --gcthreads=1 bench/hensel_three_fluxonia/run.jl"
+	User time (seconds): 58588.81
+	System time (seconds): 376.56
+	Percent of CPU this job got: 3213%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 30:34.72
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 7510676
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 4
+	Minor (reclaiming a frame) page faults: 19894576
+	Voluntary context switches: 2645586
+	Involuntary context switches: 39570
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 1136
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

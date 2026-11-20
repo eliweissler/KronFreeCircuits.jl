@@ -1,0 +1,14 @@
+case hensel3 mode h200 job 35701296 host c3gpu-g5-u13 2026-11-14T19:56:41-07:00
+repo f604839 1 changed files
+GPU 0: NVIDIA H200 NVL (UUID: GPU-a9c83e8c-954a-d48f-3abb-a7a1cc8df44f)
+NVIDIA H200 NVL, 595.112.07, 143771 MiB
+CPU(s):              128
+Model name:          AMD EPYC 9555 64-Core Processor
+==== hensel3  2026-11-14T19:56:41-07:00
+==== hensel3  exit 0  300 s
+   fourlevel rule kM 240 kM2 240            change to next 2.87e-03        8.39 s/pt
+   fourlevel rule kM 480 kM2 480            change to next 1.68e-05       15.42 s/pt
+   fourlevel rule kM 480 kM2 960            change to next -              33.47 s/pt
+results: /projects/elwe6267/kronfree-bench-gpu/results/hensel3-h200-35701296/hensel3/results.json
+edge warnings (PhaseGrid range): 0 logs; 0 lines
+DONE hensel3 h200 status 0 2026-11-14T20:01:41-07:00

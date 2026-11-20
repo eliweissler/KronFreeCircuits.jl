@@ -1,0 +1,43 @@
+normal modes ω_μ/2π (GHz): [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]   paper: [3.088, 4.84, 6.804, 6.807, 9.903, 14.581]
+local oscillators Ω_μ (GHz): [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]   paper: [3.063, 4.839, 2.607, 2.598, 8.734, 14.576]
+junction q1: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction q2: N_eff = 2.01 (paper: qubits 2.0, coupler 1.1)
+junction c: N_eff = 1.13 (paper: qubits 2.0, coupler 1.1)
+local coordinates: E_C diag [0.5534, 0.5534, 0.7748, 0.3874, 0.3874, 0.3874], E_L diag [1.635, 1.635, 12.113, 3.269, 7.56, 68.387]
+case hensel_two_fluxonia: device cpu, threads 8, BLAS 8, commit c94938d4, smoke false, out bench/hensel_two_fluxonia/results/cpu-memory-grid7-rung1-merged
+binary sheared k1 40/20 k2 60 kM 120     p = 0.0    E1-E0 = 0.000859 GHz     0.79 s (first 33.1)  root 7200, 14 it, 120 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.1    E1-E0 = 0.379069 GHz     0.86 s (first 1.6)  root 7200, 56 it, 258 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.2    E1-E0 = 0.837706 GHz     0.90 s (first 0.9)  root 7200, 20 it, 156 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.3    E1-E0 = 1.075980 GHz     0.89 s (first 0.9)  root 7200, 35 it, 221 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.4    E1-E0 = 0.918544 GHz     0.91 s (first 1.0)  root 7200, 35 it, 297 matvec
+binary sheared k1 40/20 k2 60 kM 120     p = 0.5    E1-E0 = 0.000458 GHz     0.95 s (first 1.0)  root 7200, 16 it, 166 matvec
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.882804262833606e-8, ratio 1.635322069477079e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.003672603411436843, ratio 0.14407589053061387 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7698355560545895e-8, ratio 1.1817289488933945e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361941378763, ratio 0.14151405430250116 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 3 has joint-peak amplitude 3.882804262833606e-8, ratio 1.635322069477079e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 4 has joint-peak amplitude 0.003672603411436843, ratio 0.14407589053061387 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 7 has joint-peak amplitude 2.7698355560545895e-8, ratio 1.1817289488933945e-6 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3, :q2, :f2]: kept state 8 has joint-peak amplitude 0.003555361941378763, ratio 0.14151405430250116 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3]: kept state 2 has joint-peak amplitude 0.003272910459024614, ratio 0.02514495146140461 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+┌ Warning: Branch node on modes [:c, :f1, :q1, :f3]: kept state 4 has joint-peak amplitude 0.0031355110911387707, ratio 0.024396382916954 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:868
+ladder binary sheared: no rung reaches 1.0 MHz
+   binary sheared k1 40/20 k2 60 kM 120     change to next -               0.90 s/pt
+ladder binary sheared: no rung reaches 0.01 MHz
+   binary sheared k1 40/20 k2 60 kM 120     change to next -               0.90 s/pt
+
+published (arXiv:2611.05627v1 Table tab:cost, 16-core Xeon 6517P), per grid point:
+   exact HD, Lanczos, m = 14 (7.5 M states)        816.0 s  16.00 GB
+   TN, bond cap 8                                  144.0 s   0.66 GB
+   TN, bond cap 64                                1044.0 s   2.10 GB
+results: bench/hensel_two_fluxonia/results/cpu-memory-grid7-rung1-merged/results.json

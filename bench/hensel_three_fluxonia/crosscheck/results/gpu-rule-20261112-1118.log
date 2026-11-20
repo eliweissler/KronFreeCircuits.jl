@@ -1,0 +1,64 @@
+normal modes ω_μ/2π (GHz): [2.268, 3.685, 4.271, 4.935, 5.236, 8.381, 9.151, 17.173, 17.35, 21.166, 21.559]
+case hensel_three_fluxonia: device gpu, threads 8, BLAS 1, commit e81c2e4d, smoke false, out bench/hensel_three_fluxonia/results/gpu-rule-20261112-1118
+shear fractions s* (rows f1..f6, columns q1 q2 q3 c1 c2):
+   f1:  0.779  0.752  0.779  0.179  0.181
+   f2:  0.821  0.797  0.821  0.220  0.221
+   f3:  0.900  0.884  0.900  0.349  0.351
+   f4:  0.904  0.889  0.904  0.360  0.362
+   f5:  0.957  0.949  0.957  0.566  0.568
+   f6:  0.958  0.950  0.958  0.571  0.573
+frame rule: pairs (q1, f3) (q2, f4) (q3, f6) (c1, f1) (c2, f2), loose f5
+fourlevel rule kM 240 kM2 240            p = 0.0    E1-E0 = 0.420784 GHz    30.94 s (first 84.8)  root 230400, 19 it, 176 matvec
+   transitions (GHz) 0.4208 0.7039 0.8148 1.0357 1.2182 1.4745 1.7703
+   vs paper (MHz)    -1.22 -1.14 -1.22 -2.33 -1.82 -2.52 -0.65
+fourlevel rule kM 480 kM2 480            p = 0.0    E1-E0 = 0.420738 GHz   155.09 s (first 155.1)  root 921600, 20 it, 183 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.26 -1.23 -1.30 -2.80 -2.56 -2.96 -3.52
+fourlevel rule kM 480 kM2 960            p = 0.0    E1-E0 = 0.420734 GHz   456.44 s (first 456.9)  root 1843200, 20 it, 181 matvec
+   transitions (GHz) 0.4207 0.7038 0.8147 1.0352 1.2174 1.4740 1.7675
+   vs paper (MHz)    -1.27 -1.23 -1.31 -2.81 -2.57 -2.98 -3.53
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.28720115013598224 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :c1 is too small: kept states [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.34413442136788425 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 72 has joint-peak amplitude 0.006187594297203496, ratio 0.441736769153702 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 159 has joint-peak amplitude 0.00655309128882957, ratio 0.46424280869256496 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1]: kept state 164 has joint-peak amplitude 0.0007234358666187013, ratio 0.06795092407586517 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.27988363090627216 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 40 has joint-peak amplitude 0.027753286911327227, ratio 0.38894111912447765 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 42 has joint-peak amplitude 0.033433312071278455, ratio 0.4593366966546637 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 46 has joint-peak amplitude 0.024564898750045736, ratio 0.359847667463667 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q2, :f4]: kept state 52 has joint-peak amplitude 0.031265985335198414, ratio 0.44729417539226446 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 17 has joint-peak amplitude 0.0007211622298091026, ratio 0.22884698064810685 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 24 has joint-peak amplitude 0.0004422518867016928, ratio 0.1734100465439748 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: Branch node on modes [:q1, :f3, :c1, :f1, :q2, :f4]: kept state 25 has joint-peak amplitude 0.0009285770013691183, ratio 0.43331550501254545 < 0.5 to its dominant product component's (heavy hybridization); its phase is fixed by a small amplitude
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:862
+┌ Warning: PhaseGrid on mode :q3 is too small: kept states [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.28722692551548223 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :c2 is too small: kept states [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.34347997823143483 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q1 is too small: kept states [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.28720115013598224 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :c1 is too small: kept states [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.34413442136788425 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q2 is too small: kept states [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.27988363090627216 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :q3 is too small: kept states [15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.28722692551548223 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+┌ Warning: PhaseGrid on mode :c2 is too small: kept states [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] have edge support up to 0.34347997823143483 > 1.0e-6; enlarge the grid
+└ @ KronFreeCircuits ~/src/KronFreeCircuits-bench/src/materialize.jl:899
+ladder four-level, rule frame: accurate rung fourlevel rule kM 480 kM2 480 (change 1.68e-05 GHz < 1e-03), 155.09 s per point (check 456.44 s)
+   fourlevel rule kM 240 kM2 240            change to next 2.87e-03       30.94 s/pt
+   fourlevel rule kM 480 kM2 480            change to next 1.68e-05      155.09 s/pt
+   fourlevel rule kM 480 kM2 960            change to next -             456.44 s/pt
+results: bench/hensel_three_fluxonia/results/gpu-rule-20261112-1118/results.json

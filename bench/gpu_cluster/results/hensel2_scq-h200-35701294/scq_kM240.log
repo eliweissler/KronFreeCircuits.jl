@@ -1,0 +1,8 @@
+scqubits 4.3.1, frame shear, kM 240, solver torch-cuda: setup 12.5 s
+Φc = 0.0:  56.65 s (solves  39.72 s, rest  16.93 s)  E1-E0 = 0.000859  lobpcg (complex, torch fallback) n=3600: 29.34, lobpcg (complex, torch fallback) n=14400: 9.36, dense n=800: 0.94, dense n=400: 0.08
+UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/Context.cpp:916.)
+ /projects/elwe6267/src/KronFreeCircuits.jl/bench/hensel_two_fluxonia/scqubits_ref/matched.py: 104Φc = 0.1:  40.28 s (solves  15.43 s, rest  24.86 s)  E1-E0 = 0.379071  dense n=800: 5.54, torch-cuda n=14400: 4.84, torch-cuda n=3600: 3.90, dense n=400: 1.14
+Φc = 0.2:  37.95 s (solves  12.57 s, rest  25.38 s)  E1-E0 = 0.837736  torch-cuda n=3600: 6.69, dense n=800: 3.45, torch-cuda n=14400: 2.32, dense n=400: 0.12
+Φc = 0.3:  31.75 s (solves   7.47 s, rest  24.29 s)  E1-E0 = 1.075983  torch-cuda n=14400: 3.27, dense n=800: 2.10, torch-cuda n=3600: 1.98, dense n=400: 0.13
+Φc = 0.4:  37.95 s (solves  12.88 s, rest  25.07 s)  E1-E0 = 0.918547  dense n=800: 4.90, torch-cuda n=3600: 4.28, torch-cuda n=14400: 3.56, dense n=400: 0.13
+Φc = 0.5:  78.89 s (solves  62.67 s, rest  16.22 s)  E1-E0 = 0.000458  lobpcg (complex, torch fallback) n=3600: 50.65, lobpcg (complex, torch fallback) n=14400: 9.43, dense n=800: 2.16, dense n=400: 0.42
