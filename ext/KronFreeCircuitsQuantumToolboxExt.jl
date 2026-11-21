@@ -7,7 +7,7 @@ using LinearAlgebra
 using QuantumToolbox
 using KronFreeCircuits
 using KronFreeCircuits: System, Node, Port, KronFreeOperator, Frame, operator, materialized, _on_storage, adapt
-import KronFreeCircuits: qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian
+import KronFreeCircuits: qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian, to_lab, _rotate_back
 
 const SMO = QuantumToolbox.SciMLOperators
 
@@ -179,7 +179,7 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
     frame in (:lab, :interaction) || throw(ArgumentError("frame must be :lab or :interaction, got :$frame"))
     n = _check_request(sys, node, basis, n, on)
     _check_drives(drives)
-    frame === :interaction && throw(ArgumentError("frame=:interaction is not implemented yet"))
+    frame === :interaction && return _interaction_hamiltonian(sys, drives, node, basis, n, on, batch)
     if basis === :dressed
         H0 = qt_hamiltonian(sys, node; n)
         terms = [(Qobj(2π * Matrix(_dressed_port(sys, k, node)[1:n, 1:n]); type=Operator(), dims=n), f) for (k, f) in drives]
@@ -195,5 +195,72 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
     end
     return _free_qobjevo(L, N), Frame(nothing)
 end
+
+# ---- interaction picture, in the frame of the diagonal Ω of 2π(H0 − E₀) in the evolved basis:
+#      H_I(t) v = e^{iΩt} [2π(H0 − E₀) − diag Ω + Σ_k f_k(t) 2π O_k] e^{−iΩt} v.
+# Dressed: H0 is diagonal, its term is absent (`H0 = nothing`) and only the drives remain. The phase vector is formed
+# once per call; buffers follow the block width.
+mutable struct InteractionApply{V,C}
+    Ω::V                 # rad/ns, where the states live
+    ph::C                # e^{−iΩt}
+    H0::Union{Nothing,KronFreeApply}
+    ops::Vector{Any}     # 2π O_k: a KronFreeApply (free) or a dense matrix (dressed)
+    fs::Vector{Any}
+    X::Any               # ph .* V
+    acc::Any             # the bracket applied to X
+end
+
+function _apply!(A::InteractionApply, w, v, p, t, α, β)
+    N = length(A.Ω)
+    V = reshape(v, N, :); W = reshape(w, N, :)
+    m = size(V, 2)
+    if !(A.X isa AbstractMatrix) || size(A.X) != (N, m)
+        A.X = similar(A.ph, ComplexF64, N, m); A.acc = similar(A.X)
+    end
+    A.ph .= cis.(-A.Ω .* t)
+    A.X .= A.ph .* V
+    if A.H0 === nothing
+        fill!(A.acc, 0)
+    else
+        _apply!(A.H0, A.acc, A.X, true, false)
+        A.acc .-= A.Ω .* A.X
+    end
+    for (O, f) in zip(A.ops, A.fs)
+        c = ComplexF64(f(p, t))
+        O isa KronFreeApply ? _apply!(O, A.acc, A.X, c, true) : mul!(A.acc, O, A.X, c, true)
+    end
+    if iszero(β)
+        W .= α .* conj.(A.ph) .* A.acc
+    else
+        W .= α .* conj.(A.ph) .* A.acc .+ β .* W
+    end
+    return w
+end
+(A::InteractionApply)(w, v, u, p, t) = _apply!(A, w, v, p, t, true, false)
+(A::InteractionApply)(w, v, u, p, t, α, β) = _apply!(A, w, v, p, t, α, β)
+(A::InteractionApply)(v, u, p, t) = _apply!(A, similar(v), v, p, t, true, false)
+
+function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol, n::Int, on, batch::Bool)
+    E = energies(sys, node)
+    if basis === :dressed
+        Ω = 2π .* (E[1:n] .- E[1])
+        ops = Any[2π * Matrix{ComplexF64}(_dressed_port(sys, k, node)[1:n, 1:n]) for (k, _) in drives]
+        A = InteractionApply(Ω, zeros(ComplexF64, n), nothing, ops, Any[f for (_, f) in drives], nothing, nothing)
+        F = _function_operator(A, n, Array, batch; hermitian=all(_hermitian(k) for (k, _) in drives), constant=false)
+        return QobjEvo(F; type=Operator(), dims=n), Frame(Ω)
+    end
+    H = _on_storage(operator(sys, node), on)
+    N = size(H, 1)
+    Ω = 2π .* (real.(diagonal(H)) .- E[1])
+    ops = Any[KronFreeApply(port_operator(sys, k, node; on), 2π, 0.0) for (k, _) in drives]
+    Ωd = adapt(on, Ω)
+    A = InteractionApply(Ωd, similar(Ωd, ComplexF64), KronFreeApply(H, 2π, E[1]), ops, Any[f for (_, f) in drives],
+                         nothing, nothing)
+    F = _function_operator(A, N, on, batch; hermitian=all(_hermitian(k) for (k, _) in drives), constant=false)
+    return _free_qobjevo(F, N), Frame(Ω)
+end
+
+to_lab(frame::Frame, ψ::QuantumObject, t::Real) =
+    frame.ω === nothing ? ψ : Qobj(_rotate_back(frame.ω, ψ.data, t); type=ψ.type, dims=ψ.dimensions)
 
 end # module

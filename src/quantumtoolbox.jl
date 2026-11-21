@@ -21,6 +21,22 @@ struct Frame
     ω::Union{Nothing,Vector{Float64}}
 end
 
+"""
+    to_lab(frame, ψ, t)
+
+The lab-frame state `e^{−iΩt} ψ` of an interaction-picture state `ψ` at time `t` (ns): a vector, an N×m block (each
+row rotated by its Ω) or, with the QuantumToolbox extension, a `Ket`/`Operator` of the same type and dims; on the host
+or the device, wherever `ψ` lives. The identity, returning `ψ` itself, for the lab frame (`frame.ω === nothing`).
+"""
+to_lab(frame::Frame, ψ, t::Real) = frame.ω === nothing ? ψ : _rotate_back(frame.ω, ψ, t)
+
+function _rotate_back(ω::Vector{Float64}, ψ::AbstractVecOrMat, t::Real)
+    size(ψ, 1) == length(ω) ||
+        throw(DimensionMismatch("to_lab: the frame has $(length(ω)) frequencies, the state $(size(ψ, 1)) rows"))
+    w = copyto!(similar(ψ, Float64, length(ω)), ω)                    # ω where ψ lives
+    return cis.(-w .* t) .* ψ
+end
+
 const _QT_HINT = "load QuantumToolbox to use the time-evolution interface (`using QuantumToolbox`)"
 
 """

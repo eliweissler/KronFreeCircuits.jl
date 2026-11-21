@@ -23,7 +23,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        infnorm, PortCharacter, character, arithmetic, circuit_quantization, QuantizedCircuit, record_json,
        save_record, load_record, suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks,
        NearDegenerateBlock, block_levels, spectrum, phase_wavefunction, charge_wavefunction, port_operator,
-       qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian, Frame
+       qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian, Frame, to_lab
 
 include("parameters.jl")
 include("spec.jl")

@@ -98,3 +98,38 @@ const LABELS = [(1, 1), (2, 1), (1, 2)]
     @test errmsg(() -> drive_hamiltonian(sys, [(:varphi_2, n2port()) => f]; basis=:free)) isa String
     @test occursin("bogus", errmsg(() -> drive_hamiltonian(sys, drives; frame=:bogus)))
 end
+
+@testset "to_lab on arrays" begin
+    ψ = [1.0, 2.0]
+    @test to_lab(Frame(nothing), ψ, 3.0) === ψ
+    @test to_lab(Frame([0.0, 1.0]), [1.0, 1.0], π) ≈ [1, -1]
+    @test to_lab(Frame([0.0, 1.0]), [1.0 2.0; 1.0 2.0], π) ≈ [1 2; -1 -2]
+end
+
+@testset "interaction picture ($kind)" for (kind, sys) in SYSTEMS
+    f = drive_of(sys)
+    drives = [(:varphi_1, nport()) => f]
+    T = TLIST[end]
+    for basis in (:dressed, :free)
+        kw = basis === :dressed ? (; n=36) : (; basis=:free)
+        ket(l) = basis === :dressed ? qt_ket(sys, l) : qt_ket(sys, l; basis=:free)
+        Hl, _ = drive_hamiltonian(sys, drives; kw...)
+        Hi, fr = drive_hamiltonian(sys, drives; frame=:interaction, kw...)
+        @test fr.ω isa Vector{Float64} && length(fr.ω) == 36
+        ψ0 = ket((2, 1))
+        @test isapprox(to_lab(fr, evolve(Hi, ψ0), T).data, evolve(Hl, ψ0).data; atol=1e-7)
+
+        Hlb, _ = drive_hamiltonian(sys, drives; batch=true, kw...)
+        Hib, frb = drive_hamiltonian(sys, drives; frame=:interaction, batch=true, kw...)
+        B0 = ket(LABELS)
+        Bi = evolve(Hib, B0)
+        @test size(to_lab(frb, Bi, T)) == (36, 3)
+        @test isapprox(to_lab(frb, Bi, T).data, evolve(Hlb, B0).data; atol=1e-7)
+    end
+    @test drive_hamiltonian(sys, drives; n=36, frame=:interaction)[2].ω ≈ 2π * (energies(sys) .- energies(sys)[1])
+
+    # no drives: the dressed interaction-picture Hamiltonian vanishes and the state stays put
+    Hi0, _ = drive_hamiltonian(sys, Pair[]; frame=:interaction, n=36)
+    ψ0 = qt_ket(sys, (2, 1))
+    @test isapprox(evolve(Hi0, ψ0).data, ψ0.data; atol=1e-12)
+end
