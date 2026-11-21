@@ -30,6 +30,23 @@ function port_operator(sys::System, key::AbstractVector{<:Tuple{Symbol,Port}}, n
     length(unique(first.(K))) == length(K) ||
         throw(ArgumentError("port_operator: the factors of a joint key must be on distinct modes, got $(_key_string(K))"))
     mn = materialized(sys, node)
+    _check_child_ports(node, mn, K)
     ops = Tuple{Int,LocalOp}[(a, op) for (a, op, _) in _axis_ops(node, mn.children, K)]
     return KronFreeOperator(mn.dims, [AxisTerm(1.0, ops)]; on)
+end
+
+# An ArgumentError, listing what is available, for a factor group of `K` whose port (one factor) or joint port (several)
+# its child node did not form; leaf bases and given systems check their own operators.
+function _check_child_ports(node::Node, mn::MaterializedNode, K::_FactorKey)
+    for (a, Ka) in _axis_groups(node, K)
+        ch = mn.children[a]
+        ch isa MaterializedNode && !(ch.node isa GivenSystem) || continue
+        formed = length(Ka) == 1 ? haskey(ch.ports, Ka[1]) : haskey(ch.joint_ports, Ka)
+        formed && continue
+        avail = vcat(sort!([_key_string(Tuple{Symbol,Port}[k]) for k in keys(ch.ports)]),
+                     sort!([_key_string(k) for k in keys(ch.joint_ports)]))
+        throw(ArgumentError("child node on modes $(_child_modes(ch.node)) lacks port $(_key_string(Ka)) " *
+                            "(list it in that node's `ports`); available: " * (isempty(avail) ? "none" : join(avail, ", "))))
+    end
+    return nothing
 end

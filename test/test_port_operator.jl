@@ -43,3 +43,17 @@ end
     @test err isa MethodError
     @test occursin("load QuantumToolbox", sprint(showerror, err))
 end
+
+@testset "port_operator: ports a child did not form" begin
+    # three transmons, :varphi_1 and :varphi_2 under one child node: the joint port n1 n2 is not formed there
+    spec = load_spec(fixture("three_transmons.json"))
+    leaf(i) = Node([Symbol("varphi_$i") => ChargeBasis(10)]; keep=lowest(4))
+    mid = Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(8))
+    root = Node([mid, leaf(3)]; solver=Dense(), keep=lowest(10))
+    sys = materialize(root, spec, three_transmons_params(g=0.3))
+    err = try port_operator(sys, [(:varphi_1, nport()), (:varphi_2, nport())]); nothing catch e; e end
+    @test err isa ArgumentError
+    @test err isa ArgumentError && occursin("available", err.msg) && occursin("varphi_1", err.msg)
+    err = try port_operator(sys, (:varphi_1, n2port())); nothing catch e; e end
+    @test err isa ArgumentError && occursin("lacks port", err.msg) && occursin("available", err.msg)
+end

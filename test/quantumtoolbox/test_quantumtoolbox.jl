@@ -134,6 +134,20 @@ end
     @test isapprox(evolve(Hi0, ψ0).data, ψ0.data; atol=1e-12)
 end
 
+@testset "no drives, every basis and frame ($kind)" for (kind, sys) in SYSTEMS
+    Ω = 2π * (energies(sys) .- energies(sys)[1])
+    T = TLIST[end]
+    ψd0 = qt_ket(sys, (2, 1))
+    i = dressed_index(sys, (2, 1))
+    ψd = evolve(first(drive_hamiltonian(sys, Pair[])), ψd0)                         # dressed lab: H0 alone
+    @test isapprox(ψd.data, cis(-Ω[i] * T) .* ψd0.data; atol=1e-7)
+    ψf0 = qt_ket(sys, (2, 1); basis=:free)
+    ψfl = evolve(first(drive_hamiltonian(sys, Pair[]; basis=:free)), ψf0)
+    @test isapprox(to_dressed(sys, ψfl).data, cis.(-Ω .* T) .* to_dressed(sys, ψf0).data; atol=1e-7)
+    Hfi, fr = drive_hamiltonian(sys, Pair[]; basis=:free, frame=:interaction)
+    @test isapprox(to_lab(fr, evolve(Hfi, ψf0), T).data, ψfl.data; atol=1e-7)
+end
+
 @testset "GPU ($kind)" for (kind, sys) in SYSTEMS
     if !CUDA.functional()
         @test_skip "no functional CUDA device"
@@ -161,4 +175,15 @@ end
         @test to_dressed(sys, qt_ket(sys, (2, 1); basis=:free, on=CuArray)).data ≈
               to_dressed(sys, qt_ket(sys, (2, 1); basis=:free)).data
     end
+end
+
+@testset "dressed interaction picture takes a ket or a block ($kind)" for (kind, sys) in SYSTEMS
+    drives = [(:varphi_1, nport()) => drive_of(sys)]
+    Hi, fr = drive_hamiltonian(sys, drives; frame=:interaction, n=36)              # default batch = false
+    Hl, _ = drive_hamiltonian(sys, drives; n=36)
+    B0 = qt_ket(sys, LABELS)
+    @test isapprox(to_lab(fr, evolve(Hi, B0), TLIST[end]).data, evolve(Hl, B0).data; atol=1e-7)
+    ψ0 = qt_ket(sys, (2, 1))
+    Hib, frb = drive_hamiltonian(sys, drives; frame=:interaction, n=36, batch=true)
+    @test isapprox(to_lab(frb, evolve(Hib, ψ0), TLIST[end]).data, evolve(Hl, ψ0).data; atol=1e-7)
 end

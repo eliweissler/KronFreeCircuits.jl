@@ -182,6 +182,7 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
     frame === :interaction && return _interaction_hamiltonian(sys, drives, node, basis, n, on, batch)
     if basis === :dressed
         H0 = qt_hamiltonian(sys, node; n)
+        isempty(drives) && return QobjEvo(H0), Frame(nothing)
         terms = [(Qobj(2π * Matrix(_dressed_port(sys, k, node)[1:n, 1:n]); type=Operator(), dims=n), f) for (k, f) in drives]
         return QobjEvo((H0, terms...)), Frame(nothing)
     end
@@ -197,14 +198,15 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
 end
 
 # ---- interaction picture, in the frame of the diagonal Ω of 2π(H0 − E₀) in the evolved basis:
-#      H_I(t) v = e^{iΩt} [2π(H0 − E₀) − diag Ω + Σ_k f_k(t) 2π O_k] e^{−iΩt} v.
-# Dressed: H0 is diagonal, its term is absent (`H0 = nothing`) and only the drives remain. The phase vector is formed
-# once per call; buffers follow the block width.
+#      H_I(t) = e^{iΩt} [2π(H0 − E₀) − diag Ω + Σ_k f_k(t) 2π O_k] e^{−iΩt}.
+# Dressed: H0 is diagonal and drops out; H_I(t) is a dense matrix refilled at each t (a MatrixOperator, so it takes a
+# ket or a block). Matrix-free: a FunctionOperator; the phase vector is formed once per call, buffers follow the block
+# width.
 mutable struct InteractionApply{V,C}
     Ω::V                 # rad/ns, where the states live
     ph::C                # e^{−iΩt}
-    H0::Union{Nothing,KronFreeApply}
-    ops::Vector{Any}     # 2π O_k: a KronFreeApply (free) or a dense matrix (dressed)
+    H0::KronFreeApply    # 2π(H0 − E₀)
+    ops::Vector{KronFreeApply}   # 2π O_k
     fs::Vector{Any}
     X::Any               # ph .* V
     acc::Any             # the bracket applied to X
@@ -219,15 +221,10 @@ function _apply!(A::InteractionApply, w, v, p, t, α, β)
     end
     A.ph .= cis.(-A.Ω .* t)
     A.X .= A.ph .* V
-    if A.H0 === nothing
-        fill!(A.acc, 0)
-    else
-        _apply!(A.H0, A.acc, A.X, true, false)
-        A.acc .-= A.Ω .* A.X
-    end
+    _apply!(A.H0, A.acc, A.X, true, false)
+    A.acc .-= A.Ω .* A.X
     for (O, f) in zip(A.ops, A.fs)
-        c = ComplexF64(f(p, t))
-        O isa KronFreeApply ? _apply!(O, A.acc, A.X, c, true) : mul!(A.acc, O, A.X, c, true)
+        _apply!(O, A.acc, A.X, ComplexF64(f(p, t)), true)
     end
     if iszero(β)
         W .= α .* conj.(A.ph) .* A.acc
@@ -244,15 +241,24 @@ function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol
     E = energies(sys, node)
     if basis === :dressed
         Ω = 2π .* (E[1:n] .- E[1])
-        ops = Any[2π * Matrix{ComplexF64}(_dressed_port(sys, k, node)[1:n, 1:n]) for (k, _) in drives]
-        A = InteractionApply(Ω, zeros(ComplexF64, n), nothing, ops, Any[f for (_, f) in drives], nothing, nothing)
-        F = _function_operator(A, n, Array, batch; hermitian=all(_hermitian(k) for (k, _) in drives), constant=false)
-        return QobjEvo(F; type=Operator(), dims=n), Frame(Ω)
+        ops = [2π * Matrix{ComplexF64}(_dressed_port(sys, k, node)[1:n, 1:n]) for (k, _) in drives]
+        fs = Any[f for (_, f) in drives]
+        ph = zeros(ComplexF64, n)
+        function fill_HI!(M, u, p, t)                  # M_ij = Σ_k f_k(t) e^{iΩ_i t} (2π P_k)_ij e^{−iΩ_j t}
+            ph .= cis.(Ω .* t)
+            fill!(M, 0)
+            for (P, f) in zip(ops, fs)
+                M .+= ComplexF64(f(p, t)) .* ph .* P .* ph'
+            end
+            return M
+        end
+        M = SMO.MatrixOperator(zeros(ComplexF64, n, n); update_func! = fill_HI!)
+        return QobjEvo(M; type=Operator(), dims=n), Frame(Ω)
     end
     H = _on_storage(operator(sys, node), on)
     N = size(H, 1)
     Ω = 2π .* (real.(diagonal(H)) .- E[1])
-    ops = Any[KronFreeApply(port_operator(sys, k, node; on), 2π, 0.0) for (k, _) in drives]
+    ops = KronFreeApply[KronFreeApply(port_operator(sys, k, node; on), 2π, 0.0) for (k, _) in drives]
     Ωd = adapt(on, Ω)
     A = InteractionApply(Ωd, similar(Ωd, ComplexF64), KronFreeApply(H, 2π, E[1]), ops, Any[f for (_, f) in drives],
                          nothing, nothing)
