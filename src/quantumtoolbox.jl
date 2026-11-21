@@ -11,6 +11,16 @@
 #   once from the `Operator` of `qt_ket(sys, labels)`; `batch = false` ones act on a single ket. Dressed objects take
 #   either.
 
+"""
+    Frame(ω)
+
+The frame a [`drive_hamiltonian`](@ref) is written in: `ω === nothing` for the lab frame, else the angular frequencies
+Ω (rad/ns, one per basis state) of the interaction picture, `ψ_I(t) = e^{iΩt} ψ_lab(t)`.
+"""
+struct Frame
+    ω::Union{Nothing,Vector{Float64}}
+end
+
 const _QT_HINT = "load QuantumToolbox to use the time-evolution interface (`using QuantumToolbox`)"
 
 """

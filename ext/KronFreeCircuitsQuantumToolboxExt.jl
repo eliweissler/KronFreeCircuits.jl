@@ -6,7 +6,7 @@ module KronFreeCircuitsQuantumToolboxExt
 using LinearAlgebra
 using QuantumToolbox
 using KronFreeCircuits
-using KronFreeCircuits: System, Node, Port, KronFreeOperator, operator, materialized, _on_storage, adapt
+using KronFreeCircuits: System, Node, Port, KronFreeOperator, Frame, operator, materialized, _on_storage, adapt
 import KronFreeCircuits: qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian
 
 const SMO = QuantumToolbox.SciMLOperators
@@ -159,6 +159,41 @@ function to_dressed(sys::System, ψ::QuantumObject, node::Node=sys.root.node; n=
     A = view(V, :, 1:n)' * data
     isket(ψ) && return Qobj(A; type=Ket(), dims=n)
     return Qobj(A; type=Operator(), dims=((n,), (size(A, 2),)))
+end
+
+# ---- driven Hamiltonians
+
+function _check_drives(drives)
+    for d in drives
+        d isa Pair && d.first isa _Key ||
+            throw(ArgumentError("each drive must be `key => f` with key a (mode, port) or [(mode, port), ...], got $d"))
+    end
+    return drives
+end
+
+# The coefficient of a matrix-free drive term: a ScalarOperator that QuantumToolbox's solver updates at each t.
+_coefficient(f) = SMO.ScalarOperator(zero(ComplexF64); update_func=(a, u, p, t) -> ComplexF64(f(p, t)))
+
+function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.root.node; basis::Symbol=:dressed,
+                           frame::Symbol=:lab, n=nothing, on=Array, batch::Bool=false)
+    frame in (:lab, :interaction) || throw(ArgumentError("frame must be :lab or :interaction, got :$frame"))
+    n = _check_request(sys, node, basis, n, on)
+    _check_drives(drives)
+    frame === :interaction && throw(ArgumentError("frame=:interaction is not implemented yet"))
+    if basis === :dressed
+        H0 = qt_hamiltonian(sys, node; n)
+        terms = [(Qobj(2π * Matrix(_dressed_port(sys, k, node)[1:n, 1:n]); type=Operator(), dims=n), f) for (k, f) in drives]
+        return QobjEvo((H0, terms...)), Frame(nothing)
+    end
+    E = energies(sys, node)
+    H = _on_storage(operator(sys, node), on)
+    N = size(H, 1)
+    L = _function_operator(KronFreeApply(H, 2π, E[1]), N, on, batch; hermitian=true)
+    for (k, f) in drives
+        Ok = port_operator(sys, k, node; on)
+        L = L + _coefficient(f) * _function_operator(KronFreeApply(Ok, 2π, 0.0), N, on, batch; hermitian=_hermitian(k))
+    end
+    return _free_qobjevo(L, N), Frame(nothing)
 end
 
 end # module
