@@ -272,3 +272,9 @@ end
     @test Fi.op(xr, xr, P0, 0.0) ≈ (Href - Diagonal(2π * real.(diag(Href / 2π)))) * xr
     @test qt_operator(sys, (:varphi_1, nport()); basis=:free).data * xr ≈ dense_operator(port_operator(sys, (:varphi_1, nport()))) * xr
 end
+
+@testset "matrix-free interaction picture is concretely typed ($kind)" for (kind, sys) in SYSTEMS
+    drives = [(:varphi_1, nport()) => F0, (:varphi_1, _extra(first(sys.root.node.children[1].children).second)) => F0]
+    A = first(drive_hamiltonian(sys, drives; basis=:free, frame=:interaction)).data.op
+    @test all(isconcretetype, fieldtypes(typeof(A)))
+end

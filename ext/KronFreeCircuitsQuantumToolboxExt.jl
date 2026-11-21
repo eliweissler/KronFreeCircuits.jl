@@ -209,31 +209,36 @@ end
 #      H_I(t) = e^{iΩt} [2π(H0 − E₀) − diag Ω + Σ_k f_k(t) 2π O_k] e^{−iΩt}.
 # Dressed: H0 is diagonal and drops out; H_I(t) is a dense matrix refilled at each t (a MatrixOperator, so it takes a
 # ket or a block). Matrix-free: a FunctionOperator; the phase vector is formed once per call, buffers follow the block
-# width.
-mutable struct InteractionApply{V,C}
+# width. The drives are tuples (operators of different element types, one closure type per coefficient), applied by
+# recursion so the loop is unrolled and every call is concretely typed.
+mutable struct InteractionApply{V,C,M,A<:KronFreeApply,O<:Tuple,F<:Tuple}
     Ω::V                 # rad/ns, where the states live
     ph::C                # e^{−iΩt}
-    H0::KronFreeApply    # 2π(H0 − E₀)
-    ops::Vector{KronFreeApply}   # 2π O_k
-    fs::Vector{Any}
-    X::Any               # ph .* V
-    acc::Any             # the bracket applied to X
+    H0::A                # 2π(H0 − E₀)
+    ops::O               # 2π O_k
+    fs::F                # f_k(p, t)
+    X::M                 # ph .* V
+    acc::M               # the bracket applied to X
+end
+
+_add_drives!(acc, X, ::Tuple{}, ::Tuple{}, p, t) = acc
+function _add_drives!(acc, X, ops::Tuple, fs::Tuple, p, t)
+    _apply!(first(ops), acc, X, ComplexF64(first(fs)(p, t)), true)
+    return _add_drives!(acc, X, Base.tail(ops), Base.tail(fs), p, t)
 end
 
 function _apply!(A::InteractionApply, w, v, p, t, α, β)
     N = length(A.Ω)
     V = reshape(v, N, :); W = reshape(w, N, :)
     m = size(V, 2)
-    if !(A.X isa AbstractMatrix) || size(A.X) != (N, m)
-        A.X = similar(A.ph, ComplexF64, N, m); A.acc = similar(A.X)
+    if size(A.X) != (N, m)
+        A.X = similar(A.X, N, m); A.acc = similar(A.X)
     end
     A.ph .= cis.(-A.Ω .* t)
     A.X .= A.ph .* V
     _apply!(A.H0, A.acc, A.X, true, false)
     A.acc .-= A.Ω .* A.X
-    for (O, f) in zip(A.ops, A.fs)
-        _apply!(O, A.acc, A.X, ComplexF64(f(p, t)), true)
-    end
+    _add_drives!(A.acc, A.X, A.ops, A.fs, p, t)
     if iszero(β)
         W .= α .* conj.(A.ph) .* A.acc
     else
@@ -250,7 +255,7 @@ function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol
     if basis === :dressed
         Ω = 2π .* (E[1:n] .- E[1])
         ops = [2π * Matrix{ComplexF64}(_dressed_port(sys, k, node, n)) for (k, _) in drives]
-        fs = Any[f for (_, f) in drives]
+        fs = Tuple(f for (_, f) in drives)
         ph = zeros(ComplexF64, n)
         function fill_HI!(M, u, p, t)                  # M_ij = Σ_k f_k(t) e^{iΩ_i t} (2π P_k)_ij e^{−iΩ_j t}
             ph .= cis.(Ω .* t)
@@ -266,10 +271,11 @@ function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol
     H = _on_storage(operator(sys, node), on)
     N = size(H, 1)
     Ω = 2π .* (real.(diagonal(H)) .- E[1])
-    ops = KronFreeApply[KronFreeApply(port_operator(sys, k, node; on), 2π, 0.0) for (k, _) in drives]
+    ops = Tuple(KronFreeApply(port_operator(sys, k, node; on), 2π, 0.0) for (k, _) in drives)
     Ωd = adapt(on, Ω)
-    A = InteractionApply(Ωd, similar(Ωd, ComplexF64), KronFreeApply(H, 2π, E[1]), ops, Any[f for (_, f) in drives],
-                         nothing, nothing)
+    X0 = similar(Ωd, ComplexF64, N, 0)                                  # sized on the first apply
+    A = InteractionApply(Ωd, similar(Ωd, ComplexF64), KronFreeApply(H, 2π, E[1]), ops, Tuple(f for (_, f) in drives),
+                         X0, similar(X0))
     F = _function_operator(A, N, on, batch; hermitian=all(O -> ishermitian(O.H), ops), constant=false)
     return _free_qobjevo(F, N), Frame(Ω)
 end
