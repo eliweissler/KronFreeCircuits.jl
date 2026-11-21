@@ -14,9 +14,10 @@ Cases (one directory each):
 | `scqubits_solve/` (the two autodiff circuits, solve only) | scqubits 4.3.1 `Circuit`, same coordinates and truncation, same machine | done (idle machine) |
 | `array_fluxonium/` | Di Paolo et al., arXiv:1912.01018 Fig. 3 (digitized) | done: all 22 z of their Fig. 3 at one setting (D 14, ncut 12), 0.999-1.01 of theirs for z = 0.055-0.15; DMRG GPU vs CPU timed (H200 202 s, A4500 423 s, CPU 1648 s per point) |
 | KITE | scqubits `Circuit`, same machine | planned |
-| `current_mirror/`, full circuit | none (exact diagonalization stops at N = 3) | shelved (next: a momentum-sector root) |
 
 GPU timings of the first five cases and the DMRG on CU Boulder Alpine (one H200, one A100 80 GB): `gpu_cluster/README.md`.
+
+The current-mirror case (`current_mirror/`, shelved: exact diagonalization stops at N = 3; next would have been a momentum-sector root) was removed on 2026-11-20; it is in the history up to commit `4b49eec`.
 
 For writing up: `THESIS_RESULTS.md` maps the thesis cases to their numbers and files, and lists what is still to run.
 
