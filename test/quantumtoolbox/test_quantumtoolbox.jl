@@ -133,3 +133,32 @@ end
     ψ0 = qt_ket(sys, (2, 1))
     @test isapprox(evolve(Hi0, ψ0).data, ψ0.data; atol=1e-12)
 end
+
+@testset "GPU ($kind)" for (kind, sys) in SYSTEMS
+    if !CUDA.functional()
+        @test_skip "no functional CUDA device"
+    else
+        f = drive_of(sys)
+        drives = [(:varphi_1, nport()) => f]
+        # 2 ns, not 20: at 36 states the device is kernel-launch bound (20 ns took ~10 min per system)
+        tg = [0.0, 1.0, 2.0]
+        evolve_g(H, ψ0) = sesolve(H, ψ0, tg; reltol=1e-10, abstol=1e-12, progress_bar=Val(false)).states[end]
+        T = tg[end]
+        for frame in (:lab, :interaction), batch in (false, true)
+            ket(on) = batch ? qt_ket(sys, LABELS; basis=:free, on) : qt_ket(sys, (2, 1); basis=:free, on)
+            ψ0g = ket(CuArray)
+            @test ψ0g.data isa CuArray
+            Hc, frc = drive_hamiltonian(sys, drives; basis=:free, frame, batch)
+            Hg, frg = drive_hamiltonian(sys, drives; basis=:free, frame, batch, on=CuArray)
+            ψc = evolve_g(Hc, ket(Array))
+            ψg = evolve_g(Hg, ψ0g)
+            @test ψg.data isa CuArray
+            @test isapprox(Array(ψg.data), ψc.data; atol=1e-7)
+            lg = to_lab(frg, ψg, T)
+            @test lg.data isa CuArray
+            @test isapprox(Array(lg.data), to_lab(frc, ψc, T).data; atol=1e-7)
+        end
+        @test to_dressed(sys, qt_ket(sys, (2, 1); basis=:free, on=CuArray)).data ≈
+              to_dressed(sys, qt_ket(sys, (2, 1); basis=:free)).data
+    end
+end
