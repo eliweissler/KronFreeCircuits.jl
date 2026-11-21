@@ -1,5 +1,6 @@
 using Test, LinearAlgebra, KronFreeCircuits
 using KronFreeCircuits: materialized, _all_nodes
+using KronFreeCircuits: augment, augmented, AugmentedChild, BasisSource, union_basis, UnionReport, bare_child  # core, unexported
 
 # every node's energies, vectors, ports and joint ports against finite differences of `materialize`
 function check_tree(c, x; h=1e-3, rtol=1e-6, atol=1e-9, kwargs...)

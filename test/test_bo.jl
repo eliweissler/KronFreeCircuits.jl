@@ -1,3 +1,4 @@
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 include(joinpath(@__DIR__, "fixtures", "bo", "reduced_specs.jl"))
 
 @testset "BO surfaces" begin

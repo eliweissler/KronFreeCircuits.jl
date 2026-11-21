@@ -2,6 +2,7 @@
 # (design §7 of docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md; bench_archive/born_oppenheimer/results.md).
 # The settings and inputs come from the reference fixture written by bench_archive/born_oppenheimer/zero_pi.jl
 # (producer `independent BO numerics`); the published coefficients are compared against, never stored as results.
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 
 @testset "zero-pi BO: Di Paolo E_alpha and E_gamma (gated)" begin
     ref = KronFreeCircuits.JSON3.read(read(fixture(joinpath("bo_reference", "zero_pi_bo_reference.json")), String))

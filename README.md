@@ -288,13 +288,14 @@ A direct `solve(LOBPCG(), H, m; X0)` with a complex `X0` on a real `H` converts 
 In the benchmark (`docs/spikes/2026-10-18-plan3-benchmark/results.md`), the full two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×).
 The `ShiftInvert` leaf on CPU gains nothing against plan 2b, which already factored the assembled real matrix; the gains are in the parent solve (2.5× CPU, 3.3× A4500), the device leaf (2.5×) and port formation (about 4×).
 
-## Born–Oppenheimer reduction
+## Born–Oppenheimer reduction (experimental)
 
+The Born–Oppenheimer pieces live in `KronFreeCircuits.Experimental` (not exported from the package; `using KronFreeCircuits.Experimental`).
 A slow mode can be promoted to a parameter, the fast modes diagonalized on a grid of its coordinate, and the resulting surface fitted to a one-mode reduced spec.
 The zero-pi of Di Paolo et al. (arXiv:1811.07921v1, Appendix B), with θ slow and φ fast:
 
 ```julia
-using KronFreeCircuits
+using KronFreeCircuits, KronFreeCircuits.Experimental
 
 p = promote_mode(load_spec("test/fixtures/zero_pi_bo.json"), :theta)        # fast spec over φ; θ is a parameter
 leaf = Node([:phi => PhaseGrid(-12π, 12π, 481)]; solver=Dense(), compute=2, keep=lowest(2))
@@ -310,18 +311,20 @@ save_spec("zero_pi_reduced.json", F.spec; metadata=F.metadata)              # a 
 Promotion is a spec-to-spec transformation; a charge coupling between slow and fast modes is rejected, and only the single lowest surface is used (no derivative couplings).
 The reproduction (`bench_archive/born_oppenheimer/zero_pi.jl`, results in `bench_archive/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
 
-## Mean-field bases
+## Mean-field bases (experimental)
 
 In a frame that mixes modes, a Josephson cosine straddles several children, so a bare leaf never sees a junction and its eigenstates are a poor basis for the parent.
 A child can instead be solved in the mean field of its siblings, and the mean-field states of several self-consistent solutions (one per well) can become the basis through which the child is presented to its parent.
 The parent's operator is unchanged: it is projected on the new basis, so only the truncation changes.
 This is the self-consistent product-state method of the circuit-quantization paper's Appendix C.
 
-The pieces are exported, and the loop is a few lines.
+Mean field lives in `KronFreeCircuits.Experimental`; the basis augmentation it feeds (`augment`, `union_basis`, `BasisSource`, `AugmentedChild`, `augmented`) is core but not exported, so the example imports it by name.
+The loop is a few lines.
 The KITE in the paper's optimum frame (`test/fixtures/kite/optimum.json`, a spec of constants), with one leaf per mode keeping 20 states and two wells feeding each leaf's basis:
 
 ```julia
-using KronFreeCircuits
+using KronFreeCircuits, KronFreeCircuits.Experimental
+using KronFreeCircuits: augment, union_basis, BasisSource
 
 spec = load_spec("test/fixtures/kite/optimum.json")
 θ = (;)
@@ -543,6 +546,13 @@ julia --project=test/chainrules -e 'using Pkg; Pkg.instantiate()'
 julia --project=test/chainrules test/chainrules/runtests.jl
 ```
 
+The ITensorMPS tier tests `Experimental.dmrg_levels` (the ITensorMPS extension) against exact diagonalization of a small chain; it has its own environment, `test/itensormps`, and is never included by `Pkg.test()`:
+
+```bash
+julia --project=test/itensormps -e 'using Pkg; Pkg.instantiate()'
+julia --project=test/itensormps test/itensormps/runtests.jl
+```
+
 The device tests have their own environment and need a CUDA device:
 
 ```bash
@@ -574,6 +584,7 @@ Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and gener
 The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
 The circuit-quantization interface (2026-11-10: a PythonCall extension with the symbolic and loop routes to a spec in a new frame, `numeric_spec`, constant coefficients that never compile, and run records; spec §20j) is on `main` (local; not pushed as of 2026-11-11); what is done and what is open is in `docs/superpowers/STATUS.md`.
 Mean-field basis augmentation (2026-11-11: mean-field children, the self-consistent loop, union bases and augmented children; spec §20k) is on `main` (local; not pushed as of 2026-11-11); its Harmonium benchmark (design §6.2) is deferred to its own plan.
+On 2026-11-20 the Born–Oppenheimer reduction and mean field (with `mean_field_augment`) moved to the `KronFreeCircuits.Experimental` submodule (`src/experimental/`), which also holds `dmrg_levels` (an ITensorMPS extension); basis augmentation stays in the core, unexported.
 Derivatives by perturbation theory through the tree (2026-11-11: first and second derivatives, near-degenerate blocks, and the outer rule of `spectrum`; spec §20l) replace the automatic-differentiation rules that were to be plan 5; see "Derivatives" above and `docs/superpowers/STATUS.md`.
 Later plans:
 

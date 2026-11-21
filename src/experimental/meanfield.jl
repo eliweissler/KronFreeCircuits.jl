@@ -9,63 +9,6 @@ Two factors of one term that sit in the same child form one key, whose value is 
 """
 const Expectations = Dict{_FactorKey,ComplexF64}
 
-# Every child of `parent` must be a node: a bare `mode => basis` child has no kept states to take an expectation in.
-function _check_node_children(parent::Node)
-    for ch in parent.children
-        ch isa Node && continue
-        m = ch isa Pair ? ch.first : ch.mode
-        throw(ArgumentError("mean field needs every child of the parent to be a Node, but the child on mode :$m is not; " *
-                            "wrap the mode in a Node"))
-    end
-end
-
-function _child_index(parent::Node, child::Node)
-    _check_node_children(parent)
-    i = findfirst(ch -> ch === child, parent.children)
-    i === nothing && throw(ArgumentError("`child` (on modes $(modes(child))) is not a child of `parent`"))
-    return i
-end
-
-"""
-    straddling_terms(parent, terms) -> Vector{Term}
-
-The terms that `route` places at `parent` when it is the root of its own tree, in their order in `terms`.
-These are the terms that straddle two or more of its children.
-A term with a factor on a mode outside `parent` is not among them.
-"""
-function straddling_terms(parent::Node, terms::Vector{Term})
-    _check_node_children(parent)
-    return _terms_at(parent, terms)
-end
-
-# The terms that mean field reduces for `parent`, in order: those that straddle its children, and those that reach
-# outside it (a factor on a mode outside `parent` and one inside).
-function _reduced_terms(parent::Node, terms::Vector{Term})
-    straddling = Base.IdSet{Term}(straddling_terms(parent, terms))
-    inside = Set(modes(parent))
-    reaches(t) = any(in(inside), modes(t)) && !all(in(inside), modes(t))
-    return Term[t for t in terms if t in straddling || reaches(t)]
-end
-
-# The sorted key of the factors of `t` on the modes in `inside`.
-_key_in(t::Term, inside) = filter(((m, p),) -> m in inside, _factor_key(t))
-
-"""
-    child_keys(parent, terms, child) -> Vector{_FactorKey}
-
-The factor keys that the straddling terms of `parent` need inside `child`, each distinct key once, sorted, in order of first appearance.
-A term that reaches outside `parent` contributes its key inside `child` too.
-"""
-function child_keys(parent::Node, terms::Vector{Term}, child::Node)
-    _child_index(parent, child)
-    inside = Set(modes(child))
-    keys = _FactorKey[]
-    for t in _reduced_terms(parent, terms)
-        K = _key_in(t, inside)
-        isempty(K) || K in keys || push!(keys, K)
-    end
-    return keys
-end
 
 # A key's operator on the kept states of `solved`: its stored port or joint port, else computed from the kept vectors.
 function _key_matrix(solved::MaterializedNode, leaves, K::_FactorKey)
@@ -220,16 +163,6 @@ function _real_sum(z::Number, what, terms)
     return real(z)
 end
 
-"""
-    bare_child(parent, terms, θ, child) -> MaterializedNode
-
-The bare solve of `child`: the node as the root of its own tree, on its own terms only, with every node complex.
-It forms the ports and joint ports of `child_keys(parent, terms, child)`, so that its kept states can serve as a table.
-A branch child's own children are solved here once, and every `mean_field_child` of it reuses them.
-"""
-function bare_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node)
-    return _solve_subtree(child, terms, θ; keys=child_keys(parent, terms, child), complex=true)
-end
 
 """
     mean_field_child(parent, terms, θ, child, bare, others; state=1, weights=nothing, outside=nothing) -> MeanFieldChild

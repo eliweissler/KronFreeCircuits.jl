@@ -1,4 +1,5 @@
 using Test, KronFreeCircuits
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 
 # The KITE's mean-field loop against the reference calculation (circuit-quantization's product_state prototype), frame by
 # frame, from the fixtures of test/python/generate_kite_fixtures.jl: the grids, the wells (the distinct solutions within

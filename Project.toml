@@ -19,12 +19,14 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 [weakdeps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 cuTENSOR = "011b41b2-24ef-40a8-b3eb-fa098493e9e1"
 
 [extensions]
 KronFreeCircuitsCUDAExt = ["CUDA", "cuTENSOR"]
 KronFreeCircuitsChainRulesCoreExt = "ChainRulesCore"
+KronFreeCircuitsITensorMPSExt = "ITensorMPS"
 KronFreeCircuitsPythonCallExt = "PythonCall"
 
 [compat]
@@ -33,6 +35,7 @@ CUDA = "6"
 ChainRulesCore = "1"
 FFTW = "1.10.0"
 GSL = "1.0.1"
+ITensorMPS = "0.4"
 ITensors = "0.9"
 JSON3 = "1.14.3"
 KernelAbstractions = "0.9, 0.10"

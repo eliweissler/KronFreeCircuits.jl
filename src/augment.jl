@@ -1,3 +1,75 @@
+# The children of a node as seen by its straddling terms: shared by basis augmentation (below) and by the
+# experimental mean field (experimental/meanfield.jl).
+
+# Every child of `parent` must be a node: a bare `mode => basis` child has no kept states to take an expectation in.
+function _check_node_children(parent::Node)
+    for ch in parent.children
+        ch isa Node && continue
+        m = ch isa Pair ? ch.first : ch.mode
+        throw(ArgumentError("augmentation and mean field need every child of the parent to be a Node, but the child on mode :$m is not; " *
+                            "wrap the mode in a Node"))
+    end
+end
+
+function _child_index(parent::Node, child::Node)
+    _check_node_children(parent)
+    i = findfirst(ch -> ch === child, parent.children)
+    i === nothing && throw(ArgumentError("`child` (on modes $(modes(child))) is not a child of `parent`"))
+    return i
+end
+
+"""
+    straddling_terms(parent, terms) -> Vector{Term}
+
+The terms that `route` places at `parent` when it is the root of its own tree, in their order in `terms`.
+These are the terms that straddle two or more of its children.
+A term with a factor on a mode outside `parent` is not among them.
+"""
+function straddling_terms(parent::Node, terms::Vector{Term})
+    _check_node_children(parent)
+    return _terms_at(parent, terms)
+end
+
+# The terms that mean field reduces for `parent`, in order: those that straddle its children, and those that reach
+# outside it (a factor on a mode outside `parent` and one inside).
+function _reduced_terms(parent::Node, terms::Vector{Term})
+    straddling = Base.IdSet{Term}(straddling_terms(parent, terms))
+    inside = Set(modes(parent))
+    reaches(t) = any(in(inside), modes(t)) && !all(in(inside), modes(t))
+    return Term[t for t in terms if t in straddling || reaches(t)]
+end
+
+# The sorted key of the factors of `t` on the modes in `inside`.
+_key_in(t::Term, inside) = filter(((m, p),) -> m in inside, _factor_key(t))
+
+"""
+    child_keys(parent, terms, child) -> Vector{_FactorKey}
+
+The factor keys that the straddling terms of `parent` need inside `child`, each distinct key once, sorted, in order of first appearance.
+A term that reaches outside `parent` contributes its key inside `child` too.
+"""
+function child_keys(parent::Node, terms::Vector{Term}, child::Node)
+    _child_index(parent, child)
+    inside = Set(modes(child))
+    keys = _FactorKey[]
+    for t in _reduced_terms(parent, terms)
+        K = _key_in(t, inside)
+        isempty(K) || K in keys || push!(keys, K)
+    end
+    return keys
+end
+
+"""
+    bare_child(parent, terms, θ, child) -> MaterializedNode
+
+The bare solve of `child`: the node as the root of its own tree, on its own terms only, with every node complex.
+It forms the ports and joint ports of `child_keys(parent, terms, child)`, so that its kept states can serve as a table.
+A branch child's own children are solved here once, and every `mean_field_child` of it reuses them.
+"""
+function bare_child(parent::Node, terms::Vector{Term}, θ::NamedTuple, child::Node)
+    return _solve_subtree(child, terms, θ; keys=child_keys(parent, terms, child), complex=true)
+end
+
 # Basis augmentation: several sources of vectors on a child's own space are merged into one orthonormal basis.
 
 """
@@ -279,62 +351,4 @@ function _augmented_node(a::AugmentedChild, ports::Vector{Tuple{Symbol,Port}}, j
     end
     return typeof(s)(s.node, s.dims, s.energies, s.vectors, s.kept, P, J, s.children, s.peak_component, s.peak_amplitudes,
                      s.retained)
-end
-
-"""
-    mean_field_augment(parent, spec, θ; m, window = 0.5, max_solutions = 4, bare = false, cap = nothing,
-                       starts = default_starts(parent), allow_fewer = false, kwargs...)
-        -> (; children, solutions, used, energy, unconverged)
-
-The augmented children of every child of `parent`, built from its mean-field solutions: a convenience over the pieces that adds no behaviour of its own.
-It runs `mean_field_solutions(parent, spec, θ; starts, bare, kwargs...)`, with `bare` the bare solves below, passing on every keyword not named here.
-It uses the solutions whose energy is within `window` of the lowest (inclusive), in order, at most `max_solutions` of them.
-`window` is an energy in the spec's unit, and its default `0.5` assumes energies of order one (GHz).
-It forms the `bare_child` of every child of `parent` once, before the loop, and passes them to `mean_field_solutions` as `bare`, so that the solutions' states, the union basis and `augment` share one product basis per child.
-For each child of `parent`, in order, it forms one `BasisSource` per used solution, labelled `"solution <index>"`.
-That source holds the child's kept mean-field states in the solution, at most its first `m`, with their mean-field energies, and is limited by `cap`.
-With `bare = true` a last source, labelled `"bare"`, holds the bare child's kept states with no limit.
-It merges the sources with `union_basis(sources; m, allow_fewer)` and presents the child through the result with `augment`.
-A used solution in which a child kept fewer than `min(m, cap)` mean-field states (`m` when `cap` is `nothing`) is an `ArgumentError`, raised before any union.
-`children` holds the `AugmentedChild` of each child of `parent`, in order, and `solutions` every solution found.
-`used` holds the indices in `solutions` of the solutions used.
-`energy` is the lowest product energy, `solutions[1].energy`.
-`unconverged` counts the used solutions that did not converge; they are used like the others, with no warning.
-An `m < 1`, a `window < 0`, a `max_solutions < 1` and a `cap < 1` are `ArgumentError`s.
-"""
-function mean_field_augment(parent::Node, spec::Spec, θ::NamedTuple; m::Int, window::Real = 0.5, max_solutions::Int = 4,
-                            bare::Bool = false, cap::Union{Nothing,Int} = nothing, starts = default_starts(parent),
-                            allow_fewer::Bool = false, kwargs...)
-    m >= 1 || throw(ArgumentError("`m` must be at least 1, got $m"))
-    window >= 0 || throw(ArgumentError("`window` must be at least 0, got $window"))
-    max_solutions >= 1 || throw(ArgumentError("`max_solutions` must be at least 1, got $max_solutions"))
-    cap === nothing || cap >= 1 || throw(ArgumentError("`cap` must be at least 1 or `nothing`, got $cap"))
-    terms = circuit_terms(spec)
-    _check_node_children(parent)
-    # the bare solves are formed once: the solutions' states are coordinates on their children, and `augment` and the
-    # "bare" source take the same objects
-    bares = IdDict{Node,MaterializedNode}(ch => bare_child(parent, terms, θ, ch) for ch in parent.children)
-    solutions = mean_field_solutions(parent, spec, θ; starts, bare=bares, kwargs...)
-    used = first(Int[i for i in eachindex(solutions) if solutions[i].energy - solutions[1].energy <= window], max_solutions)
-    unconverged = count(i -> !solutions[i].converged, used)
-    need = cap === nothing ? m : min(m, cap)
-    for i in used, ch in parent.children
-        kept = size(solutions[i].children[ch].solved.vectors, 2)
-        kept >= need || throw(ArgumentError("the child on modes $(modes(ch)) kept $kept mean-field states in solution $i, " *
-                                            "but the union needs $need of them; raise the node's `compute`/`keep`"))
-    end
-    children = AugmentedChild[]
-    for ch in parent.children
-        b = bares[ch]
-        sources = BasisSource[]
-        for i in used
-            s = solutions[i].children[ch].solved
-            k = min(m, size(s.vectors, 2))
-            push!(sources, BasisSource("solution $i", s.vectors[:, 1:k], s.energies[1:k]; cap))
-        end
-        bare && push!(sources, BasisSource("bare", b.vectors, b.energies))
-        U, report = union_basis(sources; m, allow_fewer)
-        push!(children, augment(parent, terms, θ, ch, b, U, report))
-    end
-    return (; children, solutions, used, energy = solutions[1].energy, unconverged)
 end

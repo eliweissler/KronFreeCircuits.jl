@@ -1,4 +1,6 @@
 using Test, LinearAlgebra, KronFreeCircuits
+using KronFreeCircuits: augment, augmented, AugmentedChild, BasisSource, union_basis, UnionReport, bare_child  # core, unexported
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 
 @testset "union basis" begin
     e(i, n=8) = (v = zeros(ComplexF64, n); v[i] = 1; v)

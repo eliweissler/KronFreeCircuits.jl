@@ -2,6 +2,7 @@
 # Shared by write_reduced.jl (which writes them) and test_bo.jl (which compares the committed files and Task 5's oscillator
 # checks against them), so the construction cannot drift from the files.
 # Needs the names of test/helpers.jl (`synthetic_surface`, `coupled_oscillators_spec`, `quiet_promote`) and KronFreeCircuits.
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 
 # L6 oscillators, extended slow mode through :x2: U(s) = ω/2 + ½ (a - c²/b) s², ω = sqrt(8 E_Cf b).
 # Returns `(surface, fit)`; the sweep (21 slow points) is computed once per session.

@@ -6,7 +6,7 @@
 #   black sheep: −(E_Jb/2) (e^{i o_b} Π_i U_i^{ω_i} + h.c.),  U = e^{iθ}
 #   constant:   Σ_i 4 E_C,ii (g_i² − w_i²) + Σ_{i<j} 8 E_C,ij g_i g_j + the spec's constant.
 # Site basis (BASIS): "eigen" = the D lowest states of each site Hamiltonian (solved by KronFreeCircuits on a one-mode
-# spec), or "charge" = ChargeBasis(NCUT). Excited state by penalty (`dmrg(H, [ψ0], …; weight)`).
+# spec), or "charge" = ChargeBasis(NCUT). Excited states by penalty, through `KronFreeCircuits.Experimental.dmrg_levels`.
 #
 #   julia --project=bench/array_fluxonium/dmrg -t 1 bench/array_fluxonium/dmrg/dmrg_spec.jl
 #
@@ -16,6 +16,7 @@
 # extension, Float64 kept; needs the environment ../dmrg_gpu, which adds CUDA and Adapt).
 
 using ITensors, ITensorMPS, KronFreeCircuits, LinearAlgebra, Printf, Random
+using KronFreeCircuits.Experimental: dmrg_levels      # the levels (an ITensorMPS extension of the package)
 BLAS.set_num_threads(parse(Int, get(ENV, "BLASTHREADS", "1")))
 const OUTLEVEL = Ref(parse(Int, get(ENV, "OUTLEVEL", "0")))
 const DEVICE = get(ENV, "DEVICE", "cpu")
@@ -128,35 +129,32 @@ function run(spec, θ; basis, D, ncut, maxdim, sweeps, cutoff, weight)
     nn = parse(Int, get(ENV, "NOISESWEEPS", "4"))
     setnoise!(sw, [10.0^(-5 - 4 * (k - 1) / max(nn - 1, 1)) for k in 1:nn]..., 0.0)
     etol = parse(Float64, get(ENV, "ETOL", "1e-10"))
-    obs0 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
-    obs1 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)
     t0 = time()
     # initial ground state (INIT): "g" = the product of site ground states (default), "random" = random_mps(linkdims 10)
-    # seeded by SEED (default 1); the excited state always starts random
+    # seeded by SEED (default 1); the excited states always start random. The levels by Experimental.dmrg_levels: the
+    # ground state, then each excited state penalized (weight) against the lower ones, a fresh observer per level.
     init = get(ENV, "INIT", "g")
     init in ("g", "random") || error("INIT: g or random")
     Random.seed!(parse(Int, get(ENV, "SEED", "1")))
-    ψinit = init == "g" ? MPS(sites, fill("g", N)) : random_mps(sites; linkdims=10)
-    E0, ψ0 = dmrg(H, todevice(ψinit), sw; outputlevel=OUTLEVEL[], observer=obs0, KRYLOV...)
-    E1, ψ1 = dmrg(H, [ψ0], todevice(random_mps(sites; linkdims=10)), sw; weight, outputlevel=OUTLEVEL[], observer=obs1, KRYLOV...)
+    nlev = max(parse(Int, get(ENV, "NLEV", "2")), 2)          # a third level: a missed or crossing state near E1 shows up
+    start(k) = todevice(k == 1 && init == "g" ? MPS(sites, fill("g", N)) : random_mps(sites; linkdims=10))
+    r = dmrg_levels(H; nlevels=nlev, weight, sweeps=sw, init=start, outputlevel=OUTLEVEL[], KRYLOV...,
+                    observer=_ -> DMRGObserver(; energy_tol=etol, minsweeps=nn + 2))
+    ψ0, ψ1 = r.states[1], r.states[2]
+    E0, E1 = r.energies[1], r.energies[2]
+    var0, var1 = r.variances[1], r.variances[2]
+    nsweeps(k) = length(ITensorMPS.energies(r.observers[k]))
     E2 = NaN; var2 = NaN; ov2 = NaN; nsw2 = 0
-    if parse(Int, get(ENV, "NLEV", "2")) >= 3          # a third level, penalized against both lower states: a missed
-        obs2 = DMRGObserver(; energy_tol=etol, minsweeps=nn + 2)   # or crossing state near E1 shows up here
-        E2, ψ2 = dmrg(H, [ψ0, ψ1], todevice(random_mps(sites; linkdims=10)), sw; weight, outputlevel=OUTLEVEL[], observer=obs2, KRYLOV...)
-        var2 = inner(H, ψ2, H, ψ2) - E2^2
-        ov2 = max(abs(inner(ψ0, ψ2)), abs(inner(ψ1, ψ2)))
-        nsw2 = length(ITensorMPS.energies(obs2))
-        E2 += const_ + shift
+    if nlev >= 3
+        E2, var2, ov2, nsw2 = r.energies[3] + const_ + shift, r.variances[3], max(r.overlaps[1, 3], r.overlaps[2, 3]), nsweeps(3)
     end
     tdmrg = time() - t0
-    var0 = inner(H, ψ0, H, ψ0) - E0^2
-    var1 = inner(H, ψ1, H, ψ1) - E1^2
     E0 += const_ + shift; E1 += const_ + shift
     isnan(E2) || @printf("   third level: E2 = %.9f ω02 = %.9f ω12 = %.9f  var %.1e  max overlap with ψ0, ψ1 %.1e  sweeps %d\n",
                          E2, E2 - E0, E2 - E1, var2, ov2, nsw2)
     @printf("DMRG %s N=%d%s θ=%s: E0 = %.9f E1 = %.9f ω01 = %.9f  maxlink %d/%d  MPO bond %d  ⟨ψ0|ψ1⟩ = %.1e  var %.1e/%.1e  sweeps %d/%d  shift %.6f  (MPO %.1f s, DMRG %.1f s)\n",
             basis, N, basis == "eigen" ? " D=$D" : " ncut=$ncut", θ, E0, E1, E1 - E0, maxlinkdim(ψ0), maxlinkdim(ψ1),
-            maxlinkdim(H), abs(inner(ψ0, ψ1)), var0, var1, length(ITensorMPS.energies(obs0)), length(ITensorMPS.energies(obs1)),
+            maxlinkdim(H), r.overlaps[1, 2], var0, var1, nsweeps(1), nsweeps(2),
             shift, tmpo, tdmrg)
     flush(stdout)
     return E0, E1

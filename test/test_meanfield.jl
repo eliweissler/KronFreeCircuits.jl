@@ -1,4 +1,5 @@
 using Test, KronFreeCircuits
+using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer
 
 @testset "mean-field terms" begin
     K = KronFreeCircuits

@@ -1,6 +1,7 @@
 module PathologicalDerivativeReview
 using Test, LinearAlgebra, Random, KronFreeCircuits
 using KronFreeCircuits: Port, Factor, Term, Coefficient
+using KronFreeCircuits: augment, augmented, AugmentedChild, BasisSource, union_basis, UnionReport, bare_child  # core, unexported
 
 @testset "analytic complex two-level derivatives: small gaps, energy shifts, reordered selection" begin
     Z = ComplexF64[1 0; 0 -1]

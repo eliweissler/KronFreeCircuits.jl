@@ -14,24 +14,15 @@ using GSL: GSL
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
 export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitute, promote_mode, PromotedSpec,
-       periodic_grid, BOSurface, bo_surface, fourier_coefficients, slow_spec, BOFit, fit_surfaces, Coefficient, Port, nport,
-       n2port, phiport, phi2port, expiphi, exp2pin, Factor,
-       Term, circuit_terms, LocalOp, DenseOp, DiagonalOp, BandedOp,
-       ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid, PeriodicGrid,
-       FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense,
-       Lanczos, LOBPCG, ShiftInvert, ChebyshevFilter, lowest, indices, connected, follow, within, materialize,
-       System, energies, port, eigenvectors, materialized, node_timings, bare_labels,
-       bare_overlaps, decompose, dressed_index, constant_term, Solver, SelectionRule,
-       SelectionContext, GivenSystem, gershgorin_bound,
-       separable_eigenbases, product_seed, infnorm,
-       PortCharacter, character, arithmetic,
-       circuit_quantization, QuantizedCircuit, record_json, save_record, load_record,
-       Expectations, straddling_terms, child_keys, expectations, pinned_expectations, delocalized_expectations,
-       mean_field_terms, MeanFieldChild, bare_child, mean_field_child, product_energy,
-       MeanFieldSolution, default_starts, self_consistent, mean_field_solutions,
-       BasisSource, UnionReport, union_basis, AugmentedChild, augment, augmented, mean_field_augment,
-       suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks, NearDegenerateBlock, block_levels, spectrum,
-       phase_wavefunction, charge_wavefunction
+       Coefficient, Port, nport, n2port, phiport, phi2port, expiphi, exp2pin, Factor, Term, circuit_terms, LocalOp,
+       DenseOp, DiagonalOp, BandedOp, ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid,
+       PeriodicGrid, FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense, Lanczos, LOBPCG,
+       ShiftInvert, ChebyshevFilter, lowest, indices, connected, follow, within, materialize, System, energies, port,
+       eigenvectors, materialized, node_timings, bare_labels, bare_overlaps, decompose, dressed_index, constant_term,
+       Solver, SelectionRule, SelectionContext, GivenSystem, gershgorin_bound, separable_eigenbases, product_seed,
+       infnorm, PortCharacter, character, arithmetic, circuit_quantization, QuantizedCircuit, record_json,
+       save_record, load_record, suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks,
+       NearDegenerateBlock, block_levels, spectrum, phase_wavefunction, charge_wavefunction
 
 include("parameters.jl")
 include("spec.jl")
@@ -53,17 +44,19 @@ include("selection.jl")
 include("phase.jl")
 include("materialize.jl")
 include("suggest.jl")
-include("meanfield.jl")
 include("augment.jl")
+include("experimental/meanfield.jl")
+include("experimental/mean_field_augment.jl")
 include("derivoperator.jl")
 include("resolvent.jl")
 include("complement_capture.jl")
 include("derivatives.jl")
 include("derivblocks.jl")
 include("spectrum.jl")
-include("bo.jl")
+include("experimental/bo.jl")
 include("dressed.jl")
 include("wavefunctions.jl")
 include("pyinterface.jl")
+include("experimental/Experimental.jl")
 
 end # module

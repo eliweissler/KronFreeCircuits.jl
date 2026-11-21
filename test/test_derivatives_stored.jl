@@ -1,5 +1,6 @@
 using Test, LinearAlgebra, Random, KronFreeCircuits
 using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient, Port, UnionReport
+using KronFreeCircuits: augment, augmented, AugmentedChild, BasisSource, union_basis, UnionReport, bare_child  # core, unexported
 
 @testset "an augmented leaf child: derivatives at fixed basis" begin
     c = dc_zero_pi(); terms = circuit_terms(c.spec); rep = UnionReport(["bare"], [10], [0])
