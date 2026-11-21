@@ -23,13 +23,16 @@ roughly 1450 / 1140 retained dressed states.
 - Helpers for initial states and for reading results: a ket from a bare label, rotating an interaction-picture state
   back to the lab frame, and projecting a matrix-free state onto the dressed states.
 - GPU for the matrix-free basis, through the existing `_on_storage` / CUDA extension.
+- Several initial states in one solve, as a partial propagator: `sesolve` accepts an N×m `Operator` initial state
+  (`dims=((N,), (m,))`) and evolves it as one N×m ODE state, so each right-hand side is one m-column apply of the
+  `KronFreeOperator`. Measured 2026-11-20 on the zero-π root (23 870 states, A4500 GPU, Vern7 rtol 1e-8, 10 ns):
+  four kets one at a time 49.0 s, one N×4 partial propagator 28.7 s (1.7×). The matrix-free `FunctionOperator`s are
+  built with `batch=true` for a given column count `m`; the dressed `Qobj`s need nothing extra.
 
 ## Non-goals
 
 - `mesolve` / collapse operators in the matrix-free basis (it needs superoperators on N² entries). The dressed
   `Qobj`s work with `mesolve` as they stand.
-- Stacking several initial states into one solve. The probe got 1.5× from it, but QuantumToolbox's `sesolve` takes one
-  state; this can come later as a standalone propagator.
 - Pulse shapes, RWA, gate-fidelity routines. The user supplies `f_k(t)`.
 
 ## Anti-goals
@@ -70,11 +73,12 @@ else a second weakdep), stubs exported from core:
 - `qt_hamiltonian(sys, node=root; basis=:dressed, n=nothing, on=Array)`: H0 as a `Qobj` (dressed, `n` lowest, default all
   kept) or a `QobjEvo` around a constant `FunctionOperator` (matrix-free).
 - `qt_operator(sys, key, node=root; basis, n, on)`: a port / joint port, same two forms.
-- `drive_hamiltonian(sys, drives, node=root; basis, frame=:lab | :interaction, n, on) -> (H::QobjEvo, frame::Frame)`,
+- `drive_hamiltonian(sys, drives, node=root; basis, frame=:lab | :interaction, n, on, columns=1) -> (H::QobjEvo, frame::Frame)`,
+  `columns` the number of initial states it will evolve at once (matrix-free only),
   with `drives` a vector of `key => f`, `f(p, t)` the QuantumToolbox coefficient signature.
 - `qt_ket(sys, label, node=root; basis, n)`: a ket of the dressed state with that bare label (`dressed_index`) or of the
-  product state itself.
-- `to_lab(frame, ψ, t)`: rotate an interaction-picture state back (identity for `:lab`).
+  product state itself; with a vector of labels, the N×m partial-propagator initial `Operator` of those states.
+- `to_lab(frame, ψ, t)`: rotate an interaction-picture state (ket or N×m block) back (identity for `:lab`).
 - `to_dressed(sys, ψ, node=root; n)`: dressed-basis amplitudes `V† ψ` of a matrix-free state.
 
 Names are provisional (builder's call; `qt_` prefix to avoid colliding with QuantumToolbox exports).
@@ -93,6 +97,7 @@ OrdinaryDiffEq. A small two-mode system built from an existing spec fixture:
 - `port_operator` equals the dense Kronecker product; real/complex type as stated.
 - Dressed vs matrix-free `sesolve` of the same drive agree in dressed populations to solver tolerance.
 - Interaction picture vs lab frame agree after `to_lab`, in both bases.
+- An N×m partial propagator matches m single-ket solves, in both bases.
 - GPU matches CPU when `CUDA.functional()`; skipped otherwise.
 
 `port_operator` also gets a fast-tier test in the main suite.
