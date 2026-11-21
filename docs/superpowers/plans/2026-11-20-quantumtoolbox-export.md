@@ -39,7 +39,7 @@ existing CUDA extension.
 
 - A complex node (two transmons with `n_g1 = 0.25`): H0 and ports are complex; the real-block apply must not be used.
   Pinned in Tasks 2–4 (every test runs on a real and a complex system).
-- A real node driven through a complex-character port (`expiphi()` on `:varphi_1`): `port_operator` and the
+- A real node driven through a complex-character port (`expiphi(1)` on `:varphi_1`): `port_operator` and the
   matrix-free apply must come out complex. Pinned in Task 1 and Task 3.
 - An empty drive list: the lab frame is H0 alone; the dressed interaction picture is the zero Hamiltonian, and the
   state must stay put. Pinned in Task 4.
@@ -72,7 +72,7 @@ Shared test systems (define once at the top of `test/quantumtoolbox/test_quantum
 ```julia
 spec = load_spec(fixture("two_transmons.json"))
 leaf(i) = Node([Symbol("varphi_$i") => ChargeBasis(15)]; keep=lowest(6),
-               ports=[(Symbol("varphi_$i"), nport()), (Symbol("varphi_$i"), expiphi())])
+               ports=[(Symbol("varphi_$i"), nport()), (Symbol("varphi_$i"), expiphi(1))])
 top() = Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(36), ports=[(:varphi_1, nport())])
 sys_c = materialize(top(), spec, two_transmons_params(g=0.3))                       # complex (n_g1 = 0.25)
 sys_r = materialize(top(), spec, merge(two_transmons_params(g=0.3), (n_g1=0.0,)))  # real
@@ -103,7 +103,7 @@ basis and the two must agree to solver tolerance. Drive for every evolution test
     with `c1 = top.children[1]` (axis 1 fastest); same for `:varphi_2` with `kron(P2, I(6))`.
   - Joint key `[(:varphi_1, nport()), (:varphi_2, nport())]` ≈ `kron(P2, P1)`.
   - `eltype(port_operator(sys_r, (:varphi_1, nport()))) == Float64`;
-    `eltype(port_operator(sys_r, (:varphi_1, expiphi()))) == ComplexF64` and it equals its kron reference;
+    `eltype(port_operator(sys_r, (:varphi_1, expiphi(1)))) == ComplexF64` and it equals its kron reference;
     on `sys_c` the `nport` operator equals its reference whatever its eltype.
   - `@test_throws ArgumentError port_operator(sys_r, (:varphi_1, n2port()))` (not formed on the child), and the message
     contains `"lacks port"`.
@@ -201,8 +201,8 @@ basis and the two must agree to solver tolerance. Drive for every evolution test
   - Partial propagator: free `batch=true`, initial `qt_ket(sys, [(1, 1), (2, 1), (1, 2)]; basis=:free)`; each column of
     the final block ≈ the single-ket free solve of that label (`atol=1e-7`). Same for the dressed basis (its `Qobj`s
     take either).
-  - Complex port on a real node: `drives = [(:varphi_1, expiphi()) => f]`, free vs dressed on `sys_r` agree
-    (`atol=1e-7`). This needs `ports` on `top()` to include `(:varphi_1, expiphi())` for the dressed side: add it.
+  - Complex port on a real node: `drives = [(:varphi_1, expiphi(1)) => f]`, free vs dressed on `sys_r` agree
+    (`atol=1e-7`). This needs `ports` on `top()` to include `(:varphi_1, expiphi(1))` for the dressed side: add it.
   - `@test_throws ArgumentError drive_hamiltonian(sys, [(:varphi_2, n2port()) => f])` for each basis; `frame=:bogus`
     is an `ArgumentError`.
 
