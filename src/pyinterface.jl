@@ -66,4 +66,5 @@ end
 
 function __init__()
     Base.Experimental.register_error_hint(_pyinterface_hint, MethodError)
+    Base.Experimental.register_error_hint(_qt_hint, MethodError)
 end

@@ -35,3 +35,11 @@ using KronFreeCircuits: materialized, Node, Dense, lowest, nport, n2port, expiph
     err = try port_operator(sys_r, (:nosuch, nport())); nothing catch e; e end
     @test err isa ArgumentError && occursin("nosuch", err.msg)
 end
+
+@testset "QuantumToolbox interface without the extension" begin
+    sys = materialize(Node([:varphi_1 => ChargeBasis(10)]; keep=lowest(3)), load_spec(fixture("transmon.json")),
+                      (E_J=30.0, E_C=1.2, n_g=0.0))
+    err = try KronFreeCircuits.qt_hamiltonian(sys); nothing catch e; e end
+    @test err isa MethodError
+    @test occursin("load QuantumToolbox", sprint(showerror, err))
+end

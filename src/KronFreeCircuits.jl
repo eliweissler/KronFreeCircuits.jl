@@ -22,7 +22,8 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        Solver, SelectionRule, SelectionContext, GivenSystem, gershgorin_bound, separable_eigenbases, product_seed,
        infnorm, PortCharacter, character, arithmetic, circuit_quantization, QuantizedCircuit, record_json,
        save_record, load_record, suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks,
-       NearDegenerateBlock, block_levels, spectrum, phase_wavefunction, charge_wavefunction, port_operator
+       NearDegenerateBlock, block_levels, spectrum, phase_wavefunction, charge_wavefunction, port_operator,
+       qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian
 
 include("parameters.jl")
 include("spec.jl")
@@ -56,6 +57,7 @@ include("spectrum.jl")
 include("experimental/bo.jl")
 include("dressed.jl")
 include("portoperator.jl")
+include("quantumtoolbox.jl")
 include("wavefunctions.jl")
 include("pyinterface.jl")
 include("experimental/Experimental.jl")
