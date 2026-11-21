@@ -27,7 +27,8 @@ roughly 1450 / 1140 retained dressed states.
   (`dims=((N,), (m,))`) and evolves it as one N×m ODE state, so each right-hand side is one m-column apply of the
   `KronFreeOperator`. Measured 2026-11-20 on the zero-π root (23 870 states, A4500 GPU, Vern7 rtol 1e-8, 10 ns):
   four kets one at a time 49.0 s, one N×4 partial propagator 28.7 s (1.7×). The matrix-free `FunctionOperator`s are
-  built with `batch=true` for a given column count `m`; the dressed `Qobj`s need nothing extra.
+  built with `batch=true` (they then take any column count but not a plain ket, so the flag says which);
+  the dressed `Qobj`s take either.
 
 ## Non-goals
 
@@ -73,8 +74,8 @@ else a second weakdep), stubs exported from core:
 - `qt_hamiltonian(sys, node=root; basis=:dressed, n=nothing, on=Array)`: H0 as a `Qobj` (dressed, `n` lowest, default all
   kept) or a `QobjEvo` around a constant `FunctionOperator` (matrix-free).
 - `qt_operator(sys, key, node=root; basis, n, on)`: a port / joint port, same two forms.
-- `drive_hamiltonian(sys, drives, node=root; basis, frame=:lab | :interaction, n, on, columns=1) -> (H::QobjEvo, frame::Frame)`,
-  `columns` the number of initial states it will evolve at once (matrix-free only),
+- `drive_hamiltonian(sys, drives, node=root; basis, frame=:lab | :interaction, n, on, batch=false) -> (H::QobjEvo, frame::Frame)`,
+  `batch=true` to evolve an N×m block of initial states (matrix-free only; any m),
   with `drives` a vector of `key => f`, `f(p, t)` the QuantumToolbox coefficient signature.
 - `qt_ket(sys, label, node=root; basis, n)`: a ket of the dressed state with that bare label (`dressed_index`) or of the
   product state itself; with a vector of labels, the N×m partial-propagator initial `Operator` of those states.
