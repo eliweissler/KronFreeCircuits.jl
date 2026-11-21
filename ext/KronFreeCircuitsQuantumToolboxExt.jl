@@ -12,7 +12,6 @@ import KronFreeCircuits: qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_
 const SMO = QuantumToolbox.SciMLOperators
 
 const _Key = Union{Tuple{Symbol,Port},AbstractVector{<:Tuple{Symbol,Port}}}
-const _HERMITIAN_KINDS = (:n, :n2, :phi, :phi2)
 
 # The validated retained count `n` of a request (all kept when `nothing`), after checking `basis` and `on`.
 function _check_request(sys::System, node::Node, basis::Symbol, n, on)
@@ -27,9 +26,18 @@ end
 
 _keyvec(key::Tuple{Symbol,Port}) = Tuple{Symbol,Port}[key]
 _keyvec(key::AbstractVector) = Tuple{Symbol,Port}[k for k in key]
-_dressed_port(sys, key::Tuple{Symbol,Port}, node) = port(sys, key..., node)
-_dressed_port(sys, key::AbstractVector, node) = port(sys, _keyvec(key), node)
-_hermitian(key) = all(((_, p),) -> p.kind in _HERMITIAN_KINDS, _keyvec(key))
+
+# The port `key` on the `n` lowest kept states of `node`: the stored port when `node` formed it, else the product-basis
+# operator projected onto those states, V† O V (a joint port, which no node forms for itself, or a port missing from
+# `node`'s `ports`; `port_operator` names what a child lacks).
+function _dressed_port(sys::System, key, node::Node, n::Int)
+    K = KronFreeCircuits._sortkey!(_keyvec(key))
+    mn = materialized(sys, node)
+    length(K) == 1 && haskey(mn.ports, only(K)) && return Matrix(port(sys, only(K)..., node)[1:n, 1:n])
+    length(K) > 1 && haskey(mn.joint_ports, K) && return Matrix(port(sys, K, node)[1:n, 1:n])
+    V = Matrix(view(eigenvectors(sys, node), :, 1:n))
+    return V' * (port_operator(sys, K, node) * V)
+end
 
 # ---- matrix-free apply: w = α scale (H − shift) v + β w, for a ket (vector) or an N×m block.
 # A real H applied to complex v packs [Re V | Im V] into one real N×2m block and applies once; a complex H applies
@@ -80,7 +88,7 @@ function _apply!(A::KronFreeApply, w, v, α, β)
 end
 (A::KronFreeApply)(w, v, u, p, t) = _apply!(A, w, v, true, false)
 (A::KronFreeApply)(w, v, u, p, t, α, β) = _apply!(A, w, v, α, β)
-(A::KronFreeApply)(v, u, p, t) = _apply!(A, similar(v), v, true, false)
+(A::KronFreeApply)(v, u, p, t) = _apply!(A, similar(v, ComplexF64), v, true, false)    # complex even for a real v
 
 # A FunctionOperator over the callable `f` on a product basis of dimension N: on an N-vector (`batch = false`) or on
 # N×m blocks of any m (`batch = true`). `u = proto` is required: without it SciMLOperators fails in
@@ -108,10 +116,10 @@ end
 function qt_operator(sys::System, key::_Key, node::Node=sys.root.node; basis::Symbol=:dressed, n=nothing, on=Array,
                      batch::Bool=false)
     n = _check_request(sys, node, basis, n, on)
-    basis === :dressed && return Qobj(Matrix(_dressed_port(sys, key, node)[1:n, 1:n]); type=Operator(), dims=n)
+    basis === :dressed && return Qobj(_dressed_port(sys, key, node, n); type=Operator(), dims=n)
     O = port_operator(sys, key, node; on)
     N = size(O, 1)
-    return _free_qobjevo(_function_operator(KronFreeApply(O, 1.0, 0.0), N, on, batch; hermitian=_hermitian(key)), N)
+    return _free_qobjevo(_function_operator(KronFreeApply(O, 1.0, 0.0), N, on, batch; hermitian=ishermitian(O)), N)
 end
 
 # The index of `label` in the requested basis (1-based), with errors naming the label.
@@ -183,7 +191,7 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
     if basis === :dressed
         H0 = qt_hamiltonian(sys, node; n)
         isempty(drives) && return QobjEvo(H0), Frame(nothing)
-        terms = [(Qobj(2π * Matrix(_dressed_port(sys, k, node)[1:n, 1:n]); type=Operator(), dims=n), f) for (k, f) in drives]
+        terms = [(Qobj(2π * _dressed_port(sys, k, node, n); type=Operator(), dims=n), f) for (k, f) in drives]
         return QobjEvo((H0, terms...)), Frame(nothing)
     end
     E = energies(sys, node)
@@ -192,7 +200,7 @@ function drive_hamiltonian(sys::System, drives::AbstractVector, node::Node=sys.r
     L = _function_operator(KronFreeApply(H, 2π, E[1]), N, on, batch; hermitian=true)
     for (k, f) in drives
         Ok = port_operator(sys, k, node; on)
-        L = L + _coefficient(f) * _function_operator(KronFreeApply(Ok, 2π, 0.0), N, on, batch; hermitian=_hermitian(k))
+        L = L + _coefficient(f) * _function_operator(KronFreeApply(Ok, 2π, 0.0), N, on, batch; hermitian=ishermitian(Ok))
     end
     return _free_qobjevo(L, N), Frame(nothing)
 end
@@ -235,13 +243,13 @@ function _apply!(A::InteractionApply, w, v, p, t, α, β)
 end
 (A::InteractionApply)(w, v, u, p, t) = _apply!(A, w, v, p, t, true, false)
 (A::InteractionApply)(w, v, u, p, t, α, β) = _apply!(A, w, v, p, t, α, β)
-(A::InteractionApply)(v, u, p, t) = _apply!(A, similar(v), v, p, t, true, false)
+(A::InteractionApply)(v, u, p, t) = _apply!(A, similar(v, ComplexF64), v, p, t, true, false)
 
 function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol, n::Int, on, batch::Bool)
     E = energies(sys, node)
     if basis === :dressed
         Ω = 2π .* (E[1:n] .- E[1])
-        ops = [2π * Matrix{ComplexF64}(_dressed_port(sys, k, node)[1:n, 1:n]) for (k, _) in drives]
+        ops = [2π * Matrix{ComplexF64}(_dressed_port(sys, k, node, n)) for (k, _) in drives]
         fs = Any[f for (_, f) in drives]
         ph = zeros(ComplexF64, n)
         function fill_HI!(M, u, p, t)                  # M_ij = Σ_k f_k(t) e^{iΩ_i t} (2π P_k)_ij e^{−iΩ_j t}
@@ -262,7 +270,7 @@ function _interaction_hamiltonian(sys::System, drives, node::Node, basis::Symbol
     Ωd = adapt(on, Ω)
     A = InteractionApply(Ωd, similar(Ωd, ComplexF64), KronFreeApply(H, 2π, E[1]), ops, Any[f for (_, f) in drives],
                          nothing, nothing)
-    F = _function_operator(A, N, on, batch; hermitian=all(_hermitian(k) for (k, _) in drives), constant=false)
+    F = _function_operator(A, N, on, batch; hermitian=all(O -> ishermitian(O.H), ops), constant=false)
     return _free_qobjevo(F, N), Frame(Ω)
 end
 

@@ -53,8 +53,9 @@ function qt_hamiltonian end
     qt_operator(sys, key, node=root; basis=:dressed, n=nothing, on=Array, batch=false)
 
 The port `key = (mode, p)` or joint port `key = [(mode, p), ...]` of `node`, with no 2π: a `Qobj` of
-`port(sys, key, node)` on the `n` lowest kept states (`basis=:dressed`; the port must have been formed for `node`), or a
-`QobjEvo` around [`port_operator`](@ref) (`basis=:free`).
+`port(sys, key, node)` on the `n` lowest kept states (`basis=:dressed`), or a `QobjEvo` around
+[`port_operator`](@ref) (`basis=:free`). A dressed port `node` did not form (a joint port at the root, a port missing
+from `node`'s `ports`) is `port_operator` projected onto the kept states, `V† O V`, which needs the children's ports.
 Defined by the QuantumToolbox extension: $_QT_HINT.
 """
 function qt_operator end

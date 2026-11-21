@@ -112,7 +112,8 @@ Energies, eigenvectors and ports return as host arrays; ports are formed on the 
 
 Time is in ns and Hamiltonians are in rad/ns: `H/ħ = 2π [H0 − E₀ + Σ_k f_k(t) O_k]`, with each drive coefficient `f_k(p, t)` in GHz and `E₀` the node's lowest kept energy.
 `drive_hamiltonian(sys, [key => f, ...]; basis, frame)` builds `H(t)`, where each `key` is a port `(mode, port)` or a joint port `[(mode, port), ...]`.
-A dressed drive port must be formed for the node (its `ports`), and a matrix-free one for the child that owns its mode.
+A matrix-free drive needs its port formed by the child that owns its mode.
+A dressed drive uses the node's stored port when it has one. Otherwise, for a joint port at the root or a port missing from the node's `ports`, it projects `port_operator` onto the kept states, `V† O V`, which also needs the children's ports.
 `frame=:interaction` writes `H(t)` in the frame of the diagonal of `2π (H0 − E₀)` in the evolved basis:
 
 - In the dressed basis this frame is exact, and only the rotated drives remain.
@@ -140,6 +141,8 @@ H, frame = drive_hamiltonian(sys, [(:varphi_1, nport()) => f]; basis=:free, fram
 sol = sesolve(H, ψ0, range(0, 20; length=21); progress_bar=Val(false))
 U = to_dressed(sys, to_lab(frame, sol.states[end], 20.0))            # dressed amplitudes at t = 20 ns, one column each
 ```
+
+Both packages export `Lanczos` and `spectrum`, so after `using KronFreeCircuits, QuantumToolbox` write `KronFreeCircuits.Lanczos()` and `KronFreeCircuits.spectrum` (or QuantumToolbox's) for either name.
 
 ## Spec files
 

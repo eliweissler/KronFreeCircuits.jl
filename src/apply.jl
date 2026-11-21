@@ -173,7 +173,7 @@ struct _OperatorTerm{T<:Number}
 end
 
 """
-    KronFreeOperator(dims, terms; constant=0.0, block_capacity=1, on=Array)
+    KronFreeOperator(dims, terms; constant=0.0, block_capacity=1, on=Array, hermitian=true)
 
 `H = Σ_t c_t ⊗_k A_{t,k} + constant * I` on the tensor-product space with axis sizes `dims`
 (axis 1 fastest), applied without forming Kronecker products.
@@ -195,8 +195,9 @@ maximum block width before iteration to avoid state-sized scratch reallocations.
 `mul!(y, H, x)` writes into caller-owned output; `H * x` allocates its output on `on`.
 The scratch belongs to `H`, so simultaneous applications require separate operators/workspaces.
 
-`ishermitian(H)` returns `true` unconditionally: callers are responsible for building `terms`
-that sum to a Hermitian operator.
+`ishermitian(H)` returns `hermitian`, a claim the constructor stores without checking: callers are responsible for
+building `terms` that sum to a Hermitian operator when they leave it `true` (every Hamiltonian), and set it `false` for
+one that is not (a port such as `e^{iφ}`, see [`port_operator`](@ref)).
 """
 mutable struct KronFreeOperator{V<:AbstractVector,B<:AbstractArray}
     dims::Vector{Int}
@@ -208,6 +209,7 @@ mutable struct KronFreeOperator{V<:AbstractVector,B<:AbstractArray}
     inds::Vector{ITensors.Index}               # one distinct index per axis, even for equal sizes
     blockinds::Dict{Int,ITensors.Index}        # block-axis index per block width, made on demand
     diagterms::Vector{AxisTerm}                # the terms fused into `diag` (the constant as a zero-factor term); introspection only
+    hermitian::Bool                            # what `ishermitian` reports (stored, not checked)
     # Derived quantities, computed on first request and memoized (host data, valid for every storage);
     # shared by `with_block_capacity` and `_on_storage` copies.
     sparse::Base.RefValue{Any}                 # `sparse(H)`
@@ -218,7 +220,7 @@ end
 _empty_memos() = (Ref{Any}(nothing), Ref{Any}(nothing), Ref{Any}(nothing))
 
 function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector{<:AxisTerm};
-                          constant::Number=0.0, block_capacity::Integer=1, on=Array)
+                          constant::Number=0.0, block_capacity::Integer=1, on=Array, hermitian::Bool=true)
     dims = Vector{Int}(dims)
     all(>=(1), dims) || throw(ArgumentError("KronFreeOperator: dims must be positive, got $dims"))
     for term in terms, (a, op) in term.factors
@@ -247,7 +249,7 @@ function KronFreeOperator(dims::AbstractVector{<:Integer}, terms::AbstractVector
     # Scratch allocated like the stored diagonal, so directly on `on` (no host staging).
     return KronFreeOperator(dims, diag, kept, similar(diag, T, shape), similar(diag, T, shape), on,
                             ITensors.Index[ITensors.Index(d, "axis$k") for (k, d) in enumerate(dims)],
-                            Dict{Int,ITensors.Index}(), fused, _empty_memos()...)
+                            Dict{Int,ITensors.Index}(), fused, hermitian, _empty_memos()...)
 end
 
 # `H` with its fused diagonal, factor data and fresh scratch for `capacity` columns stored as `on`
@@ -261,13 +263,13 @@ function _on_storage(H::KronFreeOperator, on; capacity::Integer=_block_capacity(
                           for t in H.terms]
     shape = (H.dims..., Int(capacity))
     return KronFreeOperator(H.dims, diag, terms, similar(diag, eltype(H), shape), similar(diag, eltype(H), shape),
-                            on, H.inds, H.blockinds, H.diagterms, H.sparse, H.gershgorin, H.separable)
+                            on, H.inds, H.blockinds, H.diagterms, H.hermitian, H.sparse, H.gershgorin, H.separable)
 end
 
 Base.size(H::KronFreeOperator) = (n = prod(H.dims); (n, n))
 Base.size(H::KronFreeOperator, i::Integer) = size(H)[i]
 Base.eltype(H::KronFreeOperator) = eltype(H.diag)
-LinearAlgebra.ishermitian(::KronFreeOperator) = true
+LinearAlgebra.ishermitian(H::KronFreeOperator) = H.hermitian
 
 function _ensure_buffers!(H::KronFreeOperator, shape::Tuple)
     if length(H.buf1) < prod(shape)
@@ -489,7 +491,7 @@ function with_block_capacity(H::KronFreeOperator, m::Integer)
     m >= 1 || throw(ArgumentError("with_block_capacity: m must be positive, got $m"))
     shape = (H.dims..., Int(m))
     return KronFreeOperator(H.dims, H.diag, H.terms, similar(H.buf1, shape), similar(H.buf2, shape),
-                            H.on, H.inds, H.blockinds, H.diagterms, H.sparse, H.gershgorin, H.separable)
+                            H.on, H.inds, H.blockinds, H.diagterms, H.hermitian, H.sparse, H.gershgorin, H.separable)
 end
 
 const _MATRIX_BLOCK = 256

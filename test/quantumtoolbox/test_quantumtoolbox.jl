@@ -187,3 +187,88 @@ end
     Hib, frb = drive_hamiltonian(sys, drives; frame=:interaction, n=36, batch=true)
     @test isapprox(to_lab(frb, evolve(Hib, ψ0), TLIST[end]).data, evolve(Hl, ψ0).data; atol=1e-7)
 end
+
+const P0 = QuantumToolbox.NullParameters()
+const F0 = (p, t) -> 0.05 * cos(t)                                         # 0.05 GHz at t = 0
+# H(t) x of a matrix-free QobjEvo, in place, as sesolve applies it
+apply_at(H, x, t) = (w = similar(x); H.data(w, x, x, P0, t); w)
+phase(Ω, t, M) = cis.(Ω .* t) .* M .* transpose(cis.(-Ω .* t))           # e^{iΩt} M e^{−iΩt}
+
+@testset "drive terms are 2π f(t) O, on n < N kept states ($kind)" for (kind, sys) in SYSTEMS
+    E = energies(sys); n = 10; t = 0.7
+    key = (:varphi_1, nport())
+    P = port(sys, key...)[1:n, 1:n]
+    Hd, fr = drive_hamiltonian(sys, [key => F0]; n)
+    @test fr.ω === nothing && size(Hd) == (n, n)
+    @test Hd(P0, t).data ≈ 2π * (Diagonal(E[1:n] .- E[1]) + F0(P0, t) * P)
+    Hi, fri = drive_hamiltonian(sys, [key => F0]; n, frame=:interaction)
+    @test fri.ω ≈ 2π * (E[1:n] .- E[1])
+    @test Hi(P0, t).data ≈ phase(fri.ω, t, 2π * F0(P0, t) * P)
+    @test size(qt_ket(sys, LABELS; n)) == (n, 3)
+
+    # matrix-free, lab and interaction picture: the same terms, applied
+    H0 = dense_operator(operator(sys)) - E[1] * I
+    Pf = dense_operator(port_operator(sys, key))
+    x = randn(ComplexF64, 36)
+    Hf, _ = drive_hamiltonian(sys, [key => F0]; basis=:free)
+    @test apply_at(Hf, x, t) ≈ 2π * (H0 + F0(P0, t) * Pf) * x
+    Hfi, frf = drive_hamiltonian(sys, [key => F0]; basis=:free, frame=:interaction)
+    @test frf.ω ≈ 2π * real.(diag(H0))
+    @test apply_at(Hfi, x, t) ≈ phase(frf.ω, t, 2π * (H0 + F0(P0, t) * Pf) - Diagonal(frf.ω)) * x
+end
+
+@testset "drives on a child node ($kind)" for (kind, sys) in SYSTEMS
+    node = sys.root.node.children[1]                                       # leaf varphi_1: 6 kept of its 31 or 32
+    key = (:varphi_1, nport())
+    El = energies(sys, node); t = 0.7
+    Hd, _ = drive_hamiltonian(sys, [key => F0], node)
+    @test size(Hd) == (6, 6)
+    @test Hd(P0, t).data ≈ 2π * (Diagonal(El .- El[1]) + F0(P0, t) * port(sys, key..., node))
+    H0 = dense_operator(operator(sys, node)) - El[1] * I
+    N = size(H0, 1)
+    x = randn(ComplexF64, N)
+    Hf, _ = drive_hamiltonian(sys, [key => F0], node; basis=:free)
+    @test apply_at(Hf, x, t) ≈ 2π * (H0 + F0(P0, t) * dense_operator(port_operator(sys, key, node))) * x
+    Hfi, fr = drive_hamiltonian(sys, [key => drive_of(sys)], node; basis=:free, frame=:interaction)
+    Hfl, _ = drive_hamiltonian(sys, [key => drive_of(sys)], node; basis=:free)
+    ψ0 = qt_ket(sys, (2,), node; basis=:free)
+    @test size(ψ0) == (N,)
+    short(H) = sesolve(H, ψ0, [0.0, 2.0]; reltol=1e-10, abstol=1e-12, progress_bar=Val(false)).states[end]  # stiff leaf
+    @test isapprox(to_lab(fr, short(Hfi), 2.0).data, short(Hfl).data; atol=1e-7)
+end
+
+@testset "complex-character port in the interaction picture ($kind)" for (kind, sys) in SYSTEMS
+    drives = [(:varphi_1, _extra(first(sys.root.node.children[1].children).second)) => drive_of(sys)]
+    for kw in ((; n=36), (; basis=:free))
+        ψ0 = haskey(kw, :n) ? qt_ket(sys, (2, 1)) : qt_ket(sys, (2, 1); basis=:free)
+        Hi, fr = drive_hamiltonian(sys, drives; frame=:interaction, kw...)
+        Hl, _ = drive_hamiltonian(sys, drives; kw...)
+        @test isapprox(to_lab(fr, evolve(Hi, ψ0), TLIST[end]).data, evolve(Hl, ψ0).data; atol=1e-7)
+    end
+end
+
+@testset "joint-port drives ($kind)" for (kind, sys) in SYSTEMS
+    # n1 n2 at the root: no node stores it (joint ports are formed for ancestors), so the dressed basis projects the
+    # product-basis operator onto the kept states
+    J = [(:varphi_1, nport()), (:varphi_2, nport())]
+    E = energies(sys); V = eigenvectors(sys); t = 0.7
+    PJ = V' * dense_operator(port_operator(sys, J)) * V
+    Hd, _ = drive_hamiltonian(sys, [J => F0]; n=36)
+    @test Hd(P0, t).data ≈ 2π * (Diagonal(E .- E[1]) + F0(P0, t) * PJ)
+    @test qt_operator(sys, J; n=10).data ≈ PJ[1:10, 1:10]
+    ψf0 = qt_ket(sys, (2, 1); basis=:free)
+    ψd = evolve(first(drive_hamiltonian(sys, [J => drive_of(sys)]; n=36)), to_dressed(sys, ψf0))
+    ψf = evolve(first(drive_hamiltonian(sys, [J => drive_of(sys)]; basis=:free)), ψf0)
+    @test isapprox(to_dressed(sys, ψf).data, ψd.data; atol=1e-7)
+end
+
+@testset "matrix-free callables on a real vector ($kind)" for (kind, sys) in SYSTEMS
+    E = energies(sys)
+    xr = randn(36)
+    Href = 2π * (dense_operator(operator(sys)) - E[1] * I)
+    F = qt_hamiltonian(sys; basis=:free).data
+    @test F.op(xr, xr, P0, 0.0) ≈ Href * xr                                # out of place: a complex result
+    Fi = first(drive_hamiltonian(sys, Pair[]; basis=:free, frame=:interaction)).data
+    @test Fi.op(xr, xr, P0, 0.0) ≈ (Href - Diagonal(2π * real.(diag(Href / 2π)))) * xr
+    @test qt_operator(sys, (:varphi_1, nport()); basis=:free).data * xr ≈ dense_operator(port_operator(sys, (:varphi_1, nport()))) * xr
+end

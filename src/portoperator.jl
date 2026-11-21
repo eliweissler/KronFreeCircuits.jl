@@ -7,7 +7,9 @@
 The port `key = (mode, p)`, or the joint port `key = [(mode, p), ...]` of factors on distinct modes, as an operator on
 the product basis of `node` (its children's kept states, axis 1 fastest), identity on the axes the key does not touch.
 Each factor is its child's operator: the child node's stored port, or the basis operator of a leaf mode.
-It is real exactly when every factor's operator is real (a real child's real-character port), else complex.
+It is real exactly when every factor's operator is real (a real child's real-character port), else complex, and
+Hermitian (`ishermitian`) exactly when every factor is, to rounding (`n`, `φ` and their squares; not `e^{iφ}` or
+`e^{2πin·k}`, k ≠ 0).
 `on` places it as a solver's `on` does (`CuArray` needs `using CUDA, cuTENSOR`).
 
 A factor whose port the child node did not form throws an `ArgumentError` (list the port in that child's `ports`); so do
@@ -32,7 +34,8 @@ function port_operator(sys::System, key::AbstractVector{<:Tuple{Symbol,Port}}, n
     mn = materialized(sys, node)
     _check_child_ports(node, mn, K)
     ops = Tuple{Int,LocalOp}[(a, op) for (a, op, _) in _axis_ops(node, mn.children, K)]
-    return KronFreeOperator(mn.dims, [AxisTerm(1.0, ops)]; on)
+    hermitian = all(((_, op),) -> (M = sparse(op); isapprox(M, M'; rtol=1e-10, atol=1e-12 * max(1, norm(M, Inf)))), ops)
+    return KronFreeOperator(mn.dims, [AxisTerm(1.0, ops)]; on, hermitian)
 end
 
 # An ArgumentError, listing what is available, for a factor group of `K` whose port (one factor) or joint port (several)

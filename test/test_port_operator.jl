@@ -1,5 +1,5 @@
 using KronFreeCircuits: materialized, Node, Dense, lowest, nport, n2port, expiphi, exp2pin, ChargeBasis, PeriodicGrid,
-                        load_spec, materialize, port, port_operator, arithmetic
+                        load_spec, materialize, port, port_operator, arithmetic, operator
 
 @testset "port_operator" begin
     spec = load_spec(fixture("two_transmons.json"))
@@ -29,6 +29,15 @@ using KronFreeCircuits: materialized, Node, Dense, lowest, nport, n2port, expiph
     @test eltype(port_operator(sys_r, (:varphi_1, nport()))) == Float64
     @test eltype(port_operator(sys_r, (:varphi_1, exp2pin(0.1)))) == ComplexF64        # complex port on a real node
     @test eltype(port_operator(sys_c, (:varphi_1, nport()))) == ComplexF64
+
+    # ishermitian reads the factors: n is Hermitian in both arithmetics; e^{iφ} (a real shift on charge leaves) and
+    # e^{2πin·0.1} are not
+    @test ishermitian(port_operator(sys_r, (:varphi_1, nport())))
+    @test ishermitian(port_operator(sys_c, [(:varphi_1, nport()), (:varphi_2, nport())]))
+    @test !ishermitian(port_operator(sys_r, (:varphi_1, expiphi(1))))
+    @test !ishermitian(port_operator(sys_c, (:varphi_1, expiphi(1))))
+    @test !ishermitian(port_operator(sys_r, (:varphi_1, exp2pin(0.1))))
+    @test ishermitian(operator(sys_r, tr))                                          # Hamiltonians stay Hermitian
 
     err = try port_operator(sys_r, (:varphi_1, n2port())); nothing catch e; e end
     @test err isa ArgumentError && occursin("lacks port", err.msg)
