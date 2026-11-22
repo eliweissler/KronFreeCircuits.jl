@@ -617,3 +617,55 @@ function node_second_order(sys, x::Symbol, λ::Symbol)
     dX, dΛ = K._node_first_order(u.mn, Hx, u.res, u.none), K._node_first_order(u.mn, Hλ, u.res, u.none)
     return (; d=K._node_second_order(u.mn, Hx, Hλ, Hxλ, u.res, dX, dΛ, u.none), dX, dΛ, Hλ, Hxλ)
 end
+
+# Save/load round trips: `a` (loaded) and `b` (original) hold equal arrays of equal type, equal settings (a solver's `on`
+# compared with `on` and its `callback` with `nothing`), the same θ, identical terms and constant, and the same tree.
+_same_value(x, y) = typeof(x) == typeof(y) && isequal(x, y)
+function _same_fields(x, y; on=Array)
+    typeof(x) == typeof(y) || return false
+    return all(fieldnames(typeof(x))) do f
+        f === :on ? getfield(x, f) === on : f === :callback ? getfield(x, f) === nothing : _same_value(getfield(x, f), getfield(y, f))
+    end
+end
+_same_dict(x, y) = typeof(x) == typeof(y) && issetequal(keys(x), keys(y)) && all(k -> _same_value(x[k], y[k]), keys(x))
+_same_given(x, y) = x.mode === y.mode && _same_value(x.energies, y.energies) && _same_dict(x.operators, y.operators)
+_same_child(x::Pair, y::Pair) = x.first === y.first && _same_fields(x.second, y.second)
+_same_child(x::GivenSystem, y::GivenSystem) = _same_given(x, y)
+_same_child(x, y) = typeof(x) == typeof(y)          # nodes: compared through their MaterializedNode
+function _assert_same_node(a::KronFreeCircuits.MaterializedNode, b::KronFreeCircuits.MaterializedNode; on)
+    @test typeof(a) == typeof(b)
+    for f in (:dims, :energies, :vectors, :kept, :peak_component, :peak_amplitudes)
+        @test _same_value(getfield(a, f), getfield(b, f))
+    end
+    @test _same_dict(a.ports, b.ports)
+    @test _same_dict(a.joint_ports, b.joint_ports)
+    @test _same_fields(a.retained, b.retained)
+    @test typeof(a.node) == typeof(b.node)
+    if a.node isa GivenSystem
+        @test _same_given(a.node, b.node)
+    else
+        @test _same_fields(a.node.solver, b.node.solver; on)
+        @test _same_fields(a.node.keep, b.node.keep)
+        for f in (:compute, :phase, :ports, :arithmetic, :retain)
+            @test _same_value(getfield(a.node, f), getfield(b.node, f))
+        end
+        @test length(a.node.children) == length(b.node.children)
+        @test all(_same_child.(a.node.children, b.node.children))
+    end
+    @test length(a.children) == length(b.children)
+    for (x, y) in zip(a.children, b.children)
+        if x isa KronFreeCircuits.MaterializedNode && y isa KronFreeCircuits.MaterializedNode
+            _assert_same_node(x, y; on)
+        else
+            @test typeof(x) == typeof(y) && (x isa GivenSystem ? _same_given(x, y) : _same_fields(x, y))
+        end
+    end
+end
+function assert_same_system(a::KronFreeCircuits.System, b::KronFreeCircuits.System; on=Array)
+    @test (a.spec === nothing && b.spec === nothing) || (a.spec !== nothing && b.spec !== nothing && spec_equal(a.spec, b.spec))
+    @test KronFreeCircuits._terms_identical(a.terms, b.terms)
+    @test KronFreeCircuits._identical(a.constant, b.constant)
+    @test a.θ === b.θ
+    @test length(a.augmented) == length(b.augmented)
+    _assert_same_node(a.root, b.root; on)
+end
