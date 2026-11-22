@@ -1,4 +1,4 @@
-using KronFreeCircuits: JLD2, GivenSystem, Term, Factor, Coefficient
+using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient
 
 @testset "positions and one node" begin
     c = dc_chain3(); sys = materialize(c.root, c.spec, c.θ)

@@ -5,20 +5,10 @@
 const _PLAIN_KINDS = Dict(Int => "int", Float64 => "float", Bool => "bool", String => "string", Vector{Int} => "ints",
                           Vector{Float64} => "floats", Vector{String} => "strings",
                           Matrix{Float64} => "matrix_real", Matrix{ComplexF64} => "matrix_complex")
-const _KINDS = (values(_PLAIN_KINDS)..., "symbol", "nothing", "port", "modeport", "arraytype")
-
-function _kind(v)
-    haskey(_PLAIN_KINDS, typeof(v)) && return _PLAIN_KINDS[typeof(v)]
-    v isa Symbol && return "symbol"
-    v === nothing && return "nothing"
-    v isa Port && return "port"
-    v isa Tuple{Symbol,Port} && return "modeport"
-    v isa Type && return "arraytype"
-    return nothing
-end
-
 function _write_value(g, name, v)
-    kind = _kind(v)
+    kind = get(_PLAIN_KINDS, typeof(v), nothing)
+    kind === nothing && (kind = v isa Symbol ? "symbol" : v === nothing ? "nothing" : v isa Port ? "port" :
+                                v isa Tuple{Symbol,Port} ? "modeport" : v isa Type ? "arraytype" : nothing)
     kind === nothing && throw(ArgumentError("cannot save $name: a $(typeof(v)) is not a supported value"))
     g["$name/kind"] = kind
     if kind in values(_PLAIN_KINDS); g["$name/value"] = v
@@ -32,13 +22,12 @@ end
 
 function _read_value(g, name)
     kind = g["$name/kind"]
-    kind in _KINDS || throw(ArgumentError("unknown value kind \"$kind\" at $name"))
     kind == "nothing" && return nothing
     kind == "modeport" && return (Symbol(g["$name/mode"]), Port(Symbol(g["$name/port_kind"]), g["$name/k"]))
-    value = g["$name/value"]
-    kind == "symbol" && return Symbol(value)
-    kind == "port" && return Port(Symbol(value), g["$name/k"])
-    return value
+    kind == "symbol" && return Symbol(g["$name/value"])
+    kind == "port" && return Port(Symbol(g["$name/value"]), g["$name/k"])
+    kind in values(_PLAIN_KINDS) || kind == "arraytype" || throw(ArgumentError("unknown value kind \"$kind\" at $name"))
+    return g["$name/value"]
 end
 
 # every concrete solver, selection rule and basis (the test suite checks this list is complete)

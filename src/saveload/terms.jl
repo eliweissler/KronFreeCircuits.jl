@@ -16,18 +16,15 @@ function _write_terms(g, name, terms::Vector{Term})
     end
     fs = [(i, f) for (i, t) in enumerate(terms) for f in t.factors]
     g["$name/factor_term"] = Int[i for (i, _) in fs]
-    g["$name/factor_mode"] = String[String(f.mode) for (_, f) in fs]
-    g["$name/factor_port_kind"] = String[String(f.port.kind) for (_, f) in fs]
-    g["$name/factor_port_k"] = Float64[f.port.k for (_, f) in fs]
+    _write_portlist(g, "$name/factors", [(f.mode, f.port) for (_, f) in fs])
     return nothing
 end
 
 function _read_terms(g, name)
     coefficients = g["$name/coefficients"]
     factors = [Factor[] for _ in coefficients]
-    for (i, mode, kind, k) in zip(g["$name/factor_term"], g["$name/factor_mode"], g["$name/factor_port_kind"],
-                                  g["$name/factor_port_k"])
-        push!(factors[i], Factor(Symbol(mode), Port(Symbol(kind), k)))
+    for (i, (mode, port)) in zip(g["$name/factor_term"], _read_portlist(g, "$name/factors"))
+        push!(factors[i], Factor(mode, port))
     end
     return Term[Term(_saved_coefficient(s, Symbol.(g["$name/deps/$i"])), factors[i]) for (i, s) in enumerate(coefficients)]
 end
@@ -53,8 +50,9 @@ function _write_system_terms(f, sys::System)
     from_spec = false
     n = 0
     if sys.spec !== nothing
-        f["spec"] = spec_json(sys.spec)
-        rebuilt = parse_spec(f["spec"])
+        json = spec_json(sys.spec)
+        f["spec"] = json
+        rebuilt = parse_spec(json)
         built = circuit_terms(rebuilt)
         n = length(built)
         from_spec = n <= length(sys.terms) && _terms_identical(built, sys.terms[1:n]) &&

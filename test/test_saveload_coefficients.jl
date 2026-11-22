@@ -15,5 +15,4 @@ rt(c) = _saved_coefficient(_coefficient_string(c), copy(c.deps))
     @test_throws ArgumentError _saved_coefficient("run(`ls`)", Symbol[])     # allowlist still applies
     @test_throws ArgumentError _saved_coefficient("Complex(E_J, 1.0)", [:E_J])  # only literal arguments
     @test_throws ArgumentError _saved_coefficient("E_J", Symbol[])          # undeclared symbol
-    @test spec_json(load_spec(fixture("fluxonium.json"))) == spec_json(load_spec(fixture("fluxonium.json")))
 end

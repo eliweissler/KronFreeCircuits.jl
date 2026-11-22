@@ -161,6 +161,7 @@ Read back a coefficient written by `_coefficient_string`, with the stored `deps`
 (`_check_expr`) let anything through, plus the `Complex`/`Rational` literal forms.
 """
 function _saved_coefficient(src::AbstractString, deps::Vector{Symbol})
+    check_parameter_names(deps)
     ex = _normalize_dots(_restore_literals(Meta.parse(src; raise=false)))
     _check_expr(ex, src)
     for d in free_symbols(ex)

@@ -1,5 +1,3 @@
-using KronFreeCircuits: JLD2
-
 @testset "a loaded system works" begin
     roundtrip(sys; kw...) = (p = tempname() * ".jld2"; save_system(p, sys; kw...); load_system(p))
 

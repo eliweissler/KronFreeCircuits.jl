@@ -76,6 +76,11 @@ end
     @test_throws ArgumentError save_system(p, sys; metadata=(f=sin,))
     assert_same_system(load_system(p), sys)
     @test !isfile(p * ".partial")
+    # a failure during the write, after the partial file is open
+    bad = materialize(c.root, c.spec, (E_J=20.0, E_C=1.0f0, n_g=0.2))
+    @test_throws "not a supported value" save_system(p, bad)
+    assert_same_system(load_system(p), sys)
+    @test !isfile(p * ".partial")
 end
 
 @testset "not a system file" begin

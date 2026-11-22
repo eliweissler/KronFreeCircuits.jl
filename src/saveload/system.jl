@@ -29,7 +29,7 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
         end
     end
     r = mn.retained
-    drop = !retained && r.vectors !== nothing
+    drop = !retained && r.vectors !== nothing && size(r.vectors, 2) > 0
     g["retained/energies"] = r.energies
     g["retained/unkept"] = r.unkept
     g["retained/complete"] = r.complete && !drop      # no vectors stored: the complement is unknown
@@ -63,11 +63,14 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
     return nothing
 end
 
+_read_ports(g) = Dict{Tuple{Symbol,Port},NodeMatrix}(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"]
+                                                     for i in 1:g["ports/count"])
+
 # The node (`Node` or `GivenSystem`) of group `g` and its `MaterializedNode`, children first, so that every child's
 # `MaterializedNode.node` is its parent's `Node.children[i]`. With `node` given (the tree's own node at this position),
 # no node or basis is built: the results are read onto it and its descendants.
 function _read_node(g; on=Array, node=nothing)
-    T = eltype(g["vectors"])
+    T = g["eltype"] == "ComplexF64" ? ComplexF64 : Float64
     if node !== nothing && g["kind"] == "given"
         children = Any[node]
     elseif g["kind"] == "given"
@@ -92,8 +95,7 @@ function _read_node(g; on=Array, node=nothing)
         end
         children = Any[last(p) for p in pairs]
     end
-    ports = Dict{Tuple{Symbol,Port},NodeMatrix}(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"]
-                                                for i in 1:g["ports/count"])
+    ports = _read_ports(g)
     joint = Dict{_FactorKey,NodeMatrix}(_read_portlist(g, "joint_ports/$i") => g["joint_ports/$i/matrix"]
                                         for i in 1:g["joint_ports/count"])
     vectors = haskey(g, "retained/vectors") ? g["retained/vectors"] : nothing
@@ -149,13 +151,13 @@ function _read_augmented(f, root::MaterializedNode; on)
 end
 
 """
-    save_system(path, sys::System; retained=true) -> path
+    save_system(path, sys::System; retained=true, metadata=(;)) -> path
 
 Write the solved `sys` to the JLD2 file `path` (format version 1: plain arrays, numbers and strings, one group per tree
 node), to be read back by [`load_system`](@ref).
 Solver callbacks are not saved. The file is uncompressed. A coefficient that would not reload identically makes
-`save_system` throw an `ArgumentError` rather than write it. `retained = false` leaves out every node's retained (unkept) eigenvectors, and such a
-node loads with `retained.complete = false`; derivatives on it then take the slower paths for a node without them and
+`save_system` throw an `ArgumentError` rather than write it. `retained = false` leaves out every node's retained
+(unkept) eigenvectors, and such a node loads with `retained.complete = false`; derivatives on it then take the slower paths for a node without them and
 agree with the original's to solver tolerance, not bit for bit.
 `metadata` (a `NamedTuple` or `AbstractDict`, `Symbol` or `String` keys) holds your own notes: numbers, `Bool`, `String`
 or arrays of them, checked before anything is written and read back by [`load_metadata`](@ref).
@@ -203,8 +205,9 @@ function _with_system_file(read, path)
     notsystem = ArgumentError("$path is not a KronFreeCircuits system file")
     f = try
         JLD2.jldopen(path, "r")
-    catch
-        isfile(path) ? throw(notsystem) : rethrow()
+    catch e
+        isfile(path) || rethrow()
+        throw(ArgumentError("$path is not a KronFreeCircuits system file ($(sprint(showerror, e)))"))
     end
     try
         haskey(f, "format") && f["format"] == _FORMAT && haskey(f, "format_version") || throw(notsystem)
@@ -284,7 +287,7 @@ function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int
                                     "valid positions: $(_positions!(Vector{Int}[], f["root"], Int[]))"))
             g = g["children/$i"]
         end
-        ports = Dict(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"] for i in 1:g["ports/count"])
+        ports = _read_ports(g)
         has_on = g["kind"] == "node" && haskey(g, "settings/solver/fields/on")
         on = has_on ? g["settings/solver/fields/on/value"] : nothing
         return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, on)

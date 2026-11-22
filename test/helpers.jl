@@ -659,7 +659,6 @@ function _assert_same_node(a::KronFreeCircuits.MaterializedNode, b::KronFreeCirc
     end
 end
 # Every child of `mn` is, recursively, the corresponding child of `mn.node` (a leaf's basis is its pair's second).
-_children_are_nodes_of(mn::KronFreeCircuits.GivenSystem) = true
 function _children_are_nodes_of(mn::KronFreeCircuits.MaterializedNode)
     mn.node isa KronFreeCircuits.GivenSystem && return true
     return all(enumerate(mn.children)) do (i, c)

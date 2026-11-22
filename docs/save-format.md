@@ -26,8 +26,9 @@ constant, constant_deps the constant term as a coefficient string and its parame
 terms/from_spec         true: the terms are rebuilt from `spec`, and `terms/*` holds only the extra terms
 terms/coefficients      one coefficient string per stored term
 terms/deps/<i>          parameter names of coefficient i
-terms/factor_term, factor_mode, factor_port_kind, factor_port_k
-                        one entry per factor: its term index, mode, port kind and port k
+terms/factor_term       one entry per factor: its term index
+terms/factors/{modes,kinds,ks}
+                        one entry per factor: its mode, port kind and port k
 theta/names             parameter names
 theta/values/<i>        the parameter point, one tagged value each
 root/                   the root node (below)
