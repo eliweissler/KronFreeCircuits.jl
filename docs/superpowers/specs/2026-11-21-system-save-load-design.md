@@ -154,9 +154,13 @@ Optional entries are absent rather than empty when they do not apply.
    coefficient is written with the spec writer `expr_string` (specwrite.jl) and read back with the spec parser
    `Coefficient(src, params)` (parameters.jl), which checks every call against the allowlist and folds constants as
    the package does when it first builds coefficients. `params` is the term's stored `deps`.
-   `expr_string` refuses complex constants and `im` today; it is extended, minimally, to write a complex constant in a
-   form the existing parser accepts and folds back to the same constant (for example `cis`-free `(re + (im * c))`,
-   whatever the builder finds round-trips), without widening the parser's allowlist.
+   Correction (found while planning): the spec parser does **not** fold constants; it keeps what it parses as written.
+   So literal types that source text can't express need a written form. `expr_string` refuses complex constants today,
+   and a `Rational` literal printed as `1//2` would parse back as a call, not a literal. The save path therefore writes
+   a complex literal as `Complex(re, im)` and a rational one as `Rational(num, den)` (each argument itself a literal),
+   and the save loader, only, turns exactly those forms back into literals before the parser's usual checks run
+   (as the parser already does for `int128"…"` and `big"…"`). `spec_json` output and the spec parser's allowlist are
+   unchanged.
 
 **The guarantee is a save-time check.** `save_system` parses back every coefficient it writes, and checks every
 rebuilt spec term, and refuses to save, with an `ArgumentError` naming the term and both expressions, if any
