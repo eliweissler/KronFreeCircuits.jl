@@ -261,6 +261,8 @@ editing `Project.toml` (`[deps]` and `[compat]`) and running `Pkg.resolve()`; no
 - Behaviour tests on a loaded system: `port`, `apply`, `decompose` and `derivatives` agree with the original;
   a loaded system as `previous` gives the same warm-started result as the original as `previous`.
 - A file whose coefficient text fails the allowlist is refused with an `ArgumentError` (a hand-edited file).
+- A spec-built system with `extra_terms` writes only the extras; one whose term list was edited after building falls back to writing every term.
+- A complex constant (from `phase_factor`) round-trips through the extended `expr_string` with its type kept, and `save_system` refuses a coefficient that would not round-trip (a test forces one).
 - An unknown format version is refused.
 - A Python-tier test (the existing `test/python` tier) that opens a saved file with h5py and checks energies and a
   complex vector against Julia's values.
