@@ -128,9 +128,11 @@ Optional entries are absent rather than empty when they do not apply.
 /metadata/...                user metadata (see API), plain values only
 /theta/names                 Vector{String}
 /theta/values                Vector{Float64} or Vector{ComplexF64}
-/constant                    String (the coefficient, encoded as below)
 /spec                        String (spec_json), absent when sys.spec === nothing
-/terms/coefficients          Vector{String}, one per term, encoded as below
+/terms/from_spec             Bool: true when the terms are circuit_terms(spec) followed by /terms/... (the extras)
+/constant                    String (written only when not from_spec; else constant_term(spec))
+/terms/coefficients          Vector{String}, one per written term (all terms, or only the extras when from_spec)
+/terms/deps                  Vector{String} per term (the coefficient's parameter names), for the parser
 /terms/factor_term           Vector{Int64}   (term index of each factor, 1-based)
 /terms/factor_mode           Vector{String}
 /terms/factor_port_kind      Vector{String}
@@ -140,26 +142,29 @@ Optional entries are absent rather than empty when they do not apply.
 /augmented/<i>/...           one AugmentedChild each (below)
 ```
 
-**Coefficient encoding.** A coefficient's `ex` must come back identical, literal types included: complex
-constants (from `phase_factor` and constant folding), `Rational`, `Int`, `Int128` and `BigInt` literals all occur, and
-code such as `_maybe_complex` (character.jl) and `iszero_expr` branches on `ex isa Number`. Printing `ex` with
-`string` and re-parsing it loses this (`1.0+0.0im` becomes the call `1.0 + 0.0im`), and the existing `expr_string`
-writer refuses complex values. So each coefficient is stored as a JSON string of a typed expression tree, and is never
-parsed as Julia source:
+**Coefficients: reuse the spec grammar.** No new encoding. Two cases:
 
-```
-{"call": "+", "args": [ ... ]}           a call; the name must be in _ALLOWED_CALLS
-{"sym": "E_J"}                           a symbol (a parameter or an allowed constant)
-{"f64": 1.5}   {"int": "3"}   {"i128": "..."}   {"big": "..."}
-{"c64": [re, im]}   {"rat": [num, den], "of": "int" | "i128" | "big"}
-```
+1. **Spec-built systems** (the normal path, `materialize(root, spec, θ; extra_terms)`): the terms are
+   `vcat(circuit_terms(spec), extra_terms)` and the constant is `constant_term(spec)`. The file stores the spec through
+   the existing `spec_json`, and only the extras as written terms. `load_system` rebuilds the rest with
+   `parse_spec` and `circuit_terms`, the same code that built them. At save time, `save_system` checks that
+   `circuit_terms(spec)` equals the first terms of `sys.terms` exactly (see "exact" below); when it doesn't (a term
+   list edited after building), it falls back to case 2 for every term and sets `from_spec = false`.
+2. **Written terms** (the extras, systems built from a term list, and the terms of each `AugmentedChild`): each
+   coefficient is written with the spec writer `expr_string` (specwrite.jl) and read back with the spec parser
+   `Coefficient(src, params)` (parameters.jl), which checks every call against the allowlist and folds constants as
+   the package does when it first builds coefficients. `params` is the term's stored `deps`.
+   `expr_string` refuses complex constants and `im` today; it is extended, minimally, to write a complex constant in a
+   form the existing parser accepts and folds back to the same constant (for example `cis`-free `(re + (im * c))`,
+   whatever the builder finds round-trips), without widening the parser's allowlist.
 
-Floats are written so they round-trip exactly (JSON3 writes shortest round-trip `Float64`s; the builder confirms this
-and covers `Inf`/`NaN` if they can occur, or refuses them). The decoder rebuilds the `Expr`, runs `_check_expr` on it
-(the same allowlist as spec parsing; a call outside it, or an unknown tag, is refused with an `ArgumentError`), takes
-`deps` from the expression's parameter symbols as the package does when it builds coefficients, and compiles it with
-`_make`. Coefficient equality in the round-trip tests is `ex == ex′` (with `typeof` equal at every literal) and
-`deps == deps′`. (My call.)
+**The guarantee is a save-time check.** `save_system` parses back every coefficient it writes, and checks every
+rebuilt spec term, and refuses to save, with an `ArgumentError` naming the term and both expressions, if any
+comes back different. "Exact" means `ex` equal recursively with the same `typeof` at every literal (Julia's `==` on
+`Expr` would accept `1 == 1.0`) and the same `deps`. A file that saved therefore reloads with identical coefficients;
+there is no silent mismatch. Loading parses only through `Coefficient(src, params)`, so a hand-edited file can't run
+code beyond the allowlist. (Eli chose this over Symbolics.jl, Latexify.jl and a custom typed encoding: it reuses the
+tested spec reader and writer.)
 
 A **node group** (`/root`, and recursively `.../children/<i>`):
 
