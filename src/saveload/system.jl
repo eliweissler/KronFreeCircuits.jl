@@ -156,10 +156,13 @@ node), to be read back by [`load_system`](@ref).
 Solver callbacks are not saved. `retained = false` leaves out every node's retained (unkept) eigenvectors, and such a
 node loads with `retained.complete = false`; derivatives on it then take the slower paths for a node without them and
 agree with the original's to solver tolerance, not bit for bit.
+`metadata` (a `NamedTuple` or `AbstractDict`, `Symbol` or `String` keys) holds your own notes: numbers, `Bool`, `String`
+or arrays of them, checked before anything is written and read back by [`load_metadata`](@ref).
 The file is written to `path * ".partial"` and moved onto `path` when complete; on any error the partial file is
 removed and an existing file at `path` is left as it was.
 """
-function save_system(path::AbstractString, sys::System; retained::Bool=true)
+function save_system(path::AbstractString, sys::System; retained::Bool=true, metadata=(;))
+    meta = _check_metadata(metadata)
     partial = path * ".partial"
     try
         JLD2.jldopen(partial, "w") do f
@@ -167,6 +170,9 @@ function save_system(path::AbstractString, sys::System; retained::Bool=true)
             f["format_version"] = _FORMAT_VERSION
             f["package_version"] = string(pkgversion(@__MODULE__))
             retained || (f["saved_without_retained"] = true)
+            for (k, v) in meta
+                f["metadata/$k"] = v
+            end
             _write_theta(f, "theta", sys.θ)
             _write_system_terms(f, sys)
             _write_node(JLD2.Group(f, "root"), sys.root, retained)
@@ -187,6 +193,11 @@ Read a `System` written by [`save_system`](@ref). Every loaded solver that has a
 is chosen here, not restored from the file), and every `callback` is `nothing`.
 """
 function load_system(path::AbstractString; on=Array)
+    return _with_system_file(f -> _load_v1(f; on), path)
+end
+
+# Run `read(f)` on the open file at `path` after checking it is a system file of a readable version.
+function _with_system_file(read, path)
     notsystem = ArgumentError("$path is not a KronFreeCircuits system file")
     f = try
         JLD2.jldopen(path, "r")
@@ -196,7 +207,7 @@ function load_system(path::AbstractString; on=Array)
     try
         haskey(f, "format") && f["format"] == _FORMAT && haskey(f, "format_version") || throw(notsystem)
         v = f["format_version"]
-        v == _FORMAT_VERSION && return _load_v1(f; on)
+        v == _FORMAT_VERSION && return read(f)
         throw(ArgumentError("$path has format version $v; this package reads format version $_FORMAT_VERSION"))
     finally
         close(f)
@@ -207,4 +218,70 @@ function _load_v1(f; on)
     spec, terms, constant = _read_system_terms(f)
     _, root = _read_node(f["root"]; on)
     return System(root, spec, terms, _read_theta(f, "theta"), constant, _read_augmented(f, root; on))
+end
+
+const _METADATA_SCALAR = Union{Base.BitInteger,Bool,Float16,Float32,Float64,ComplexF16,ComplexF32,ComplexF64,String}
+
+# `metadata` as a `String`-keyed dict of plain values (arrays collected), or an ArgumentError naming the bad key.
+function _check_metadata(metadata)
+    out = Dict{String,Any}()
+    for (k, v) in pairs(metadata)
+        ok = v isa _METADATA_SCALAR || (v isa AbstractArray && eltype(v) <: _METADATA_SCALAR)
+        ok || throw(ArgumentError("metadata \"$k\": a $(typeof(v)) is not a number, Bool, String or array of them"))
+        out[String(k)] = v isa AbstractArray ? collect(v) : v
+    end
+    return out
+end
+
+"""
+    load_metadata(path) -> Dict{String,Any}
+
+The `metadata` given to [`save_system`](@ref) (empty if none), without reading the solved system.
+"""
+function load_metadata(path::AbstractString)
+    return _with_system_file(path) do f
+        haskey(f, "metadata") || return Dict{String,Any}()
+        g = f["metadata"]
+        return Dict{String,Any}(k => g[k] for k in keys(g))
+    end
+end
+
+# Positions of the node and given groups below group `g` (itself at `pos`), depth first.
+function _positions!(out, g, pos)
+    push!(out, pos)
+    g["kind"] == "node" || return out
+    for i in 1:g["children/count"]
+        c = g["children/$i"]
+        c["kind"] == "leaf" || _positions!(out, c, [pos; i])
+    end
+    return out
+end
+
+"""
+    system_nodes(path) -> Vector{Vector{Int}}
+
+Positions of the solved nodes in the file (root `Int[]` first, then each child position depth first; basis leaves are
+not nodes), for [`load_node`](@ref). Reads no results.
+"""
+system_nodes(path::AbstractString) = _with_system_file(f -> _positions!(Vector{Int}[], f["root"], Int[]), path)
+
+"""
+    load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, on)
+
+One solved node of the file at `position` (child indices from the root, see [`system_nodes`](@ref)), without reading the
+rest. `ports` maps `(mode, port)` to its matrix; `on` is the device name the solver was saved with (a `String`, `"Array"` for a node without one).
+"""
+function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int[])
+    return _with_system_file(path) do f
+        g = f["root"]
+        for i in position
+            g["kind"] == "node" && 1 <= i <= g["children/count"] && g["children/$i/kind"] != "leaf" ||
+                throw(ArgumentError("no node at position $(Vector(position)) in $path; valid positions: $(_positions!(Vector{Int}[], f["root"], Int[]))"))
+            g = g["children/$i"]
+        end
+        ports = Dict(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"] for i in 1:g["ports/count"])
+        has_on = g["kind"] == "node" && haskey(g, "settings/solver/fields/on")
+        on = has_on ? g["settings/solver/fields/on/value"] : "Array"      # a solver without a device is on the CPU
+        return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, on)
+    end
 end

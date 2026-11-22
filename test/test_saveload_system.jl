@@ -73,8 +73,7 @@ end
 @testset "failed save leaves the old file" begin
     c = dc_transmon(); sys = materialize(c.root, c.spec, c.θ)
     p, _ = round_trip(sys)
-    bad = System(sys.root, sys.spec, sys.terms, merge(sys.θ, (x="a" => 1,)), sys.constant)
-    @test_throws ArgumentError save_system(p, bad)
+    @test_throws ArgumentError save_system(p, sys; metadata=(f=sin,))
     assert_same_system(load_system(p), sys)
     @test !isfile(p * ".partial")
 end
