@@ -3,6 +3,7 @@ module KronFreeCircuits
 using LinearAlgebra, SparseArrays
 using RuntimeGeneratedFunctions
 using JSON3
+using JLD2
 using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backend
 using ITensors: ITensors
 using LOBPCGEigensolver: LOBPCGEigensolver
@@ -46,6 +47,7 @@ include("phase.jl")
 include("materialize.jl")
 include("suggest.jl")
 include("augment.jl")
+include("saveload/values.jl")
 include("experimental/meanfield.jl")
 include("experimental/mean_field_augment.jl")
 include("derivoperator.jl")
