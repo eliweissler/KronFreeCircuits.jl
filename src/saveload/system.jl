@@ -92,6 +92,49 @@ function _read_node(g; on=Array)
     return node, mn
 end
 
+# Child indices from `root` down to the node `target`, or `nothing`.
+function _node_path(root::Node, target::Node)
+    for (i, c) in enumerate(root.children)
+        c = c isa Pair ? c.second : c
+        c === target && return [i]
+        c isa Node && (p = _node_path(c, target)) !== nothing && return pushfirst!(p, i)
+    end
+    return nothing
+end
+
+# Each augmented child: its place in the tree, its solved node, and its basis, terms, θ and union report. The tree
+# position itself is saved as an ordinary node, so the solved node is stored twice.
+function _write_augmented(f, sys::System, retained::Bool)
+    f["augmented/count"] = length(sys.augmented)
+    for (i, a) in enumerate(sys.augmented)
+        g = JLD2.Group(f, "augmented/$i")
+        g["node_path"] = _node_path(sys.root.node, a.node)
+        _write_node(JLD2.Group(g, "solved"), a.solved, retained)
+        g["basis"] = a.basis
+        _write_terms(g, "terms", a.terms)
+        _write_theta(g, "theta", a.θ)
+        g["report/labels"] = a.report.labels
+        g["report/taken"] = a.report.taken
+        g["report/dropped"] = a.report.dropped
+    end
+    return nothing
+end
+
+function _read_augmented(f, root::MaterializedNode; on)
+    out = Any[]
+    for i in 1:f["augmented/count"]
+        g = f["augmented/$i"]
+        place = root
+        for j in g["node_path"]
+            place = place.children[j]
+        end
+        _, solved = _read_node(g["solved"]; on)
+        push!(out, AugmentedChild(place.node, solved, g["basis"], _read_terms(g, "terms"), _read_theta(g, "theta"),
+                                  UnionReport(g["report/labels"], g["report/taken"], g["report/dropped"])))
+    end
+    return out
+end
+
 """
     save_system(path, sys::System; retained=true) -> path
 
@@ -104,7 +147,6 @@ The file is written to `path * ".partial"` and moved onto `path` when complete; 
 removed and an existing file at `path` is left as it was.
 """
 function save_system(path::AbstractString, sys::System; retained::Bool=true)
-    isempty(sys.augmented) || throw(ArgumentError("saving a system with augmented children is not supported yet"))
     partial = path * ".partial"
     try
         JLD2.jldopen(partial, "w") do f
@@ -115,6 +157,7 @@ function save_system(path::AbstractString, sys::System; retained::Bool=true)
             _write_theta(f, "theta", sys.θ)
             _write_system_terms(f, sys)
             _write_node(JLD2.Group(f, "root"), sys.root, retained)
+            _write_augmented(f, sys, retained)
         end
         mv(partial, path; force=true)
     catch
@@ -150,5 +193,5 @@ end
 function _load_v1(f; on)
     spec, terms, constant = _read_system_terms(f)
     _, root = _read_node(f["root"]; on)
-    return System(root, spec, terms, _read_theta(f, "theta"), constant)
+    return System(root, spec, terms, _read_theta(f, "theta"), constant, _read_augmented(f, root; on))
 end

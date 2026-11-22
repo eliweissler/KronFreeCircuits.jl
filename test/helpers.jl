@@ -663,6 +663,14 @@ function assert_same_system(a::KronFreeCircuits.System, b::KronFreeCircuits.Syst
     @test KronFreeCircuits._terms_identical(a.terms, b.terms)
     @test KronFreeCircuits._identical(a.constant, b.constant)
     @test a.θ === b.θ
-    @test length(a.augmented) == length(b.augmented)
     _assert_same_node(a.root, b.root; on)
+    @test length(a.augmented) == length(b.augmented)
+    for (x, y) in zip(a.augmented, b.augmented)
+        @test KronFreeCircuits._node_path(a.root.node, x.node) == KronFreeCircuits._node_path(b.root.node, y.node)
+        _assert_same_node(x.solved, y.solved; on)
+        @test x.basis == y.basis
+        @test KronFreeCircuits._terms_identical(x.terms, y.terms)
+        @test x.θ === y.θ
+        @test (x.report.labels, x.report.taken, x.report.dropped) == (y.report.labels, y.report.taken, y.report.dropped)
+    end
 end
