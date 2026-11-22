@@ -3,7 +3,7 @@ module KronFreeCircuits
 using LinearAlgebra, SparseArrays
 using RuntimeGeneratedFunctions
 using JSON3
-using JLD2
+using JLD2: JLD2
 using KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backend
 using ITensors: ITensors
 using LOBPCGEigensolver: LOBPCGEigensolver

@@ -34,3 +34,14 @@ end
         @test f["s/fields/on/value"] == "Array"                    # the saved name, for the record
     end
 end
+@testset "unknown types and kinds are refused" begin
+    path = tempname() * ".jld2"
+    JLD2.jldopen(path, "w") do f
+        f["x/type"] = "Evil"
+        f["y/kind"] = "evil"
+    end
+    JLD2.jldopen(path, "r") do f
+        @test_throws ArgumentError _read_struct(f, "x")
+        @test_throws ArgumentError _read_value(f, "y")
+    end
+end
