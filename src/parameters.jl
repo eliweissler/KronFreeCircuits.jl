@@ -135,6 +135,45 @@ function _check_expr(ex, src::AbstractString)
     end
 end
 
+# The save loader's one extension of the grammar: `Complex(a, b)` and `Rational(a, b)` of numeric literals (a unary minus
+# on a literal counts) are the literals themselves; any other call is left for `_check_expr`.
+_literal(x::Number) = x
+_literal(ex::Expr) = ex.head === :call && length(ex.args) == 2 && ex.args[1] === :- && ex.args[2] isa Number ?
+                     -ex.args[2] : nothing
+_literal(_) = nothing
+
+_restore_literals(ex) = ex
+function _restore_literals(ex::Expr)
+    ex.head === :call || return ex
+    f, args = ex.args[1], ex.args[2:end]
+    lits = map(_literal, args)
+    if length(args) == 2 && !any(isnothing, lits)
+        f === :Complex && all(x -> x isa Real, lits) && return Complex(lits...)
+        f === :Rational && all(x -> x isa Integer, lits) && return Rational(lits...)
+    end
+    return Expr(:call, f, map(_restore_literals, args)...)
+end
+
+"""
+    _saved_coefficient(src, deps) -> Coefficient
+
+Read back a coefficient written by `_coefficient_string`, with the stored `deps`. Only the spec grammar's checks
+(`_check_expr`) let anything through, plus the `Complex`/`Rational` literal forms.
+"""
+function _saved_coefficient(src::AbstractString, deps::Vector{Symbol})
+    ex = _normalize_dots(_restore_literals(Meta.parse(src; raise=false)))
+    _check_expr(ex, src)
+    for d in free_symbols(ex)
+        d in deps || throw(ArgumentError("symbol :$d in \"$src\" is not among the declared dependencies"))
+    end
+    return _make(ex, deps)
+end
+
+# Same `ex` with the same `typeof` at every literal (Julia's `==` accepts `1 == 1.0`), and the same `deps`.
+_same(a, b) = typeof(a) == typeof(b) && a == b
+_same(a::Expr, b::Expr) = a.head === b.head && length(a.args) == length(b.args) && all(_same.(a.args, b.args))
+_identical(a::Coefficient, b::Coefficient) = _same(a.ex, b.ex) && a.deps == b.deps
+
 """
     Coefficient(src::AbstractString, params::Vector{Symbol})
     Coefficient(x::Number)

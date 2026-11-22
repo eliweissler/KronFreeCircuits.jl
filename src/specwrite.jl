@@ -41,6 +41,27 @@ function expr_string(ex::Expr)
     return "$f(" * join(strs, ", ") * ")"
 end
 
+# The save path writes what `expr_string` refuses or can't read back as a literal: a complex literal as `Complex(re, im)`,
+# a rational one as `Rational(num, den)`, and the symbol `im` as `im`. `_Raw` carries text `expr_string` prints as is.
+struct _Raw
+    text::String
+end
+expr_string(r::_Raw) = r.text
+
+_saveable(x::Complex) = Expr(:call, :Complex, real(x), imag(x))
+_saveable(x::Rational) = Expr(:call, :Rational, numerator(x), denominator(x))
+_saveable(s::Symbol) = s === :im ? _Raw("im") : s
+_saveable(ex::Expr) = Expr(ex.head, map(_saveable, ex.args)...)
+_saveable(x) = x
+
+"""
+    _coefficient_string(c::Coefficient) -> String
+
+The text of `c.ex` for a save file: `expr_string`, with complex and rational literals and `im` written as above.
+`_saved_coefficient` (parameters.jl) reads it back.
+"""
+_coefficient_string(c::Coefficient) = expr_string(_saveable(c.ex))
+
 # An omega or kappa entry: an integer where it is integral (compact modes require that), otherwise a float.
 _json_number(x::Float64) = isinteger(x) && abs(x) < 2.0^53 ? Int(x) : x
 
