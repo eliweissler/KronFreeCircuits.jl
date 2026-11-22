@@ -84,6 +84,8 @@ end
     @test_throws "not a KronFreeCircuits system file" load_system(txt)
     other = tempname() * ".jld2"; JLD2.jldsave(other; x=1)
     @test_throws "not a KronFreeCircuits system file" load_system(other)
+    noversion = tempname() * ".jld2"; JLD2.jldsave(noversion; format="KronFreeCircuits.System")
+    @test_throws "not a KronFreeCircuits system file" load_system(noversion)
 end
 
 @testset "unknown format version" begin

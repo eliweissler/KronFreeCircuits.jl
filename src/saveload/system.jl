@@ -3,7 +3,6 @@
 
 const _FORMAT = "KronFreeCircuits.System"
 const _FORMAT_VERSION = 1
-const _ELTYPES = Dict("Float64" => Float64, "ComplexF64" => ComplexF64)
 const _NODE_SETTINGS = (:compute, :phase, :arithmetic, :retain)
 
 # A list of `(mode, port)` pairs as three columns.
@@ -40,7 +39,7 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
         g["kind"] = "given"
         g["settings/mode"] = String(n.mode)
         g["settings/given_energies"] = n.energies
-        g["settings/operator_names"] = String.(collect(keys(n.operators)))
+        g["settings/operator_names"] = String.(collect(keys(n.operators)))   # the operators group is absent when empty
         for (kind, M) in n.operators
             g["settings/operators/$kind"] = M
         end
@@ -67,7 +66,7 @@ end
 # The node (`Node` or `GivenSystem`) of group `g` and its `MaterializedNode`, children first, so that every child's
 # `MaterializedNode.node` is its parent's `Node.children[i]`.
 function _read_node(g; on=Array)
-    T = _ELTYPES[g["eltype"]]
+    T = eltype(g["vectors"])
     if g["kind"] == "given"
         names = g["settings/operator_names"]
         node = GivenSystem(Symbol(g["settings/mode"]); energies=g["settings/given_energies"],
@@ -139,9 +138,9 @@ function load_system(path::AbstractString; on=Array)
         isfile(path) ? throw(notsystem) : rethrow()
     end
     try
-        haskey(f, "format") && f["format"] == _FORMAT || throw(notsystem)
+        haskey(f, "format") && f["format"] == _FORMAT && haskey(f, "format_version") || throw(notsystem)
         v = f["format_version"]
-        v == 1 && return _load_v1(f; on)
+        v == _FORMAT_VERSION && return _load_v1(f; on)
         throw(ArgumentError("$path has format version $v; this package reads format version $_FORMAT_VERSION"))
     finally
         close(f)

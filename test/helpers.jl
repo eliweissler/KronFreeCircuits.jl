@@ -629,9 +629,6 @@ function _same_fields(x, y; on=Array)
 end
 _same_dict(x, y) = typeof(x) == typeof(y) && issetequal(keys(x), keys(y)) && all(k -> _same_value(x[k], y[k]), keys(x))
 _same_given(x, y) = x.mode === y.mode && _same_value(x.energies, y.energies) && _same_dict(x.operators, y.operators)
-_same_child(x::Pair, y::Pair) = x.first === y.first && _same_fields(x.second, y.second)
-_same_child(x::GivenSystem, y::GivenSystem) = _same_given(x, y)
-_same_child(x, y) = typeof(x) == typeof(y)          # nodes: compared through their MaterializedNode
 function _assert_same_node(a::KronFreeCircuits.MaterializedNode, b::KronFreeCircuits.MaterializedNode; on)
     @test typeof(a) == typeof(b)
     for f in (:dims, :energies, :vectors, :kept, :peak_component, :peak_amplitudes)
@@ -649,15 +646,15 @@ function _assert_same_node(a::KronFreeCircuits.MaterializedNode, b::KronFreeCirc
         for f in (:compute, :phase, :ports, :arithmetic, :retain)
             @test _same_value(getfield(a.node, f), getfield(b.node, f))
         end
-        @test length(a.node.children) == length(b.node.children)
-        @test all(_same_child.(a.node.children, b.node.children))
     end
     @test length(a.children) == length(b.children)
-    for (x, y) in zip(a.children, b.children)
+    for (i, (x, y)) in enumerate(zip(a.children, b.children))
         if x isa KronFreeCircuits.MaterializedNode && y isa KronFreeCircuits.MaterializedNode
             _assert_same_node(x, y; on)
-        else
-            @test typeof(x) == typeof(y) && (x isa GivenSystem ? _same_given(x, y) : _same_fields(x, y))
+        elseif x isa GivenSystem                      # a given system's own axis: the node compared above
+            @test x === a.node && y === b.node
+        else                                          # a leaf: its basis and mode
+            @test _same_fields(x, y) && a.node.children[i].first === b.node.children[i].first
         end
     end
 end
