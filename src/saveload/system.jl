@@ -227,7 +227,9 @@ function _check_metadata(metadata)
     out = Dict{String,Any}()
     for (k, v) in pairs(metadata)
         ok = v isa _METADATA_SCALAR || (v isa AbstractArray && eltype(v) <: _METADATA_SCALAR)
-        ok || throw(ArgumentError("metadata \"$k\": a $(typeof(v)) is not a number, Bool, String or array of them"))
+        ok &= !isempty(string(k)) && !('/' in string(k))
+        ok || throw(ArgumentError("metadata \"$k\": the key must be non-empty without '/', the value a number, " *
+                                  "Bool, String or array of them (got a $(typeof(v)))"))
         out[String(k)] = v isa AbstractArray ? collect(v) : v
     end
     return out
@@ -269,19 +271,20 @@ system_nodes(path::AbstractString) = _with_system_file(f -> _positions!(Vector{I
     load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, on)
 
 One solved node of the file at `position` (child indices from the root, see [`system_nodes`](@ref)), without reading the
-rest. `ports` maps `(mode, port)` to its matrix; `on` is the device name the solver was saved with (a `String`, `"Array"` for a node without one).
+rest. `ports` maps `(mode, port)` to its matrix; `on` is the saved device name, or `nothing` when the node has none.
 """
 function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int[])
     return _with_system_file(path) do f
         g = f["root"]
         for i in position
             g["kind"] == "node" && 1 <= i <= g["children/count"] && g["children/$i/kind"] != "leaf" ||
-                throw(ArgumentError("no node at position $(Vector(position)) in $path; valid positions: $(_positions!(Vector{Int}[], f["root"], Int[]))"))
+                throw(ArgumentError("no node at position $(Vector(position)) in $path; " *
+                                    "valid positions: $(_positions!(Vector{Int}[], f["root"], Int[]))"))
             g = g["children/$i"]
         end
         ports = Dict(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"] for i in 1:g["ports/count"])
         has_on = g["kind"] == "node" && haskey(g, "settings/solver/fields/on")
-        on = has_on ? g["settings/solver/fields/on/value"] : "Array"      # a solver without a device is on the CPU
+        on = has_on ? g["settings/solver/fields/on/value"] : nothing
         return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, on)
     end
 end
