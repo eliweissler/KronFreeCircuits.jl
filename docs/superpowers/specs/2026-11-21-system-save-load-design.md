@@ -87,10 +87,17 @@ Everything here is plain data except the solver `callback` and the `on` array ty
 ## Constraints
 
 - **Callbacks are not saved.** A loaded solver has `callback = nothing`. The docstring says so.
-- **The device is saved by name** (`"Array"` or `"CuArray"`).
-  On load, `"CuArray"` needs the CUDA extension to be loaded.
-  If it isn't, loading still succeeds with `on = Array` and warns once, naming the affected nodes.
-  (Eli confirmed warn-and-load over throwing.)
+- **The device is chosen at load time, not restored.** `load_system(path; on=Array)` sets `on` on every loaded solver
+  that has the field (`Lanczos`, `LOBPCG`, `ChebyshevFilter`, `Auto`); `Dense` and `ShiftInvert` have none and are
+  unchanged, so a GPU load of a tree with an explicit `ShiftInvert` leaf keeps that leaf on the CPU, as a freshly built
+  tree would. `on` takes the array type, as everywhere else in the package (`on=CuArray` after `using CUDA`).
+  The default is the CPU whatever the file was solved on. (Eli's decision, replacing warn-and-load.)
+  The original device is still written to the file by name (`settings/on`, `"Array"` or `"CuArray"`), for the record,
+  and `load_node` returns it; it is never applied.
+  What the choice affects: only computation after loading (derivatives' operators and linear solves, `apply`, and an
+  `Auto` node's resolution: an `Auto` leaf resolves to `ShiftInvert` on the CPU and `ChebyshevFilter` on the GPU).
+  The stored results are identical either way, since `MaterializedNode` vectors are CPU matrices.
+  The round-trip tests compare solver settings with `on` replaced by the requested one.
 - Saved vectors are always CPU arrays (they are `Matrix` in `MaterializedNode` already).
 - `previous` matches nodes by tree position, not object identity, so a loaded `System` works as `previous` for a fresh
   `materialize` of a tree the user builds again in code.
@@ -209,7 +216,7 @@ with h5py.File("run.jld2", "r") as f:
 
 ```julia
 save_system(path::AbstractString, sys::System; retained::Bool=true, metadata=(;)) -> path
-load_system(path::AbstractString) -> System
+load_system(path::AbstractString; on=Array) -> System     # on: the device for every loaded solver
 system_nodes(path) -> Vector{Vector{Int}}             # the tree positions in the file, root first
 load_node(path, position::AbstractVector{<:Integer}=Int[]) -> NamedTuple
     # (; energies, kept, vectors, dims, ports) of one node, without building a System
