@@ -64,20 +64,32 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
 end
 
 # The node (`Node` or `GivenSystem`) of group `g` and its `MaterializedNode`, children first, so that every child's
-# `MaterializedNode.node` is its parent's `Node.children[i]`.
-function _read_node(g; on=Array)
+# `MaterializedNode.node` is its parent's `Node.children[i]`. With `node` given (the tree's own node at this position),
+# no node or basis is built: the results are read onto it and its descendants.
+function _read_node(g; on=Array, node=nothing)
     T = eltype(g["vectors"])
-    if g["kind"] == "given"
+    if node !== nothing && g["kind"] == "given"
+        children = Any[node]
+    elseif g["kind"] == "given"
         names = g["settings/operator_names"]
         node = GivenSystem(Symbol(g["settings/mode"]); energies=g["settings/given_energies"],
                            operators=Dict(Symbol(k) => g["settings/operators/$k"] for k in names))
         children = Any[node]
     else
-        read_child(c) = c["kind"] == "leaf" ? (b = _read_struct(c, "basis"); (Symbol(c["mode"]) => b, b)) : _read_node(c; on)
-        pairs = [read_child(g["children/$i"]) for i in 1:g["children/count"]]
-        settings = NamedTuple(f => _read_value(g, "settings/$f") for f in _NODE_SETTINGS)
-        node = Node(Any[first(p) for p in pairs]; solver=_read_struct(g, "settings/solver"; on),
-                    keep=_read_struct(g, "settings/keep"), ports=_read_portlist(g, "settings/ports"), settings...)
+        function read_child(i)
+            c = g["children/$i"]
+            old = node === nothing ? nothing : node.children[i]
+            c["kind"] == "leaf" || return _read_node(c; on, node=old)
+            old === nothing || return (old, old.second)
+            b = _read_struct(c, "basis")
+            return (Symbol(c["mode"]) => b, b)
+        end
+        pairs = [read_child(i) for i in 1:g["children/count"]]
+        if node === nothing
+            settings = NamedTuple(f => _read_value(g, "settings/$f") for f in _NODE_SETTINGS)
+            node = Node(Any[first(p) for p in pairs]; solver=_read_struct(g, "settings/solver"; on),
+                        keep=_read_struct(g, "settings/keep"), ports=_read_portlist(g, "settings/ports"), settings...)
+        end
         children = Any[last(p) for p in pairs]
     end
     ports = Dict{Tuple{Symbol,Port},NodeMatrix}(only(_read_portlist(g, "ports/$i")) => g["ports/$i/matrix"]
@@ -95,7 +107,6 @@ end
 # Child indices from `root` down to the node `target`, or `nothing`.
 function _node_path(root::Node, target::Node)
     for (i, c) in enumerate(root.children)
-        c = c isa Pair ? c.second : c
         c === target && return [i]
         c isa Node && (p = _node_path(c, target)) !== nothing && return pushfirst!(p, i)
     end
@@ -108,7 +119,9 @@ function _write_augmented(f, sys::System, retained::Bool)
     f["augmented/count"] = length(sys.augmented)
     for (i, a) in enumerate(sys.augmented)
         g = JLD2.Group(f, "augmented/$i")
-        g["node_path"] = _node_path(sys.root.node, a.node)
+        path = _node_path(sys.root.node, a.node)
+        path === nothing && throw(ArgumentError("augmented child $i is not a node of the system's tree"))
+        g["node_path"] = path
         _write_node(JLD2.Group(g, "solved"), a.solved, retained)
         g["basis"] = a.basis
         _write_terms(g, "terms", a.terms)
@@ -128,7 +141,7 @@ function _read_augmented(f, root::MaterializedNode; on)
         for j in g["node_path"]
             place = place.children[j]
         end
-        _, solved = _read_node(g["solved"]; on)
+        _, solved = _read_node(g["solved"]; on, node=place.node)
         push!(out, AugmentedChild(place.node, solved, g["basis"], _read_terms(g, "terms"), _read_theta(g, "theta"),
                                   UnionReport(g["report/labels"], g["report/taken"], g["report/dropped"])))
     end

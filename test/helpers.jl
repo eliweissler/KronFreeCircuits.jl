@@ -658,6 +658,15 @@ function _assert_same_node(a::KronFreeCircuits.MaterializedNode, b::KronFreeCirc
         end
     end
 end
+# Every child of `mn` is, recursively, the corresponding child of `mn.node` (a leaf's basis is its pair's second).
+_children_are_nodes_of(mn::KronFreeCircuits.GivenSystem) = true
+function _children_are_nodes_of(mn::KronFreeCircuits.MaterializedNode)
+    mn.node isa KronFreeCircuits.GivenSystem && return true
+    return all(enumerate(mn.children)) do (i, c)
+        c isa KronFreeCircuits.MaterializedNode ? c.node === mn.node.children[i] && _children_are_nodes_of(c) :
+                                                  c === mn.node.children[i].second
+    end
+end
 function assert_same_system(a::KronFreeCircuits.System, b::KronFreeCircuits.System; on=Array)
     @test (a.spec === nothing && b.spec === nothing) || (a.spec !== nothing && b.spec !== nothing && spec_equal(a.spec, b.spec))
     @test KronFreeCircuits._terms_identical(a.terms, b.terms)
@@ -668,6 +677,8 @@ function assert_same_system(a::KronFreeCircuits.System, b::KronFreeCircuits.Syst
     for (x, y) in zip(a.augmented, b.augmented)
         @test KronFreeCircuits._node_path(a.root.node, x.node) == KronFreeCircuits._node_path(b.root.node, y.node)
         _assert_same_node(x.solved, y.solved; on)
+        @test x.solved.node === x.node && y.solved.node === y.node
+        @test _children_are_nodes_of(y.solved)
         @test x.basis == y.basis
         @test KronFreeCircuits._terms_identical(x.terms, y.terms)
         @test x.θ === y.θ

@@ -19,6 +19,7 @@ using KronFreeCircuits: augment, UnionReport, bare_child, _terms_identical
     @test length(loaded.augmented) == 1
     a = loaded.augmented[1]
     @test a.node === loaded.root.node.children[2]
+    @test a.solved.node === a.node
     @test isequal(a.basis, augB.basis)
     @test (a.report.labels, a.report.taken, a.report.dropped) == (["bare"], [6], [0])
     @test _terms_identical(a.terms, augB.terms)
