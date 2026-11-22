@@ -153,7 +153,8 @@ end
 
 Write the solved `sys` to the JLD2 file `path` (format version 1: plain arrays, numbers and strings, one group per tree
 node), to be read back by [`load_system`](@ref).
-Solver callbacks are not saved. `retained = false` leaves out every node's retained (unkept) eigenvectors, and such a
+Solver callbacks are not saved. The file is uncompressed. A coefficient that would not reload identically makes
+`save_system` throw an `ArgumentError` rather than write it. `retained = false` leaves out every node's retained (unkept) eigenvectors, and such a
 node loads with `retained.complete = false`; derivatives on it then take the slower paths for a node without them and
 agree with the original's to solver tolerance, not bit for bit.
 `metadata` (a `NamedTuple` or `AbstractDict`, `Symbol` or `String` keys) holds your own notes: numbers, `Bool`, `String`
@@ -190,7 +191,8 @@ end
     load_system(path; on=Array) -> System
 
 Read a `System` written by [`save_system`](@ref). Every loaded solver that has an `on` field gets `on` (the device
-is chosen here, not restored from the file), and every `callback` is `nothing`.
+is chosen here; the device saved in the file is only recorded, see [`load_node`](@ref)), and every `callback` is
+`nothing`. The layout is described in `docs/save-format.md`.
 """
 function load_system(path::AbstractString; on=Array)
     return _with_system_file(f -> _load_v1(f; on), path)

@@ -144,6 +144,12 @@ U = to_dressed(sys, to_lab(frame, sol.states[end], 20.0))            # dressed a
 
 Both packages export `Lanczos` and `spectrum`, so after `using KronFreeCircuits, QuantumToolbox` write `KronFreeCircuits.Lanczos()` and `KronFreeCircuits.spectrum` (or QuantumToolbox's) for either name.
 
+## Saving a solved system
+
+`save_system(path, sys)` writes a solved `System` to a JLD2 (HDF5) file, and `load_system(path; on=Array)` reads it back, ready for `spectrum`, derivatives and `qt_*`.
+`load_metadata`, `system_nodes` and `load_node` read your notes or one node without loading the rest.
+The file holds plain arrays, so Python can read it with h5py; the layout, limits (callbacks are not saved, `retained=false` slows derivatives) and an h5py example are in [docs/save-format.md](docs/save-format.md).
+
 ## Spec files
 
 Specs come from `circuit-quantization`'s `save_spec`, which writes a `kronfree-spec` version 1 file; its `docs/spec-format.md` is the authority on the format.
