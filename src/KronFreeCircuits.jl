@@ -14,18 +14,23 @@ using GSL: GSL
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitute, promote_mode, PromotedSpec,
-       Coefficient, Port, nport, n2port, phiport, phi2port, expiphi, exp2pin, Factor, Term, circuit_terms, LocalOp,
-       DenseOp, DiagonalOp, BandedOp, ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid,
-       PeriodicGrid, FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense, Lanczos, LOBPCG,
-       ShiftInvert, ChebyshevFilter, lowest, indices, connected, follow, within, materialize, System, energies, port,
-       eigenvectors, materialized, node_timings, bare_labels, bare_overlaps, decompose, dressed_index, dressed_state_string, constant_term,
-       Solver, SelectionRule, SelectionContext, GivenSystem, gershgorin_bound, separable_eigenbases, product_seed,
-       infnorm, PortCharacter, character, arithmetic, circuit_quantization, QuantizedCircuit, record_json,
-       save_record, load_record, suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks,
-       NearDegenerateBlock, block_levels, spectrum, phase_wavefunction, charge_wavefunction, port_operator,
+# The everyday workflow (see the README).
+export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitute, promote_mode, Coefficient, Port,
+       nport, n2port, phiport, phi2port, expiphi, exp2pin, Factor, Term, circuit_terms, ChargeBasis, PhaseGrid,
+       PeriodicGrid, FockBasis, Node, Auto, Dense, Lanczos, LOBPCG, ShiftInvert, ChebyshevFilter, lowest, indices,
+       connected, follow, within, materialize, System, energies, port, eigenvectors, materialized, bare_labels,
+       bare_overlaps, decompose, dressed_index, dressed_state_string, constant_term, GivenSystem, character,
+       arithmetic, circuit_quantization, QuantizedCircuit, record_json, save_record, load_record, suggest_bases,
+       derivatives, blocks, block_levels, spectrum, phase_wavefunction, charge_wavefunction, port_operator,
        qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian, Frame, to_lab, save_system, load_system,
        system_nodes, load_node, load_metadata
+# Supported but not exported (write `KronFreeCircuits.name`): the operator machinery, the custom-solver interface
+# (see the `Solver` docstring), basis augmentation, and types and helpers rarely named directly.
+public LocalOp, DenseOp, DiagonalOp, BandedOp, ShiftOp, localop, apply_axis!, dense, diagonal, realpart, imagpart,
+       KronFreeOperator, infnorm, Solver, solve, resolve, gershgorin_bound, separable_eigenbases, product_seed,
+       SavedSolver, SelectionRule, SelectionContext, select, Basis, PromotedSpec, PortCharacter, Derivatives,
+       NearDegenerateBlock, differentiate, node_timings, edge_weight, augment, union_basis, BasisSource,
+       AugmentedChild, augmented, charge_port, operator
 
 include("parameters.jl")
 include("spec.jl")

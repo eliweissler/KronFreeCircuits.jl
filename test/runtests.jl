@@ -1,4 +1,9 @@
 using Test, LinearAlgebra, SparseArrays, KronFreeCircuits
+# the public, unexported names the tests use
+using KronFreeCircuits: LocalOp, DenseOp, DiagonalOp, BandedOp, ShiftOp, localop, apply_axis!, dense, diagonal, realpart,
+                        imagpart, KronFreeOperator, infnorm, Solver, gershgorin_bound, separable_eigenbases, product_seed,
+                        SelectionRule, SelectionContext, Basis, PromotedSpec, PortCharacter, Derivatives,
+                        NearDegenerateBlock, differentiate, node_timings, edge_weight
 
 include("helpers.jl")
 

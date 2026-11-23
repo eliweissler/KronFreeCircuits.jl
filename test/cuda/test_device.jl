@@ -2,6 +2,7 @@ using Test, LinearAlgebra, Random, CUDA, cuTENSOR, KronFreeCircuits
 using KronFreeCircuits: LOBPCG, lobpcg_solve, RitzJacobi, _diagonal_expectation!
 using KronFreeCircuits: AxisTerm, solve, dense, solver_callback, with_block_capacity, constant_term, indices
 using KronFreeCircuits: _chebyshev_step!, _chebyshev_filter!
+using KronFreeCircuits: DenseOp, DiagonalOp, BandedOp, ShiftOp, localop, apply_axis!, diagonal, KronFreeOperator, gershgorin_bound
 import LOBPCGEigensolver
 
 # check_eigenpairs (../helpers.jl) on a device operator: each H * v runs on the device and is

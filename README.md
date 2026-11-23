@@ -81,12 +81,12 @@ Both preconditioners use only the diagonal of `H`.
 They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil puts the same large constant on every diagonal entry (spec §20e): in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
 When choosing explicitly, use `ShiftInvert` (CPU) or `ChebyshevFilter` (device) at a large, stiff leaf, `LOBPCG` for branches (and for leaves only with a warm start), `Dense` for nodes up to about 10 000 states, and `Lanczos` for a few states when neither leaf solver fits.
 
-A user-defined solver subtypes `Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors of the operator's element type (`eltype(H)`, real for a real node) as host arrays, with true residuals below its tolerance.
+A user-defined solver subtypes `KronFreeCircuits.Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors of the operator's element type (`eltype(H)`, real for a real node) as host arrays, with true residuals below its tolerance.
 The `Solver` docstring states the full contract and what `H` provides (`mul!` on blocks, `diagonal`, `sparse`, `gershgorin_bound`, `separable_eigenbases`, `product_seed`).
 
 ```julia
 using LinearAlgebra
-struct MySolver <: Solver end
+struct MySolver <: KronFreeCircuits.Solver end
 function KronFreeCircuits.solve(::MySolver, H, m)          # qualified: `solve` is not exported
     F = eigen(Hermitian(Matrix(H)), 1:m)                      # exact, so the residuals are at round-off
     return F.values, F.vectors
@@ -143,6 +143,7 @@ sol = sesolve(H, ψ0, range(0, 20; length=21); progress_bar=Val(false))
 U = to_dressed(sys, to_lab(frame, sol.states[end], 20.0))            # dressed amplitudes at t = 20 ns, one column each
 ```
 
+The package exports the everyday workflow; the operator machinery, the custom-solver interface (`Solver`, `solve`, `resolve`, ...), basis augmentation and a few rarely named types are public but not exported, so write `KronFreeCircuits.name` or `using KronFreeCircuits: name` for them.
 Both packages export `Lanczos` and `spectrum`, so after `using KronFreeCircuits, QuantumToolbox` write `KronFreeCircuits.Lanczos()` and `KronFreeCircuits.spectrum` (or QuantumToolbox's) for either name.
 
 ## Saving a solved system
@@ -294,7 +295,7 @@ energies(sys)
 port(sys, :phi, nport())                             # the charge n in the kept eigenbasis (8 × 8, complex)
 ```
 
-`nport()` on a `PeriodicGrid` mode is an ordinary port in both forms of `materialize`: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of a term; at the leaf it equals `KronFreeCircuits.charge_port(sys, mode)` (not exported), which forms the same matrix on demand.
+`nport()` on a `PeriodicGrid` mode is an ordinary port in both forms of `materialize`: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of a term; at the leaf it equals `KronFreeCircuits.charge_port(sys, mode)` (public, not exported), which forms the same matrix on demand.
 For a gate drive `n_g(t) = n_g + n_g^{AC}(t)` on a single mode, the Hamiltonian is `H₀ - 8 E_C n_g^{AC}(t) n̂` up to a c-number (for several modes, the drive on mode `i` is `-4 Σ_j (E_C[i,j] + E_C[j,i]) n_g,j^{AC}(t) n̂_i`), so the kept-basis `nport()` matrix is the drive operator.
 Two costs of this gauge: a grid node is real only at the literal `n_g = "0"`, and at `n_g = ½` the sweet-spot pairs are degenerate only to the discretization error, `O(Δ^order)` (order 8, free rotor: 1.1e-8 at `N = 32`, 4.4e-11 at 64, roundoff at 128; pure cos 2φ at `E_2 = 15 E_C`: 1.8e-11 and 4.3e-10 for the lowest two pairs at `N = 128`).
 The design is in spec §20d (2026-10-30) and `docs/superpowers/specs/2026-10-30-periodic-gauge-design.md`.
@@ -367,7 +368,7 @@ A child can instead be solved in the mean field of its siblings, and the mean-fi
 The parent's operator is unchanged: it is projected on the new basis, so only the truncation changes.
 This is the self-consistent product-state method of the circuit-quantization paper's Appendix C.
 
-Mean field lives in `KronFreeCircuits.Experimental`; the basis augmentation it feeds (`augment`, `union_basis`, `BasisSource`, `AugmentedChild`, `augmented`) is core but not exported, so the example imports it by name.
+Mean field lives in `KronFreeCircuits.Experimental`; the basis augmentation it feeds (`augment`, `union_basis`, `BasisSource`, `AugmentedChild`, `augmented`) is core and public but not exported, so the example imports it by name.
 The loop is a few lines.
 The KITE in the paper's optimum frame (`test/fixtures/kite/optimum.json`, a spec of constants), with one leaf per mode keeping 20 states and two wells feeding each leaf's basis:
 

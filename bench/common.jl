@@ -9,7 +9,7 @@
 
 using LinearAlgebra, Printf, Dates, Random, Statistics
 using KronFreeCircuits
-using KronFreeCircuits: dimension
+using KronFreeCircuits: dimension, node_timings
 import JSON3
 
 const DEVICE = get(ENV, "BENCH_DEVICE", "cpu")

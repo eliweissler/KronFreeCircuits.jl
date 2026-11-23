@@ -6,7 +6,7 @@ module KronFreeCircuitsQuantumToolboxExt
 using LinearAlgebra
 using QuantumToolbox
 using KronFreeCircuits
-using KronFreeCircuits: System, Node, Port, KronFreeOperator, Frame, operator, materialized, _on_storage, adapt
+using KronFreeCircuits: System, Node, Port, KronFreeOperator, Frame, diagonal, operator, materialized, _on_storage, adapt
 import KronFreeCircuits: qt_hamiltonian, qt_operator, qt_ket, to_dressed, drive_hamiltonian, to_lab, _rotate_back
 
 const SMO = QuantumToolbox.SciMLOperators

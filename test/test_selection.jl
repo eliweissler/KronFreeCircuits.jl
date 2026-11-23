@@ -64,8 +64,10 @@ end
     @test fix_phases!(reshape(copy(v), :, 1), :follow, mask, r) ≈ r
 end
 @testset "selection exports" begin
-    @test all(s -> Base.isexported(KronFreeCircuits, s), (:constant_term, :SelectionRule, :SelectionContext))
-    @test !Base.isexported(KronFreeCircuits, :select)          # custom rules extend KronFreeCircuits.select
+    @test Base.isexported(KronFreeCircuits, :constant_term)
+    # the custom-rule interface is public, not exported: custom rules extend KronFreeCircuits.select
+    @test all(s -> Base.ispublic(KronFreeCircuits, s) && !Base.isexported(KronFreeCircuits, s),
+              (:SelectionRule, :SelectionContext, :select))
 end
 @testset "physical overlap through a changed child basis" begin
     using KronFreeCircuits: MaterializedNode, _child_overlap, _transport_previous, Node, ChargeBasis, lowest, Port
