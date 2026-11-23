@@ -1,0 +1,72 @@
+# Every push to main and every pull request: the fast test tier on the oldest supported Julia and the latest release,
+# the CPU extension tiers, and the fast tier at the lowest dependency versions [compat] allows.
+# The slow tier runs weekly (Slow.yml); the CUDA tier needs a GPU and the Python tier circuit-quantization, so both stay local.
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  # a new push to a pull request cancels its running checks; pushes to main all run
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  actions: write   # julia-actions/cache deletes old caches
+  contents: read
+
+jobs:
+  test:
+    name: Fast tier, Julia ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.11', '1']   # the julia compat floor and the latest release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+
+  extensions:
+    name: Extension tier ${{ matrix.tier }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [chainrules, itensormps, quantumtoolbox]   # quantumtoolbox skips its GPU checks without a device
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Install the tier's environment
+        run: julia --color=yes --project=test/${{ matrix.tier }} -e 'using Pkg; Pkg.instantiate()'
+      - name: Run the tier
+        run: julia --color=yes --project=test/${{ matrix.tier }} test/${{ matrix.tier }}/runtests.jl
+
+  downgrade:
+    name: Fast tier at the lowest compatible versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'   # Julia 1.12+ keeps the downgraded versions in Pkg.test's test environment
+      - uses: julia-actions/julia-downgrade-compat@v2
+        with:
+          mode: deps   # direct dependencies; the extensions' weak dependencies are not loaded by the fast tier
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        with:
+          allow_reresolve: false
+          force_latest_compatible_version: false

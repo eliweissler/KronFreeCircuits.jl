@@ -1,0 +1,19 @@
+# Tags a GitHub release after each registration in the General registry (from JuliaRegistries/TagBot).
+name: TagBot
+on:
+  issue_comment:
+    types:
+      - created
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+jobs:
+  TagBot:
+    if: github.event_name == 'workflow_dispatch' || github.actor == 'JuliaTagBot'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: JuliaRegistries/TagBot@a761b867f05e7e410011ab16b244f2fffec16c85 # v1.26.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

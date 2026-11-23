@@ -1,0 +1,30 @@
+# The slow test tier (every test file, including the published-reference reproductions): weekly, and on demand from
+# the Actions tab ("Run workflow").
+name: Slow tests
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays 06:17 UTC
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  slow:
+    name: Slow tier, Julia ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.11', '1']
+    env:
+      KRONFREE_SLOW_TESTS: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1

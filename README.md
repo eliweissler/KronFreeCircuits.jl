@@ -1,3 +1,5 @@
+[![CI](https://github.com/eliweissler/KronFreeCircuits.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/eliweissler/KronFreeCircuits.jl/actions/workflows/CI.yml)
+
 # Status
 
 This is a personal research project and largely implemented using Claude Code. Use at your own risk!
