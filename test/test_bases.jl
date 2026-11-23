@@ -337,7 +337,7 @@ end
     allnan = fill(complex(NaN, NaN), 3, 3)
     nonfinite = (Inf, -Inf, NaN, complex(Inf, 1.0), complex(1.0, -Inf), complex(NaN, 1.0), complex(1.0, NaN), complex(NaN, Inf),
                  1//0, -1//0, Inf32, -Inf32, NaN32, Float16(NaN), big(Inf), -big(Inf), big(NaN), complex(NaN32, 1.0f0),
-                 complex(0.0f0, -Inf32), Complex{BigFloat}(1, Inf), (1//0) * im)
+                 complex(0.0f0, -Inf32), Complex{BigFloat}(1, Inf), Complex(0//1, 1//0))   # not (1//0) * im: that throws on Julia 1.11
     overflowing = (complex(1.7e308, 1.7e308), complex(-1.7e308, 1.7e308), complex(1.3e308, -1.3e308), complex(fmax, fmax))
     converted = (big"1e400", -big"1e400", big"1e400" * im, big(10)^400, big(10)^400 // 3, Complex{BigFloat}(1, big"-1e400"),
                  Complex{BigFloat}(big"1e400", 0), 2 * big(fmax), big(2)^1024, big(2.0)^1024)

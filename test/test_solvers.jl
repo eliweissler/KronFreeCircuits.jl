@@ -920,7 +920,8 @@ LinearAlgebra.mul!(Y::AbstractVecOrMat, W::WidthRecorder, X::AbstractVecOrMat) =
     check_eigenpairs(H, E2, V2; tol=1e-9)
     # bounded: on H = c I every block has a zero residual, so the retry fails too and an informative error propagates
     Hc = KronFreeOperator([30], AxisTerm[]; constant=2.5 + 0im)   # complex, as before: the real draw of the retry block converges
-    err = @test_logs (:warn, r"warm-start") (try solve(LOBPCG(), Hc, 3; X0=randn(ComplexF64, 30, 3)); nothing catch e; e end)
+    # match_mode=:any: under some LAPACK builds (Julia 1.11) LOBPCGEigensolver also logs its own SVD fallback here
+    err = @test_logs (:warn, r"warm-start") match_mode=:any (try solve(LOBPCG(), Hc, 3; X0=randn(ComplexF64, 30, 3)); nothing catch e; e end)
     @test err isa ErrorException && occursin("Dense", err.msg)
 end
 
