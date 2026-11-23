@@ -8,7 +8,7 @@ using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient
     n = load_node(p, [1, 2])
     @test n.energies == mn.energies && n.vectors == mn.vectors && n.kept == mn.kept && n.dims == mn.dims
     @test n.ports == mn.ports
-    @test load_node(p).on === nothing                  # Dense has no device
+    @test load_node(p).solver == "Dense" && load_node(p).on == "Array"   # Dense runs on the CPU
     @test_throws "valid positions" load_node(p, [3])
     @test_throws "valid positions" load_node(p, [1, 1, 1])
 end
@@ -39,10 +39,10 @@ end
                       [Term(Coefficient(0.1), [Factor(:a, Port(:x, 0)), Factor(:b, Port(:x, 0))])], (;))
     p = tempname() * ".jld2"; save_system(p, sys)
     n = load_node(p, [1])
-    @test n.energies == sys.root.children[1].energies && n.on === nothing
+    @test n.energies == sys.root.children[1].energies && n.solver === nothing && n.on === nothing
     c = dc_two_transmons(solver=Lanczos(), compute=10); lan = materialize(c.root, c.spec, c.θ)
     save_system(p, lan)
-    @test load_node(p).on == "Array"
+    @test load_node(p).solver == "Lanczos" && load_node(p).on == "Array"
     for k in ("", "a/b")
         @test_throws "metadata" save_system(p, sys; metadata=Dict(k => 1))
     end

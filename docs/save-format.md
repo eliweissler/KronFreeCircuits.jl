@@ -9,7 +9,7 @@ save_system("kite.jld2", sys; metadata=(note="optimum",))   # retained=false dro
 sys2 = load_system("kite.jld2"; on=Array)                   # on picks the device; callbacks come back as nothing
 load_metadata("kite.jld2")                                  # Dict("note" => "optimum"), reads no results
 system_nodes("kite.jld2")                                   # positions of the solved nodes: [[], [1], [2], ...]
-load_node("kite.jld2", [1])                                 # (; energies, kept, vectors, dims, ports, on) of one node
+load_node("kite.jld2", [1])                                 # (; energies, kept, vectors, dims, ports, solver, on) of one node
 ```
 
 ## Layout
@@ -73,7 +73,8 @@ one tagged value per field. A tagged value is `<name>/kind` plus `<name>/value`,
   the original's to solver tolerance, not bit for bit.
 - **Callbacks** are not saved; a loaded solver's callback is `nothing`.
 - **Device**: `load_system(path; on=Array)` sets `on` on every solver that has the field. The saved device is only
-  recorded: `load_node(path, pos).on` returns it (`nothing` for a node with none).
+  recorded: `load_node(path, pos)` returns it as `on`, with the solver's name as `solver`. CPU-only solvers (`Dense`,
+  `ShiftInvert`) report `on = "Array"`; a given node (a `GivenSystem`) has no solver and reports `nothing` for both.
 - **Versions**: `/format_version` is 1. `load_system` reads only the versions it knows and otherwise throws an
   `ArgumentError` naming the file's version; a future format change bumps the number, and a newer package will keep
   reading version 1 files.

@@ -273,10 +273,12 @@ not nodes), for [`load_node`](@ref). Reads no results.
 system_nodes(path::AbstractString) = _with_system_file(f -> _positions!(Vector{Int}[], f["root"], Int[]), path)
 
 """
-    load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, on)
+    load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, solver, on)
 
 One solved node of the file at `position` (child indices from the root, see [`system_nodes`](@ref)), without reading the
-rest. `ports` maps `(mode, port)` to its matrix; `on` is the saved device name, or `nothing` when the node has none.
+rest. `ports` maps `(mode, port)` to its matrix. `solver` is the saved solver's name (`"Dense"`, `"Lanczos"`, ...) and
+`on` its device name, `"Array"` for the CPU-only solvers (`Dense`, `ShiftInvert`); both are `nothing` for a given node
+(a `GivenSystem`), which has no solver.
 """
 function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int[])
     return _with_system_file(path) do f
@@ -288,8 +290,9 @@ function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int
             g = g["children/$i"]
         end
         ports = _read_ports(g)
-        has_on = g["kind"] == "node" && haskey(g, "settings/solver/fields/on")
-        on = has_on ? g["settings/solver/fields/on/value"] : nothing
-        return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, on)
+        solver = g["kind"] == "node" ? g["settings/solver/type"] : nothing
+        on = solver === nothing ? nothing :
+             haskey(g, "settings/solver/fields/on") ? g["settings/solver/fields/on/value"] : "Array"
+        return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, solver, on)
     end
 end
