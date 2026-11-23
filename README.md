@@ -148,6 +148,7 @@ Both packages export `Lanczos` and `spectrum`, so after `using KronFreeCircuits,
 
 `save_system(path, sys)` writes a solved `System` to a JLD2 (HDF5) file, and `load_system(path; on=Array)` reads it back, ready for `spectrum`, derivatives and `qt_*`.
 `load_metadata`, `system_nodes` and `load_node` read your notes or one node without loading the rest.
+A system solved with a custom solver loads without that solver's code (only a new solve needs it); pass `load_system(path; solvers=[MySolver])` to get the solver itself back.
 The file holds plain arrays, so Python can read it with h5py; the layout, limits (callbacks are not saved, `retained=false` slows derivatives) and an h5py example are in [docs/save-format.md](docs/save-format.md).
 
 ## Spec files

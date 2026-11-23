@@ -46,7 +46,7 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
         return nothing
     end
     g["kind"] = "node"
-    _write_struct(g, "settings/solver", n.solver)
+    _write_solver(g, "settings/solver", n.solver)
     _write_struct(g, "settings/keep", n.keep)
     foreach(f -> _write_value(g, "settings/$f", getfield(n, f)), _NODE_SETTINGS)
     _write_portlist(g, "settings/ports", n.ports)
@@ -69,7 +69,7 @@ _read_ports(g) = Dict{Tuple{Symbol,Port},NodeMatrix}(only(_read_portlist(g, "por
 # The node (`Node` or `GivenSystem`) of group `g` and its `MaterializedNode`, children first, so that every child's
 # `MaterializedNode.node` is its parent's `Node.children[i]`. With `node` given (the tree's own node at this position),
 # no node or basis is built: the results are read onto it and its descendants.
-function _read_node(g; on=Array, node=nothing)
+function _read_node(g; on=Array, solvers=Dict{String,Type}(), node=nothing)
     T = g["eltype"] == "ComplexF64" ? ComplexF64 : Float64
     if node !== nothing && g["kind"] == "given"
         children = Any[node]
@@ -82,7 +82,7 @@ function _read_node(g; on=Array, node=nothing)
         function read_child(i)
             c = g["children/$i"]
             old = node === nothing ? nothing : node.children[i]
-            c["kind"] == "leaf" || return _read_node(c; on, node=old)
+            c["kind"] == "leaf" || return _read_node(c; on, solvers, node=old)
             old === nothing || return (old, old.second)
             b = _read_struct(c, "basis")
             return (Symbol(c["mode"]) => b, b)
@@ -90,7 +90,7 @@ function _read_node(g; on=Array, node=nothing)
         pairs = [read_child(i) for i in 1:g["children/count"]]
         if node === nothing
             settings = NamedTuple(f => _read_value(g, "settings/$f") for f in _NODE_SETTINGS)
-            node = Node(Any[first(p) for p in pairs]; solver=_read_struct(g, "settings/solver"; on),
+            node = Node(Any[first(p) for p in pairs]; solver=_read_solver(g, "settings/solver"; on, solvers),
                         keep=_read_struct(g, "settings/keep"), ports=_read_portlist(g, "settings/ports"), settings...)
         end
         children = Any[last(p) for p in pairs]
@@ -135,7 +135,7 @@ function _write_augmented(f, sys::System, retained::Bool)
     return nothing
 end
 
-function _read_augmented(f, root::MaterializedNode; on)
+function _read_augmented(f, root::MaterializedNode; on, solvers)
     out = Any[]
     for i in 1:f["augmented/count"]
         g = f["augmented/$i"]
@@ -143,7 +143,7 @@ function _read_augmented(f, root::MaterializedNode; on)
         for j in g["node_path"]
             place = place.children[j]
         end
-        _, solved = _read_node(g["solved"]; on, node=place.node)
+        _, solved = _read_node(g["solved"]; on, solvers, node=place.node)
         push!(out, AugmentedChild(place.node, solved, g["basis"], _read_terms(g, "terms"), _read_theta(g, "theta"),
                                   UnionReport(g["report/labels"], g["report/taken"], g["report/dropped"])))
     end
@@ -190,14 +190,18 @@ function save_system(path::AbstractString, sys::System; retained::Bool=true, met
 end
 
 """
-    load_system(path; on=Array) -> System
+    load_system(path; on=Array, solvers=()) -> System
 
 Read a `System` written by [`save_system`](@ref). Every loaded solver that has an `on` field gets `on` (the device
 is chosen here; the device saved in the file is only recorded, see [`load_node`](@ref)), and every `callback` is
-`nothing`. The layout is described in `docs/save-format.md`.
+`nothing`. A node solved with a custom solver gets that solver back when its type is in `solvers` (for example
+`solvers=[MySolver]`) and all its settings were saved, and otherwise a [`SavedSolver`](@ref) holding its name and
+settings: the saved results, ports and derivatives work without the solver's code, and only a new solve needs it.
+The layout is described in `docs/save-format.md`.
 """
-function load_system(path::AbstractString; on=Array)
-    return _with_system_file(f -> _load_v1(f; on), path)
+function load_system(path::AbstractString; on=Array, solvers=())
+    table = Dict{String,Type}(string(nameof(T)) => T for T in solvers)
+    return _with_system_file(f -> _load_v1(f; on, solvers=table), path)
 end
 
 # Run `read(f)` on the open file at `path` after checking it is a system file of a readable version.
@@ -219,10 +223,10 @@ function _with_system_file(read, path)
     end
 end
 
-function _load_v1(f; on)
+function _load_v1(f; on, solvers)
     spec, terms, constant = _read_system_terms(f)
-    _, root = _read_node(f["root"]; on)
-    return System(root, spec, terms, _read_theta(f, "theta"), constant, _read_augmented(f, root; on))
+    _, root = _read_node(f["root"]; on, solvers)
+    return System(root, spec, terms, _read_theta(f, "theta"), constant, _read_augmented(f, root; on, solvers))
 end
 
 const _METADATA_SCALAR = Union{Base.BitInteger,Bool,Float16,Float32,Float64,ComplexF16,ComplexF32,ComplexF64,String}
@@ -273,11 +277,12 @@ not nodes), for [`load_node`](@ref). Reads no results.
 system_nodes(path::AbstractString) = _with_system_file(f -> _positions!(Vector{Int}[], f["root"], Int[]), path)
 
 """
-    load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, solver, on)
+    load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, solver, custom, on)
 
 One solved node of the file at `position` (child indices from the root, see [`system_nodes`](@ref)), without reading the
-rest. `ports` maps `(mode, port)` to its matrix. `solver` is the saved solver's name (`"Dense"`, `"Lanczos"`, ...) and
-`on` its device name, `"Array"` for the CPU-only solvers (`Dense`, `ShiftInvert`); both are `nothing` for a given node
+rest. `ports` maps `(mode, port)` to its matrix. `solver` is the saved solver's type name (`"Dense"`, `"Lanczos"`,
+`"MySolver"`, ...), `custom` whether it is a user-defined solver, and `on` its saved device: `"Array"` for the CPU-only
+`Dense` and `ShiftInvert`, and `nothing` for a solver with no `on` setting. All three are `nothing` for a given node
 (a `GivenSystem`), which has no solver.
 """
 function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int[])
@@ -290,9 +295,11 @@ function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int
             g = g["children/$i"]
         end
         ports = _read_ports(g)
-        solver = g["kind"] == "node" ? g["settings/solver/type"] : nothing
-        on = solver === nothing ? nothing :
-             haskey(g, "settings/solver/fields/on") ? g["settings/solver/fields/on/value"] : "Array"
-        return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, solver, on)
+        isnode = g["kind"] == "node"
+        solver = isnode ? g["settings/solver/type"] : nothing
+        custom = isnode ? g["settings/solver/custom"] : nothing
+        on = isnode && haskey(g, "settings/solver/fields/on") ? g["settings/solver/fields/on/value"] :
+             isnode && !custom && solver in ("Dense", "ShiftInvert") ? "Array" : nothing
+        return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, solver, custom, on)
     end
 end

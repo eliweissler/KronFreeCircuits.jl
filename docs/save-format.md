@@ -9,7 +9,7 @@ save_system("kite.jld2", sys; metadata=(note="optimum",))   # retained=false dro
 sys2 = load_system("kite.jld2"; on=Array)                   # on picks the device; callbacks come back as nothing
 load_metadata("kite.jld2")                                  # Dict("note" => "optimum"), reads no results
 system_nodes("kite.jld2")                                   # positions of the solved nodes: [[], [1], [2], ...]
-load_node("kite.jld2", [1])                                 # (; energies, kept, vectors, dims, ports, solver, on) of one node
+load_node("kite.jld2", [1])                                 # (; energies, kept, vectors, dims, ports, solver, custom, on) of one node
 ```
 
 ## Layout
@@ -47,7 +47,8 @@ ports/count             ports/<i>/{modes,kinds,ks} (one entry each) and ports/<i
 joint_ports/count       joint_ports/<i>/{modes,kinds,ks} (the factor list) and joint_ports/<i>/matrix
 retained/energies, unkept, complete, followed
 retained/vectors        absent when nothing was retained, or when saved with retained=false
-settings/solver, settings/keep      a struct: `type`, then `fields/<field>`
+settings/solver, settings/keep      a struct: `type`, then `fields/<field>`; the solver also has
+                                    `custom` (true for a user-defined solver)
 settings/{compute,phase,arithmetic,retain}   tagged values
 settings/ports/{modes,kinds,ks}     the node's port list
 children/count          children/<i> is a node group, or a leaf:
@@ -60,8 +61,8 @@ A `given` node has instead `settings/mode`, `settings/given_energies`, `settings
 A struct is `<name>/type` (a solver, selection rule or basis name such as `"Lanczos"`) and `<name>/fields/<field>`,
 one tagged value per field. A tagged value is `<name>/kind` plus `<name>/value`, where kind is one of `int`, `float`,
 `bool`, `string`, `ints`, `floats`, `strings`, `matrix_real`, `matrix_complex`, `symbol` (stored as a string),
-`nothing` (no value), `port` (`value` is the port kind, plus `k`), `modeport` (`mode`, `port_kind`, `k`) or `arraytype`
-(the array type's name). The saved device is at `settings/solver/fields/on/value`; callbacks are stored as `nothing`.
+`nothing` (no value), `port` (`value` is the port kind, plus `k`), `modeport` (`mode`, `port_kind`, `k`), `arraytype`
+(the array type's name) or `unsaved` (a custom solver's setting that is not one of these kinds; `value` is its type). The saved device is at `settings/solver/fields/on/value`; callbacks are stored as `nothing`.
 
 ## Behaviour
 
@@ -73,8 +74,14 @@ one tagged value per field. A tagged value is `<name>/kind` plus `<name>/value`,
   the original's to solver tolerance, not bit for bit.
 - **Callbacks** are not saved; a loaded solver's callback is `nothing`.
 - **Device**: `load_system(path; on=Array)` sets `on` on every solver that has the field. The saved device is only
-  recorded: `load_node(path, pos)` returns it as `on`, with the solver's name as `solver`. CPU-only solvers (`Dense`,
-  `ShiftInvert`) report `on = "Array"`; a given node (a `GivenSystem`) has no solver and reports `nothing` for both.
+  recorded: `load_node(path, pos)` returns it as `on`, with the solver's name as `solver` and whether it is
+  user-defined as `custom`. `Dense` and `ShiftInvert` run on the CPU and report `on = "Array"`; any other solver without
+  an `on` setting reports `nothing`, as does a given node (a `GivenSystem`), which has no solver.
+- **Custom solvers**: a node solved with a user-defined solver is saved with the solver's name and settings, so the
+  file can be shared with someone who does not have the solver's code. `load_system(path)` then gives that node a
+  `SavedSolver` holding the name and settings: the saved results, ports and derivatives work, and only a new solve of
+  that node throws. `load_system(path; solvers=[MySolver])` rebuilds the real solver from its settings, unless one of
+  them could not be saved (it then warns and keeps the `SavedSolver`).
 - **Versions**: `/format_version` is 1. `load_system` reads only the versions it knows and otherwise throws an
   `ArgumentError` naming the file's version; a future format change bumps the number, and a newer package will keep
   reading version 1 files.

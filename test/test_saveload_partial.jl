@@ -1,4 +1,14 @@
-using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient
+using KronFreeCircuits: GivenSystem, Term, Factor, Coefficient, SavedSolver
+
+# A custom solver as in the README, with one setting that can be saved and one that cannot.
+struct _ExactSolver <: Solver
+    tol::Float64
+    note::Any
+end
+function KronFreeCircuits.solve(::_ExactSolver, H, m)
+    F = eigen(Hermitian(Matrix(H)), 1:m)
+    return F.values, F.vectors
+end
 
 @testset "positions and one node" begin
     c = dc_chain3(); sys = materialize(c.root, c.spec, c.θ)
@@ -46,4 +56,33 @@ end
     for k in ("", "a/b")
         @test_throws "metadata" save_system(p, sys; metadata=Dict(k => 1))
     end
+end
+
+@testset "custom solver" begin
+    c = dc_chain3()
+    custom(note) = Node(c.root.children; solver=_ExactSolver(1e-10, note), compute=6, keep=lowest(6), ports=c.root.ports)
+    sys = materialize(custom(:plain), c.spec, c.θ)
+    p = tempname() * ".jld2"; save_system(p, sys)
+    n = load_node(p)
+    @test (n.solver, n.custom, n.on) == ("_ExactSolver", true, nothing)
+    @test load_node(p, [1, 1]).custom == false
+    # without the solver's code: the saved results and derivatives, and a clear error on a new solve
+    a = load_system(p)
+    s = a.root.node.solver
+    @test s isa SavedSolver && s.name == "_ExactSolver" && Dict(s.fields) == Dict(:tol => 1e-10, :note => :plain)
+    @test a.root.energies == sys.root.energies && a.root.vectors == sys.root.vectors && a.root.ports == sys.root.ports
+    @test energies(derivatives(a; wrt=:g12), :g12) ≈ energies(derivatives(sys; wrt=:g12), :g12) rtol = 1e-6
+    @test_throws "load_system(path; solvers=[_ExactSolver])" materialize(a.root.node, c.spec, c.θ)
+    # saving the loaded system keeps the original name and settings
+    p2 = tempname() * ".jld2"; save_system(p2, a)
+    @test load_node(p2).solver == "_ExactSolver" && load_system(p2).root.node.solver.fields == s.fields
+    # with the solver's code the real solver comes back and solves
+    b = load_system(p; solvers=[_ExactSolver])
+    @test b.root.node.solver == _ExactSolver(1e-10, :plain)
+    assert_same_system(b, sys)
+    @test materialize(b.root.node, c.spec, c.θ).root.energies ≈ sys.root.energies
+    # a setting that cannot be saved keeps only its type, and the node keeps a SavedSolver even with the code
+    save_system(p, materialize(custom(sin), c.spec, c.θ))
+    b = @test_logs (:warn, r"note were not saved") load_system(p; solvers=[_ExactSolver])
+    @test b.root.node.solver isa SavedSolver && Dict(b.root.node.solver.fields)[:note] == KronFreeCircuits._Unsaved("typeof(sin)")
 end

@@ -21,8 +21,10 @@ allsub(T) = isabstracttype(T) ? reduce(vcat, map(allsub, subtypes(T)); init=Any[
             end
         end
     end
-    # every concrete solver, rule and basis type is in the allowlist (a new type must be added to it)
-    @test Set(keys(_SAVE_TYPES)) == Set(string(nameof(T)) for T in vcat(allsub(Solver), allsub(SelectionRule), allsub(Basis)))
+    # every concrete solver, rule and basis type is in the allowlist (a new type must be added to it); SavedSolver is
+    # the stand-in for a custom solver and is saved under that solver's name
+    @test Set(keys(_SAVE_TYPES)) == Set(string(nameof(T)) for T in vcat(allsub(Solver), allsub(SelectionRule), allsub(Basis))
+                                        if T !== KronFreeCircuits.SavedSolver)
     @test_throws ArgumentError JLD2.jldopen(f -> _write_value(f, "bad", x -> x), tempname() * ".jld2", "w")
 end
 @testset "the on keyword replaces the saved device" begin
