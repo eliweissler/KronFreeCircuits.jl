@@ -47,6 +47,8 @@ function _write_node(g, mn::MaterializedNode{T}, retained::Bool) where {T}
     end
     g["kind"] = "node"
     _write_solver(g, "settings/solver", n.solver)
+    used = _resolve_node_solver(n, mn.children)            # what `Auto` (or a custom `resolve`) picked for this node
+    used === n.solver || _write_solver(g, "settings/solver_used", used)
     _write_struct(g, "settings/keep", n.keep)
     foreach(f -> _write_value(g, "settings/$f", getfield(n, f)), _NODE_SETTINGS)
     _write_portlist(g, "settings/ports", n.ports)
@@ -280,10 +282,10 @@ system_nodes(path::AbstractString) = _with_system_file(f -> _positions!(Vector{I
     load_node(path, position=Int[]) -> (; energies, kept, vectors, dims, ports, solver, custom, on)
 
 One solved node of the file at `position` (child indices from the root, see [`system_nodes`](@ref)), without reading the
-rest. `ports` maps `(mode, port)` to its matrix. `solver` is the saved solver's type name (`"Dense"`, `"Lanczos"`,
-`"MySolver"`, ...), `custom` whether it is a user-defined solver, and `on` its saved device: `"Array"` for the CPU-only
-`Dense` and `ShiftInvert`, and `nothing` for a solver with no `on` setting. All three are `nothing` for a given node
-(a `GivenSystem`), which has no solver.
+rest. `ports` maps `(mode, port)` to its matrix. `solver` is the type name of the solver that ran (`"Dense"`,
+`"Lanczos"`, `"MySolver"`, ...; for an `Auto` node, the solver it picked), `custom` whether it is user-defined, and
+`on` its saved device: `"Array"` for the CPU-only `Dense` and `ShiftInvert`, and `nothing` for a solver with no `on`
+setting. All three are `nothing` for a given node (a `GivenSystem`), which has no solver.
 """
 function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int[])
     return _with_system_file(path) do f
@@ -296,9 +298,10 @@ function load_node(path::AbstractString, position::AbstractVector{<:Integer}=Int
         end
         ports = _read_ports(g)
         isnode = g["kind"] == "node"
-        solver = isnode ? g["settings/solver/type"] : nothing
-        custom = isnode ? g["settings/solver/custom"] : nothing
-        on = isnode && haskey(g, "settings/solver/fields/on") ? g["settings/solver/fields/on/value"] :
+        sg = isnode && haskey(g, "settings/solver_used") ? "settings/solver_used" : "settings/solver"
+        solver = isnode ? g["$sg/type"] : nothing
+        custom = isnode ? g["$sg/custom"] : nothing
+        on = isnode && haskey(g, "$sg/fields/on") ? g["$sg/fields/on/value"] :
              isnode && !custom && solver in ("Dense", "ShiftInvert") ? "Array" : nothing
         return (; energies=g["energies"], kept=g["kept"], vectors=g["vectors"], dims=g["dims"], ports, solver, custom, on)
     end

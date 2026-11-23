@@ -86,3 +86,14 @@ end
     b = @test_logs (:warn, r"note were not saved") load_system(p; solvers=[_ExactSolver])
     @test b.root.node.solver isa SavedSolver && Dict(b.root.node.solver.fields)[:note] == KronFreeCircuits._Unsaved("typeof(sin)")
 end
+
+@testset "Auto records the solver it picked" begin
+    c = dc_chain3()
+    auto(cutoff) = Node(c.root.children; solver=Auto(dense_cutoff=cutoff), compute=6, keep=lowest(6), ports=c.root.ports)
+    p = tempname() * ".jld2"
+    save_system(p, materialize(auto(1000), c.spec, c.θ))
+    @test (load_node(p).solver, load_node(p).on) == ("Dense", "Array")
+    @test load_system(p).root.node.solver isa Auto                # the loaded node keeps its setting
+    save_system(p, materialize(auto(0), c.spec, c.θ))
+    @test (load_node(p).solver, load_node(p).custom, load_node(p).on) == ("LOBPCG", false, "Array")
+end

@@ -49,6 +49,7 @@ retained/energies, unkept, complete, followed
 retained/vectors        absent when nothing was retained, or when saved with retained=false
 settings/solver, settings/keep      a struct: `type`, then `fields/<field>`; the solver also has
                                     `custom` (true for a user-defined solver)
+settings/solver_used    the solver that ran, when it differs from settings/solver (what `Auto` picked)
 settings/{compute,phase,arithmetic,retain}   tagged values
 settings/ports/{modes,kinds,ks}     the node's port list
 children/count          children/<i> is a node group, or a leaf:
@@ -74,7 +75,8 @@ one tagged value per field. A tagged value is `<name>/kind` plus `<name>/value`,
   the original's to solver tolerance, not bit for bit.
 - **Callbacks** are not saved; a loaded solver's callback is `nothing`.
 - **Device**: `load_system(path; on=Array)` sets `on` on every solver that has the field. The saved device is only
-  recorded: `load_node(path, pos)` returns it as `on`, with the solver's name as `solver` and whether it is
+  recorded: `load_node(path, pos)` returns it as `on`, with the name of the solver that ran as `solver` (for `Auto`,
+  the solver it picked, saved at `settings/solver_used`; the loaded system keeps `Auto`) and whether it is
   user-defined as `custom`. `Dense` and `ShiftInvert` run on the CPU and report `on = "Array"`; any other solver without
   an `on` setting reports `nothing`, as does a given node (a `GivenSystem`), which has no solver.
 - **Custom solvers**: a node solved with a user-defined solver is saved with the solver's name and settings, so the
