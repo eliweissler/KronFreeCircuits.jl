@@ -19,7 +19,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
        DenseOp, DiagonalOp, BandedOp, ShiftOp, dense, diagonal, realpart, imagpart, Basis, ChargeBasis, PhaseGrid,
        PeriodicGrid, FockBasis, localop, apply_axis!, KronFreeOperator, Node, Auto, Dense, Lanczos, LOBPCG,
        ShiftInvert, ChebyshevFilter, lowest, indices, connected, follow, within, materialize, System, energies, port,
-       eigenvectors, materialized, node_timings, bare_labels, bare_overlaps, decompose, dressed_index, constant_term,
+       eigenvectors, materialized, node_timings, bare_labels, bare_overlaps, decompose, dressed_index, dressed_state_string, constant_term,
        Solver, SelectionRule, SelectionContext, GivenSystem, gershgorin_bound, separable_eigenbases, product_seed,
        infnorm, PortCharacter, character, arithmetic, circuit_quantization, QuantizedCircuit, record_json,
        save_record, load_record, suggest_bases, edge_weight, differentiate, derivatives, Derivatives, blocks,

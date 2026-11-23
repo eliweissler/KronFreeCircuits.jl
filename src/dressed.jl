@@ -76,3 +76,46 @@ function dressed_index(sys::System, node::Node, label::Tuple)
     return i
 end
 dressed_index(sys::System, label::Tuple) = dressed_index(sys, sys.root.node, label)
+
+"""
+    dressed_state_string(sys, node=root, n; thresh=1e-3, digits=3, label=nothing, latex=false) -> String
+
+The dressed state `n` of `node` written as a sum of bare product states, for printing:
+`println(dressed_state_string(sys, 0))` shows `|ψ₀⟩ = 0.981|0,0⟩ − 0.172|1,1⟩`.
+
+**Indices are physics indices counted from 0, not Julia indices from 1**: `n = 0` is the lowest kept dressed state,
+and each bare label `|i,j,…⟩` counts each child's kept states from 0 (the ground state of a child is 0). The same state
+in Julia indexing is `decompose(sys, node, n + 1)`, whose labels are these plus one.
+
+Terms with weight `|c|² ≥ thresh` are listed by descending weight, each amplitude rounded to `digits` digits; a complex
+amplitude prints in parentheses, `(0.98+0.01i)`. `label` replaces `ψₙ` on the left-hand side, and `latex=true` returns
+LaTeX (`\\widetilde{|\\psi_{n}\\rangle} = 0.981\\,|0,0\\rangle - …`) without surrounding `\$`.
+"""
+function dressed_state_string(sys::System, node::Node, n::Integer; thresh::Real=1e-3, digits::Integer=3,
+                              label=nothing, latex::Bool=false)
+    mn = materialized(sys, node)
+    0 <= n < length(mn.kept) || throw(ArgumentError(
+        "dressed state $n out of range 0:$(length(mn.kept) - 1) (physics indices from 0)"))
+    v = view(mn.vectors, :, n + 1)
+    cart = CartesianIndices(Tuple(mn.dims))
+    ps = sort!([p for p in eachindex(v) if abs2(v[p]) >= thresh]; by=p -> -abs2(v[p]))
+    name = label === nothing ? (latex ? "\\psi_{$n}" : "ψ" * _subscript(n)) : string(label)
+    lhs = latex ? "\\widetilde{|$name\\rangle} = " : "|$name⟩ = "
+    isempty(ps) && return lhs * "(no bare state with |c|² ≥ $thresh)"
+    terms = map(enumerate(ps)) do (k, p)
+        ket = join(Tuple(cart[p]) .- 1, ",")
+        ket = latex ? "\\,|$ket\\rangle" : "|$ket⟩"
+        c = round(v[p]; digits)
+        if isreal(c)
+            minus = latex ? "-" : "−"
+            sign = real(c) < 0 ? (k == 1 ? minus : " $minus ") : (k == 1 ? "" : " + ")
+            sign * string(abs(real(c))) * ket
+        else
+            (k == 1 ? "" : " + ") * "(" * string(real(c)) * (imag(c) < 0 ? "-" : "+") * string(abs(imag(c))) * "i)" * ket
+        end
+    end
+    return lhs * join(terms)
+end
+dressed_state_string(sys::System, n::Integer; kwargs...) = dressed_state_string(sys, sys.root.node, n; kwargs...)
+
+_subscript(n::Integer) = map(c -> Char(0x2080 + (c - '0')), string(n))
