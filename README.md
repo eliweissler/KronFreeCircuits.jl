@@ -29,6 +29,7 @@ energies(sys)                          # kept eigenvalues of the top node
 port(sys, :varphi_1, nport())          # charge operator of mode varphi_1 in the kept eigenbasis
 decompose(sys, top, 1)                 # bare product-state content of dressed state 1
 dressed_index(sys, top, (2, 1))        # dressed state that best matches bare state (2, 1)
+println(dressed_state_string(sys, 1))  # |ψ₁⟩ = 0.996|0,1⟩ − 0.093|1,0⟩ (physics indices from 0; latex=true for LaTeX)
 ```
 
 A term with several factors inside one child (a phase factor over several modes of a KITE, say) is applied through that child's joint port, formed in the child's product basis before its truncation (spec §20i); `port(sys, [(:varphi_1, expiphi(1)), (:varphi_4, expiphi(-1))], node)` reads one.
