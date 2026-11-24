@@ -22,7 +22,7 @@ _sign(k::Integer) = isodd(k) ? -1 : 1                       # e^{±iπk}, exactl
 """
     phase_wavefunction(basis, V) -> (φ, ψ)
     phase_wavefunction(basis::FockBasis, V, φ) -> (φ, ψ)
-    phase_wavefunction(sys, [node], [φ]) -> (φ, ψ)
+    phase_wavefunction(sys, [node], [φ]; charge=(), points=(;), states=:) -> (φ, ψ) or (axes, ψ)
 
 The phase wavefunction `ψ(φ) = ⟨φ|ψ⟩` of the states in the columns of `V` (a vector, or a matrix with one state per
 column, in `basis`), as function values at the points `φ`, with `⟨φ|n⟩ = e^{inφ}/√2π`.
@@ -40,13 +40,28 @@ A Fock basis has no grid, so its points are required, and its normalization is `
 The values of a real grid or Fock vector stay real; those of a charge basis are `ComplexF64`.
 The result is a dense array in floating point, a new one, whatever holds `V` (a range, a view, a sparse or structured matrix).
 See [`charge_wavefunction`](@ref) for the conjugate representation.
+
+# Solved nodes
+
+On a node of a solved system (the root by default) the states are the node's kept states, `states` selects some of them
+(an index, a range or a vector; the state axis is kept), and the node must be a leaf: every child a basis.
+A branch node throws.
+
+On a leaf with several modes the result is `(axes, ψ)`: `axes` is a `NamedTuple` of the modes' grids keyed by mode name,
+in the node's mode order, and `ψ[i₁, …, i_N, s]` is state `s` at the grid points, each mode transformed by its rule above
+(the modes in `charge`, a mode name or a collection of them, to charge; the others to phase).
+A `FockBasis` mode takes its points per mode, `points = (phi = φs,)`.
+The normalization is the product of the one-mode rules, `(Π_k Δ_k) Σ |ψ[…, s]|² = 1`, where `Δ_k` is the spacing of axis
+`k` and `1` for the charges of a `ChargeBasis` or a `PeriodicGrid`.
+The result is real when every transform keeps the state real, `ComplexF64` otherwise.
+A leaf with one mode keeps the one-mode form `(φ, ψ)`, and its points may also be passed positionally.
 """
 function phase_wavefunction end
 
 """
     charge_wavefunction(basis, V) -> (n, ψ̃)
     charge_wavefunction(basis::FockBasis, V, n) -> (n, ψ̃)
-    charge_wavefunction(sys, [node], [n]) -> (n, ψ̃)
+    charge_wavefunction(sys, [node], [n]; phase=(), points=(;), states=:) -> (n, ψ̃) or (axes, ψ̃)
 
 The charge wavefunction `⟨n|ψ⟩` of the states in the columns of `V` (a vector, or a matrix with one state per column, in
 `basis`), with `⟨φ|n⟩ = e^{inφ}/√2π`; the result has the shape of `V` with one row per charge.
@@ -64,6 +79,9 @@ for odd `N` and `-N/2..N/2-1` for even `N`.
 A compact mode has a discrete charge and an extended one a continuous charge, sampled at the points conjugate to its grid.
 The sums are one fast Fourier transform, and the grid's origin enters as a phase factor, so a real even `ψ(φ)` gives a
 real `ψ̃(n)`.
+
+On a solved leaf the keywords are those of [`phase_wavefunction`](@ref) with the roles exchanged: every mode goes to
+charge except those named in `phase`, and a multi-mode leaf returns `(axes, ψ̃)`.
 
 Limits:
 
@@ -147,24 +165,62 @@ phase_wavefunction(::FockBasis, ::AbstractVecOrMat{<:Number}) =
 charge_wavefunction(::FockBasis, ::AbstractVecOrMat{<:Number}) =
     throw(ArgumentError("FockBasis has no grid: pass the points, e.g. charge_wavefunction(b, V, n)"))
 
-# The basis of a node that has exactly one child, a basis; multi-mode nodes are a later item.
-function _single_basis(sys::System, node::Node, name::AbstractString)
-    mn = materialized(sys, node)
-    k = length(mn.children)
-    k == 1 || throw(ArgumentError("$name: the node has $k children; multi-mode wavefunctions are not implemented yet"))
-    mn.children[1] isa Basis ||
-        throw(ArgumentError("$name: the node's child is not a basis; multi-mode wavefunctions are not implemented yet " *
-                            "(pass the leaf node that holds the mode's basis)"))
-    return mn.children[1], mn.vectors
+# One mode's transform of the `d × m` matrix `V` in basis `b`, to `rep` (`:phase` or `:charge`): `(grid, W)`.
+_axis_transform(b::Basis, rep::Symbol, V::AbstractMatrix, pts) =
+    rep === :phase ? (pts === nothing ? phase_wavefunction(b, V) : phase_wavefunction(b, V, pts)) :
+                     (pts === nothing ? charge_wavefunction(b, V) : charge_wavefunction(b, V, pts))
+
+# The states in the columns of `V`, over the product of `bases` (axis 1 fastest), with mode `k` (named `names[k]`) in
+# the representation `reps[k]`, each axis transformed by its 1D method: `(axes, ψ)` with `ψ[i₁, …, i_N, state]`.
+function _wavefunction(bases::Tuple, names::Tuple, reps::Tuple, V::AbstractMatrix, points)
+    X = reshape(_dense(V), map(dimension, bases)..., size(V, 2))
+    grids = Any[]
+    for k in eachindex(bases)
+        perm = (k, (i for i in 1:ndims(X) if i != k)...)
+        Xp = permutedims(X, perm)
+        g, W = _axis_transform(bases[k], reps[k], reshape(Xp, size(Xp, 1), :), get(points, names[k], nothing))
+        push!(grids, g)
+        X = permutedims(reshape(W, size(W, 1), size(Xp)[2:end]...), invperm(perm))
+    end
+    return NamedTuple{names}(Tuple(grids)), X
 end
 
-for f in (:phase_wavefunction, :charge_wavefunction)
+_mode_names(x::Symbol) = (x,)
+_mode_names(x) = Tuple(x)
+
+function _node_wavefunction(fname::String, default::Symbol, other, sys::System, node::Node, points, states, pts)
+    mn = materialized(sys, node)
+    all(ch -> ch isa Basis, mn.children) ||
+        throw(ArgumentError("$fname: only leaf nodes (every child a basis) are supported; the node on modes " *
+                            "$(modes(node)) has a child that is a node, so pass one of its leaves"))
+    bases, names = Tuple(mn.children), Tuple(modes(node))
+    if pts !== nothing
+        length(names) == 1 || throw(ArgumentError("$fname: a node with several modes takes its points per mode, " *
+                                                  "e.g. points = ($(names[end]) = φs,)"))
+        points = NamedTuple{names}((pts,))
+    end
+    flip = default === :phase ? :charge : :phase
+    for nm in (_mode_names(other)..., keys(points)...)
+        nm in names || throw(ArgumentError("$fname: :$nm is not a mode of this node (its modes are $(collect(names)))"))
+    end
+    for (b, nm) in zip(bases, names)
+        b isa FockBasis && !haskey(points, nm) &&
+            throw(ArgumentError("$fname: mode :$nm is a FockBasis, which has no grid: pass its points, e.g. points = ($nm = φs,)"))
+        !(b isa FockBasis) && haskey(points, nm) &&
+            throw(ArgumentError("$fname: mode :$nm is a $(nameof(typeof(b))), which has its own grid; points are only for a FockBasis"))
+    end
+    reps = map(nm -> nm in _mode_names(other) ? flip : default, names)
+    V = states isa Colon ? mn.vectors : mn.vectors[:, states isa Integer ? (states:states) : states]
+    length(names) == 1 && return _axis_transform(bases[1], reps[1], V, get(points, names[1], nothing))
+    return _wavefunction(bases, names, reps, V, points)
+end
+
+for (f, default, other) in ((:phase_wavefunction, :phase, :charge), (:charge_wavefunction, :charge, :phase))
     @eval begin
         $f(b::Union{ChargeBasis,PeriodicGrid,PhaseGrid}, ::AbstractVecOrMat{<:Number}, ::AbstractVector{<:Real}) =
             throw(ArgumentError($(string(f)) * ": a $(nameof(typeof(b))) has its own grid; points are only for a FockBasis"))
-        $f(sys::System, node::Node) = $f(_single_basis(sys, node, $(string(f)))...)
-        $f(sys::System, node::Node, points::AbstractVector{<:Real}) = $f(_single_basis(sys, node, $(string(f)))..., points)
-        $f(sys::System) = $f(sys, sys.root.node)
-        $f(sys::System, points::AbstractVector{<:Real}) = $f(sys, sys.root.node, points)
+        $f(sys::System, node::Node, pts::Union{Nothing,AbstractVector{<:Real}}=nothing; $other=(), points=(;), states=Colon()) =
+            _node_wavefunction($(string(f)), $(QuoteNode(default)), $other, sys, node, points, states, pts)
+        $f(sys::System, pts::Union{Nothing,AbstractVector{<:Real}}=nothing; kw...) = $f(sys, sys.root.node, pts; kw...)
     end
 end

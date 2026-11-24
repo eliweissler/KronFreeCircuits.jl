@@ -206,13 +206,13 @@ end
         @test size(ψ) == (61, 4)
     end
 
-    @testset "multi-mode nodes are not implemented yet" begin
+    @testset "branch nodes are not supported" begin
         q = dc_two_transmons()
         s2 = materialize(q.root, q.spec, q.θ)
         for f in (phase_wavefunction, charge_wavefunction)
             err = try f(s2); nothing catch e; e end
             @test err isa ArgumentError
-            @test occursin("multi-mode", err.msg) && occursin("2 children", err.msg)
+            @test occursin("leaf", err.msg)
         end
         leaf = Node([:varphi_1 => PhaseGrid(-10π, 10π, 601; order=8)]; solver=Dense(), compute=8, keep=lowest(5))
         parent = Node([leaf]; solver=Dense(), keep=lowest(3))
@@ -220,7 +220,7 @@ end
         for f in (phase_wavefunction, charge_wavefunction)
             err = try f(s1); nothing catch e; e end
             @test err isa ArgumentError
-            @test occursin("multi-mode", err.msg) && occursin("not a basis", err.msg)
+            @test occursin("leaf", err.msg)
         end
         @test size(phase_wavefunction(s1, leaf)[2]) == (601, 5)
     end
@@ -271,5 +271,90 @@ end
         @test ψ[4] == 0 && ψ[5] == 0
         @test isnan(ψ[6])
         @test 1e-3 < abs(ψ[7]) < 1                         # near the turning point, unaffected by the other rows
+    end
+end
+
+@testset "wavefunctions: multi-mode leaves" begin
+    oned(b, rep, V, pts) = pts === nothing ? (rep === :phase ? phase_wavefunction(b, V) : charge_wavefunction(b, V)) :
+                                             (rep === :phase ? phase_wavefunction(b, V, pts) : charge_wavefunction(b, V, pts))
+    function product_check(bases, names, reps, points)
+        vs = [wf_coefficients(KFC.dimension(b)) .* (k == 2 ? 1 : cis(0.3k)) for (k, b) in enumerate(bases)]
+        v = reduce((a, b) -> kron(b, a), vs)                                   # axis 1 fastest
+        axes, ψ = KFC._wavefunction(Tuple(bases), Tuple(names), Tuple(reps), reshape(v, :, 1), points)
+        ones_ = [oned(b, r, vk, get(points, nm, nothing)) for (b, nm, r, vk) in zip(bases, names, reps, vs)]
+        @test keys(axes) == Tuple(names)
+        @test all(axes[k] == ones_[k][1] for k in eachindex(names))
+        expect = reduce((a, b) -> reshape(a, size(a)..., 1) .* reshape(b, ntuple(_ -> 1, ndims(a))..., :), [o[2] for o in ones_])
+        @test size(ψ) == (size(expect)..., 1)
+        @test ψ[ntuple(_ -> Colon(), length(bases))..., 1] ≈ expect
+    end
+
+    @testset "product state, $reps" for reps in ((:phase, :phase), (:phase, :charge), (:charge, :phase), (:charge, :charge))
+        product_check([ChargeBasis(3), PhaseGrid(-4.0, 4.0, 11)], [:a, :b], reps, (;))
+        product_check([PeriodicGrid(10), FockBasis(6; phi_zpf=0.7)], [:a, :b], reps, (b = range(-3, 3; length=9),))
+    end
+
+    @testset "three modes, mixed" begin
+        product_check([ChargeBasis(2), PhaseGrid(-3.0, 3.0, 9), PeriodicGrid(11)], [:a, :b, :c], [:charge, :phase, :charge], (;))
+    end
+
+    @testset "a real result stays real, a mixed one is complex" begin
+        b = (PhaseGrid(-3.0, 3.0, 9), PeriodicGrid(10))
+        V = reshape(collect(1.0:90.0), :, 1)
+        @test eltype(KFC._wavefunction(b, (:a, :b), (:phase, :phase), V, (;))[2]) == Float64
+        @test eltype(KFC._wavefunction((ChargeBasis(2), b[1]), (:a, :b), (:phase, :phase), reshape(collect(1.0:45.0), :, 1), (;))[2]) == ComplexF64
+    end
+
+    spec = load_spec(fixture("zero_pi.json")); θz = zero_pi_params()
+    gφ = PhaseGrid(-10π, 10π, 151; order=6)
+    leaf = Node([:theta => ChargeBasis(6), :phi => gφ]; solver=Dense(), keep=lowest(4))
+    sys = @test_logs min_level=Base.CoreLogging.Warn materialize(leaf, spec, θz)       # no grid-edge warning
+    Δφ = KFC.spacing(gφ); Δn = 2π / (151Δφ)
+
+    @testset "zero-pi leaf: shapes and normalization" begin
+        axes, ψ = phase_wavefunction(sys)
+        @test keys(axes) == (:theta, :phi) && size(ψ) == (13, 151, 4)
+        @test axes.phi == KFC.coordinates(gφ)
+        @test all(s -> (2π / 13) * Δφ * sum(abs2, view(ψ, :, :, s)) ≈ 1, 1:4)
+        axes, ψ = charge_wavefunction(sys)
+        @test axes.theta == collect(-6.0:6.0)
+        @test all(s -> Δn * sum(abs2, view(ψ, :, :, s)) ≈ 1, 1:4)
+        axes, ψ = phase_wavefunction(sys; charge=(:theta,))
+        @test axes.theta == collect(-6.0:6.0) && axes.phi == KFC.coordinates(gφ)
+        @test all(s -> Δφ * sum(abs2, view(ψ, :, :, s)) ≈ 1, 1:4)
+        @test (axes, ψ) == phase_wavefunction(sys, leaf; charge=:theta)
+        @test charge_wavefunction(sys; phase=(:phi,)) == (axes, ψ)
+    end
+
+    @testset "states" begin
+        _, ψ = phase_wavefunction(sys)
+        _, ψ2 = phase_wavefunction(sys; states=2)
+        @test size(ψ2) == (13, 151, 1) && ψ2 ≈ ψ[:, :, 2:2]
+        @test phase_wavefunction(sys; states=[1, 3])[2] ≈ ψ[:, :, [1, 3]]
+    end
+
+    @testset "the keywords on a single-mode node" begin
+        p = dc_fluxonium()
+        s1 = Base.CoreLogging.with_logger(() -> materialize(p.root, p.spec, p.θ), Base.CoreLogging.NullLogger())
+        @test phase_wavefunction(s1; charge=(:varphi_1,)) == charge_wavefunction(s1)
+        @test charge_wavefunction(s1; phase=:varphi_1) == phase_wavefunction(s1)
+        φ, ψ = phase_wavefunction(s1)
+        @test phase_wavefunction(s1; states=2:3) == (φ, ψ[:, 2:3])
+    end
+
+    @testset "errors name the mode" begin
+        for (f, kw) in ((phase_wavefunction, (charge=(:nope,),)), (charge_wavefunction, (phase=(:nope,),)),
+                        (phase_wavefunction, (points=(nope=[0.0],),)))
+            err = try f(sys; kw...); nothing catch e; e end
+            @test err isa ArgumentError && occursin("nope", err.msg)
+        end
+        err = try phase_wavefunction(sys; points=(phi=[0.0],)); nothing catch e; e end
+        @test err isa ArgumentError && occursin("phi", err.msg)
+        fock = Node([:theta => ChargeBasis(6), :phi => FockBasis(40; phi_zpf=2.0)]; solver=Dense(), keep=lowest(2))
+        sf = Base.CoreLogging.with_logger(() -> materialize(fock, spec, θz), Base.CoreLogging.NullLogger())
+        err = try phase_wavefunction(sf); nothing catch e; e end
+        @test err isa ArgumentError && occursin("phi", err.msg)
+        axes, ψ = phase_wavefunction(sf; points=(phi=range(-5, 5; length=21),))
+        @test size(ψ) == (13, 21, 2) && axes.phi == collect(range(-5, 5; length=21))
     end
 end
