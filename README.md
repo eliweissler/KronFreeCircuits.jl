@@ -528,7 +528,20 @@ n, ψnF = charge_wavefunction(sysF, n)
 ```
 
 Both functions also take a basis and a vector or a matrix of column states, `phase_wavefunction(basis, V)`, and a node of a larger tree, `phase_wavefunction(sys, node)`, when that node has one basis child.
-A node with several modes throws: multi-mode wavefunctions are not implemented yet.
+On a leaf with several modes each mode is transformed along its own axis, and the result is a `NamedTuple` of grids with an array that has one axis per mode and the states last.
+`charge=` (on `phase_wavefunction`) or `phase=` (on `charge_wavefunction`) puts the named modes in the other representation, `points=` gives each `FockBasis` mode its points, and `states=` selects kept states:
+
+```julia
+spec = load_spec("test/fixtures/zero_pi.json")
+θ = (E_J=10.0, E_L=0.04, E_CJ=20.0, E_CS=0.5, varphi_ext=2π * 0.23, n_g=0.1)
+leaf = Node([:theta => ChargeBasis(6), :phi => PhaseGrid(-10π, 10π, 151)]; solver=Dense(), keep=lowest(4))
+sys = materialize(leaf, spec, θ)
+axes, ψ = phase_wavefunction(sys)                    # axes = (theta = 13 phases, phi = 151 phases); size(ψ) = (13, 151, 4)
+axes, ψ = phase_wavefunction(sys; charge=:theta)     # θ in charge (-6..6), φ in phase; Δφ Σ|ψ[:, :, s]|² = 1
+```
+
+The normalization is the product of the one-mode rules below, with weight 1 on the charges of a `ChargeBasis` or a `PeriodicGrid`.
+A branch node throws: only leaves are supported, since a branch state over several leaves on a full product grid is usually too large to hold.
 
 The values are on the basis's own grid, so nothing is interpolated or oversampled.
 
