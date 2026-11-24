@@ -223,6 +223,14 @@ end
             @test occursin("leaf", err.msg)
         end
         @test size(phase_wavefunction(s1, leaf)[2]) == (601, 5)
+        zspec = load_spec(fixture("zero_pi.json"))
+        mixed = Node([:theta => ChargeBasis(6), Node([:phi => PhaseGrid(-10π, 10π, 151; order=6)]; solver=Dense(), keep=lowest(4))];
+                     solver=Dense(), keep=lowest(3))
+        sm = Base.CoreLogging.with_logger(() -> materialize(mixed, zspec, zero_pi_params()), Base.CoreLogging.NullLogger())
+        for f in (phase_wavefunction, charge_wavefunction)
+            err = try f(sm); nothing catch e; e end
+            @test err isa ArgumentError && occursin("leaf", err.msg)
+        end
     end
 end
 
@@ -354,6 +362,10 @@ end
         sf = Base.CoreLogging.with_logger(() -> materialize(fock, spec, θz), Base.CoreLogging.NullLogger())
         err = try phase_wavefunction(sf); nothing catch e; e end
         @test err isa ArgumentError && occursin("phi", err.msg)
+        err = try phase_wavefunction(sf, [0.0]); nothing catch e; e end                    # positional points: name the Fock mode
+        @test err isa ArgumentError && occursin("(phi = ", err.msg) && !occursin("(theta = ", err.msg)
+        err = try phase_wavefunction(sys, [0.0]); nothing catch e; e end                   # no Fock mode at all
+        @test err isa ArgumentError && occursin("no FockBasis", err.msg)
         axes, ψ = phase_wavefunction(sf; points=(phi=range(-5, 5; length=21),))
         @test size(ψ) == (13, 21, 2) && axes.phi == collect(range(-5, 5; length=21))
     end

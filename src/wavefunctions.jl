@@ -52,7 +52,8 @@ in the node's mode order, and `ψ[i₁, …, i_N, s]` is state `s` at the grid p
 (the modes in `charge`, a mode name or a collection of them, to charge; the others to phase).
 A `FockBasis` mode takes its points per mode, `points = (phi = φs,)`.
 The normalization is the product of the one-mode rules, `(Π_k Δ_k) Σ |ψ[…, s]|² = 1`, where `Δ_k` is the spacing of axis
-`k` and `1` for the charges of a `ChargeBasis` or a `PeriodicGrid`.
+`k` and `1` for the charges of a `ChargeBasis` or a `PeriodicGrid`; a `FockBasis` axis is sampled at the points passed,
+so along it the sum only approximates the integral `∫|ψ|² = 1`.
 The result is real when every transform keeps the state real, `ComplexF64` otherwise.
 A leaf with one mode keeps the one-mode form `(φ, ψ)`, and its points may also be passed positionally.
 """
@@ -195,8 +196,12 @@ function _node_wavefunction(fname::String, default::Symbol, other, sys::System, 
                             "$(modes(node)) has a child that is a node, so pass one of its leaves"))
     bases, names = Tuple(mn.children), Tuple(modes(node))
     if pts !== nothing
-        length(names) == 1 || throw(ArgumentError("$fname: a node with several modes takes its points per mode, " *
-                                                  "e.g. points = ($(names[end]) = φs,)"))
+        if length(names) != 1
+            k = findfirst(b -> b isa FockBasis, bases)
+            throw(ArgumentError(k === nothing ?
+                "$fname: this leaf has no FockBasis mode, and only a FockBasis takes points; its other modes have their own grids" :
+                "$fname: a node with several modes takes its points per FockBasis mode, e.g. points = ($(names[k]) = φs,)"))
+        end
         points = NamedTuple{names}((pts,))
     end
     flip = default === :phase ? :charge : :phase
