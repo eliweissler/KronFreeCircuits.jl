@@ -152,21 +152,25 @@ There are two routes to a spec in a new frame `φ = S φ′`.
   It takes about a second, so it suits a frame fixed once, for a sweep over circuit parameters.
   `subs` replaces parameters by name with numbers, other names or SymPy expressions, and `mode_names` names the modes (default `varphi_1`, `varphi_2`, ...).
 - The loop route, `QuantizedCircuit(res; values=θ)` once and then `Spec(qc, S)` per frame, evaluates the circuit at fixed values and changes frames with NumPy, with no symbolic work; it suits a loop that optimizes the frame (about 0.13 ms per frame for the KITE).
-  `values` must give every parameter of `Spec(res)` by name, in the frame of `res`.
+  `values` must give every parameter of `Spec(res)` by name, in the frame of `res`; an unknown or missing name is an `ArgumentError` listing the circuit's parameters, and `record_json` checks its `values` by the same rule.
+  Every coefficient of the result is a constant, so nothing is compiled anywhere from the frame change through `materialize`.
 
 Both routes apply the same rule to offset charges: the gate-voltage part transforms as `Sᵀ`, and each compact mode carries its own static offset label, which noncompact modes never do.
-In the new frame the static labels are fresh parameters that reuse the names `n_g1`, `n_g2`, ... of the base frame: the value of the new label `n_g{j}` that describes the same circuit is the `j`-th entry of `S_ccᵀ n_g`, with `S_cc` the compact block of `S`.
+In the new frame the static labels are fresh parameters that reuse the names `n_g1`, `n_g2`, ... of the base frame: the value of the new label `n_g{j}` that describes the same circuit is the `j`-th entry of `S_ccᵀ n_g`, with `S_cc` the compact block of `S` and `n_g` the base frame's static offsets, not the base label's own value.
 `Spec(qc, S)` applies that rule itself; with `Spec(res; frame=S)` the caller substitutes the transformed values.
 
 ### Round-off zeroing
 
 Entries that should be zero often come out of a floating-point coordinate change as round-off, and the package would treat each as a real coupling.
 `numeric_spec`, `Spec(qc[, S])` and `Spec(res; ...)` take `zero_rtol = 1e-12` and `zero_atol = 0.0`.
-An `E_C` or `E_L` entry no larger than `max(zero_rtol * scale, zero_atol)`, with `scale` the largest magnitude in that matrix, becomes exactly zero, and so does a cosine's `omega` entry no larger than `zero_rtol` times that cosine's largest `omega` entry; `zero_rtol = 0, zero_atol = 0` turns zeroing off.
+An `E_C` or `E_L` entry no larger than `max(zero_rtol * scale, zero_atol)`, with `scale` the largest magnitude in that matrix, becomes exactly zero, and so does a cosine's `omega` entry no larger than `zero_rtol` times that cosine's largest `omega` entry (on a compact mode, times the smaller of that entry and 1); `zero_rtol = 0, zero_atol = 0` turns zeroing off.
+For example, `Spec(qc, S; zero_rtol=1e-9)` zeroes entries below `1e-9` of the matrix scale.
+On the final route the keywords are passed to circuit-quantization's `to_spec`, which zeroes only floating-point residue, and only in a fully numeric matrix: with symbolic parameters left in `E_C` or `E_L`, nothing in that matrix is zeroed.
 
 ### Run records
 
 `save_record(path, spec; circuit=res, frame, values, metadata, zero_rtol, zero_atol, check=true)` writes the record of a run, and `record_json(spec; ...)` returns its JSON text.
 The record holds the spec the run solved (so `load_spec` reads it back exactly), circuit-quantization's record of the circuit in the run's frame, this package's version and git commit, your `metadata`, and the frame, values and tolerances the spec was built with.
-With `check=true` the spec is first rebuilt from the circuit, frame, values and tolerances and compared with `spec`; a mismatch is an `ArgumentError` naming the first field that differs.
-`load_record` returns `(; result, spec, frame, values, zero_rtol, zero_atol)`, enough to rebuild the symbolic or the numeric spec.
+`values` are in the frame of `res`; in the framed circuit the record gives each fresh static offset label its transformed value `S_ccᵀ n_g`.
+With `check=true` (the default) the spec is first rebuilt from the circuit, frame, values and tolerances (by the loop route when there are values, by `Spec(res; frame)` when there are none) and compared with `spec`, to a relative `1e-9` of each matrix's scale; a mismatch, such as a spec of one frame recorded with another, is an `ArgumentError` naming the first field that differs, and `check=false` writes the record without comparing.
+`load_record` returns `(; result, spec, frame, values, zero_rtol, zero_atol)`: `Spec(rec.result; frame=rec.frame)` is the symbolic spec of the run, and `Spec(QuantizedCircuit(rec.result; values=rec.values), rec.frame; zero_rtol=rec.zero_rtol, zero_atol=rec.zero_atol)` rebuilds its numeric spec.

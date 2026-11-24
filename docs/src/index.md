@@ -24,7 +24,13 @@ It needs Julia 1.11 or later.
 
 ## A first example
 
-A transmon, from the spec that circuit-quantization writes for it:
+A transmon, from the spec that circuit-quantization writes for it.
+The example specs ship with the package, in its `test/fixtures/generated` directory; change to it to run the examples in this documentation as written:
+
+```julia
+cd(joinpath(pkgdir(KronFreeCircuits), "test", "fixtures", "generated"))
+```
+
 
 ```@example index
 using KronFreeCircuits

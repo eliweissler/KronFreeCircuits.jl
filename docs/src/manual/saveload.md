@@ -18,7 +18,8 @@ energies(sys2) == energies(sys), load_metadata(path)
 
 A system solved with a custom solver loads without that solver's code (only a new solve needs it); pass `load_system(path; solvers=[MySolver])` to get the solver itself back.
 
-`save_system(path, sys)` writes a solved `System` to a JLD2 file, and `load_system(path)` reads it back.
+## The file
+
 JLD2 files are HDF5, and this one holds only numbers, `Bool`, strings and arrays of them, so it can be read without
 KronFreeCircuits (see [Reading with h5py](#reading-with-h5py)). Files are uncompressed.
 

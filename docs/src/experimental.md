@@ -7,11 +7,10 @@ using KronFreeCircuits, KronFreeCircuits.Experimental
 ```
 
 The examples on this page are not run when the documentation is built: they take minutes, not seconds.
-The fixtures they load are in the repository's `test/fixtures`.
+The fixtures they load are in the package's `test/fixtures`, so run them from the package directory, `cd(pkgdir(KronFreeCircuits))`.
 
 ## Born–Oppenheimer reduction
 
-The Born–Oppenheimer pieces live in `KronFreeCircuits.Experimental` (not exported from the package; `using KronFreeCircuits.Experimental`).
 A slow mode can be promoted to a parameter, the fast modes diagonalized on a grid of its coordinate, and the resulting surface fitted to a one-mode reduced spec.
 The zero-pi of Di Paolo et al. (arXiv:1811.07921v1, Appendix B), with θ slow and φ fast:
 
@@ -39,7 +38,7 @@ A child can instead be solved in the mean field of its siblings, and the mean-fi
 The parent's operator is unchanged: it is projected on the new basis, so only the truncation changes.
 This is the self-consistent product-state method of the circuit-quantization paper's Appendix C.
 
-Mean field lives in `KronFreeCircuits.Experimental`; the basis augmentation it feeds (`augment`, `union_basis`, `BasisSource`, `AugmentedChild`, `augmented`) is core and public but not exported, so the example imports it by name.
+The basis augmentation it feeds (`augment`, `union_basis`, `BasisSource`, `AugmentedChild`, `augmented`) is core and public but not exported, so the example imports it by name.
 The loop is a few lines.
 The KITE in the paper's optimum frame (`test/fixtures/kite/optimum.json`, a spec of constants), with one leaf per mode keeping 20 states and two wells feeding each leaf's basis:
 

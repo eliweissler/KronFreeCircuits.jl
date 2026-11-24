@@ -120,8 +120,6 @@ within(window::Real; max::Integer=0) = Within(window, max)
 
 ports_needed(rule::Connected) = Tuple{Symbol,Port}[rule.port]
 
-# `lowest(k)` keeps every computed state when fewer than `k` were computed (a node below a windowed child can be smaller
-# than planned).
 """
     select(rule::SelectionRule, ctx::SelectionContext) -> Vector{Int}
 
@@ -129,6 +127,8 @@ The indices of the kept states among the computed eigenpairs, in the order they 
 [`SelectionRule`](@ref KronFreeCircuits.SelectionRule) adds a method.
 """
 function select end
+# `lowest(k)` keeps every computed state when fewer than `k` were computed (a node below a windowed child can be smaller
+# than planned).
 select(rule::Lowest, ctx::SelectionContext) =
     collect(1:(rule.k == 0 ? length(ctx.energies) : min(rule.k, length(ctx.energies))))
 

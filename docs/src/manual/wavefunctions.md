@@ -22,7 +22,8 @@ n, ψn = charge_wavefunction(sys)        # ψn[:, i] = ψ̃_i(n) at n_k = 2πk/(
 fock = Node([:varphi_1 => FockBasis(200; phi_zpf=(2 * 2.5 / 0.5)^0.25)]; keep=lowest(5))
 sysF = materialize(fock, spec, θ)
 _, ψF = phase_wavefunction(sysF, φ)     # a Fock basis has no grid: pass the points
-maximum(abs, ψF .- ψ)
+_, ψnF = charge_wavefunction(sysF, n)
+maximum(abs, ψF .- ψ), maximum(abs, ψnF .- ψn)
 ```
 
 The two agree to the accuracy of the discretization.
@@ -39,6 +40,8 @@ end
 Legend(fig[1, 2], ax)
 fig
 ```
+
+Both functions also take a basis and a vector or a matrix of column states, `phase_wavefunction(basis, V)`, and a leaf of a larger tree, `phase_wavefunction(sys, node)`.
 
 ## Several modes
 

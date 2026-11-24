@@ -80,9 +80,7 @@ What `derivatives` refuses or does not do:
 
 ## Gradients through ChainRules
 
-`spectrum(root, spec, θ; ports)` returns the root's `(; energies, ports)`, and the ChainRulesCore extension (loaded with the package, through its dependencies) gives it an `rrule` and an `frule`, so a loss written over energies and port elements can be differentiated by Zygote:
-
-Zygote is not a dependency of this package: add it to your own environment.
+`spectrum(root, spec, θ; ports)` returns the root's `(; energies, ports)`, and the ChainRulesCore extension (loaded with the package, through its dependencies) gives it an `rrule` and an `frule`, so a loss written over energies and port elements can be differentiated by Zygote (not a dependency of this package: add it to your own environment; checked with Zygote 0.7.16):
 
 ```julia
 using Zygote

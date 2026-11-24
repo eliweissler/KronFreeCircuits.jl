@@ -21,11 +21,16 @@ The single-mode ports: the charge `n`, `n²`, the phase `φ`, `φ²`, `exp(i k �
 Which ports a mode serves depends on its basis: a compact mode in a `ChargeBasis` has no `φ`, for example.
 """
 @doc _PORTS_DOC nport() = Port(:n, 0)
-@doc _PORTS_DOC n2port() = Port(:n2, 0)
-@doc _PORTS_DOC phiport() = Port(:phi, 0)
-@doc _PORTS_DOC phi2port() = Port(:phi2, 0)
-@doc _PORTS_DOC expiphi(k::Real) = Port(:expiphi, k)
-@doc _PORTS_DOC exp2pin(k::Real) = Port(:exp2pin, k)
+"The port `n2port()`; see [`nport`](@ref)."
+n2port() = Port(:n2, 0)
+"The port `phiport()`; see [`nport`](@ref)."
+phiport() = Port(:phi, 0)
+"The port `phi2port()`; see [`nport`](@ref)."
+phi2port() = Port(:phi2, 0)
+"The port `expiphi(k)`; see [`nport`](@ref)."
+expiphi(k::Real) = Port(:expiphi, k)
+"The port `exp2pin(k)`; see [`nport`](@ref)."
+exp2pin(k::Real) = Port(:exp2pin, k)
 
 const _POLY_PORTS = (n=nport, n2=n2port, phi=phiport, phi2=phi2port)
 

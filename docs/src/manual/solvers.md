@@ -7,7 +7,7 @@ The default, `Auto()`, picks one when the node is materialized; an explicit solv
 
 `Auto(; dense_cutoff=1000, on=Array)` resolves to:
 
-- `Dense()` for a node of at most 1000 product states;
+- `Dense()` for a node of at most 1000 product states, or when `0 < compute` and the dimension is below `3 compute + 5`, where the block solvers are unreliable;
 - `ShiftInvert()` for a larger leaf on `Array` storage;
 - `ChebyshevFilter(on=on)` for a larger leaf on device storage;
 - `LOBPCG(preconditioner=:ritz, seed=:product, on=on)` for a larger branch.
@@ -43,7 +43,7 @@ Its defaults were tested against invariant-seed traps, weak filters, crossing sw
 | up to about 10 000 states, or all eigenpairs wanted | `Dense()` |
 | a large, stiff leaf on the CPU | `ShiftInvert()` |
 | a large leaf on a GPU | `ChebyshevFilter(on=CuArray)` |
-| a branch, or a leaf with a warm start | `LOBPCG()` |
+| a branch (a leaf only with a warm start) | `LOBPCG()` |
 | a few states, when neither leaf solver fits | `Lanczos()` |
 
 A zero-pi qubit whose `(θ, φ)` leaf has 15 531 product states, beside its decoupled harmonic mode `ζ`.

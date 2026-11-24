@@ -2,6 +2,11 @@
 
 This page solves a transmon, then two coupled transmons, and shows how to read energies, operators and states.
 The specs come from [`circuit-quantization`](https://github.com/eliweissler/circuit-quantization); [Building circuits](manual/circuits.md) explains how to make your own.
+The example specs ship with the package, in its `test/fixtures/generated` directory; change to it to run the examples in this documentation as written:
+
+```julia
+cd(joinpath(pkgdir(KronFreeCircuits), "test", "fixtures", "generated"))
+```
 
 ## One transmon
 
