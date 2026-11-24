@@ -34,7 +34,7 @@ dressed_index(sys, top, (2, 1))        # dressed state that best matches bare st
 println(dressed_state_string(sys, 1))  # |ψ₁⟩ = 0.996|0,1⟩ − 0.093|1,0⟩ (physics indices from 0; latex=true for LaTeX)
 ```
 
-A term with several factors inside one child (a phase factor over several modes of a KITE, say) is applied through that child's joint port, formed in the child's product basis before its truncation (spec §20i); `port(sys, [(:varphi_1, expiphi(1)), (:varphi_4, expiphi(-1))], node)` reads one.
+A term with several factors inside one child (a phase factor over several modes of a KITE, say) is applied through that child's joint port, formed in the child's product basis before its truncation; `port(sys, [(:varphi_1, expiphi(1)), (:varphi_4, expiphi(-1))], node)` reads one.
 Selection rules are `lowest`, `indices`, `connected`, `follow`, and `within`.
 `within(window; max=0)` keeps the computed states within `window` (in the Hamiltonian's energy units) of the node's lowest, at most `max` of them: an energy cutoff instead of a count, which spends kept states where a node's spectrum is dense and makes nodes of different size comparable; `compute` must be large enough to close the window, and the rule warns when it is not.
 By default each kept state's phase makes its full-space amplitude real and positive at one point: at a leaf, its largest entry with nonnegative coordinates; at a branch, the joint peak of its dominant product component.
@@ -78,9 +78,9 @@ Its `preconditioner` is `:ritz` (adaptive per-Ritz Jacobi), `:jacobi` (fixed shi
 `guard` extra columns are converged with the block and then discarded, which makes a missed lower state unlikely without guaranteeing completeness.
 With `seed=:product` (the default), a cold block and a warm start's guard columns are the lowest product states of the separable part (`product_seed`: by summed 1D energy at a leaf, by the children's energies at a branch), perturbed by `sqrt(eps)`; `seed=:random` keeps plan 2's random block and random guards.
 On a stiff grid leaf the guard columns can set the iteration count and emit the guard warning even on a warm start.
-`guard=0` avoids this for warm leaf sweeps at the documented completeness cost; a guard stopping rule is an open item (spec §20c execution notes).
+`guard=0` avoids this for warm leaf sweeps at the documented completeness cost; a guard stopping rule is an open item.
 Both preconditioners use only the diagonal of `H`.
-They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil puts the same large constant on every diagonal entry (spec §20e): in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
+They work well at a branch, whose diagonal holds its children's energies, and poorly on a phase-grid leaf, where the kinetic stencil puts the same large constant on every diagonal entry: in the plan-2 benchmark a cold 300-state zero-pi leaf (9331 states) did not converge within the default `maxiter`, while `Dense()` took 69 s and `Lanczos()` 84 s.
 When choosing explicitly, use `ShiftInvert` (CPU) or `ChebyshevFilter` (device) at a large, stiff leaf, `LOBPCG` for branches (and for leaves only with a warm start), `Dense` for nodes up to about 10 000 states, and `Lanczos` for a few states when neither leaf solver fits.
 
 A user-defined solver subtypes `KronFreeCircuits.Solver` and needs one method, `KronFreeCircuits.solve(s, H, m)` (it may also accept `X0=nothing`, which only `LOBPCG` receives today), returning the lowest `m` energies in ascending order and orthonormal eigenvectors of the operator's element type (`eltype(H)`, real for a real node) as host arrays, with true residuals below its tolerance.
@@ -166,14 +166,13 @@ save_spec(res, "my_circuit.json")   # res: a quantization result
 
 The hand-written fixtures are cross-checked against specs generated from the corresponding lumped circuits (`test/test_generated_specs.jl`, using the committed files in `test/fixtures/generated/`).
 `test/fixtures/generate_specs.py` regenerates them; run it with circuit-quantization's Python environment only when regenerating, since Python is not a test dependency.
-The documented convention differences between the two sets are asserted in the test (spec §20g).
+The documented convention differences between the two sets are asserted in the test.
 
 ## Defining circuits from Julia
 
 A circuit can also be defined, quantized and solved in one Julia session, with no spec file passed between Python and Julia.
 circuit-quantization still does the quantization: you call its Python API from Julia through [PythonCall](https://github.com/JuliaPy/PythonCall.jl), and this package turns the result into a `Spec` in memory.
 The interface is a package extension, loaded only when PythonCall is loaded beside this package; without PythonCall the package never imports Python, and calling `circuit_quantization()` says "load PythonCall to use the circuit-quantization interface".
-The design is in spec §20j and `docs/superpowers/specs/2026-11-10-circuit-quantization-interface-design.md`.
 
 You need a Python environment with circuit-quantization installed (Python ≥ 3.11, SymPy ≥ 1.13), and PythonCall in the Julia environment you work in (`Pkg.add("PythonCall")`).
 circuit-quantization must be at commit `c8c8714` or later, which is on its branch `to-spec-zero-tolerance` until that branch is merged into its `main`: `Spec(res)` always passes the round-off zeroing keywords of that commit to circuit-quantization's `to_spec`, and `record_json` and `save_record` forward them, so all three need it, and so does the Python test tier.
@@ -300,7 +299,6 @@ port(sys, :phi, nport())                             # the charge n in the kept 
 `nport()` on a `PeriodicGrid` mode is an ordinary port in both forms of `materialize`: in `ports=` on any node, in a selection rule such as `connected`, and as a factor of a term; at the leaf it equals `KronFreeCircuits.charge_port(sys, mode)` (public, not exported), which forms the same matrix on demand.
 For a gate drive `n_g(t) = n_g + n_g^{AC}(t)` on a single mode, the Hamiltonian is `H₀ - 8 E_C n_g^{AC}(t) n̂` up to a c-number (for several modes, the drive on mode `i` is `-4 Σ_j (E_C[i,j] + E_C[j,i]) n_g,j^{AC}(t) n̂_i`), so the kept-basis `nport()` matrix is the drive operator.
 Two costs of this gauge: a grid node is real only at the literal `n_g = "0"`, and at `n_g = ½` the sweet-spot pairs are degenerate only to the discretization error, `O(Δ^order)` (order 8, free rotor: 1.1e-8 at `N = 32`, 4.4e-11 at 64, roundoff at 128; pure cos 2φ at `E_2 = 15 E_C`: 1.8e-11 and 4.3e-10 for the lowest two pairs at `N = 128`).
-The design is in spec §20d (2026-10-30) and `docs/superpowers/specs/2026-10-30-periodic-gauge-design.md`.
 
 ## Real arithmetic
 
@@ -337,7 +335,7 @@ Outputs have the node's native type.
 `ShiftInvert` follows the operator's element type (the value-based `isreal_assembled` test is gone).
 A direct `solve(LOBPCG(), H, m; X0)` with a complex `X0` on a real `H` converts an exactly real block and raises an `ArgumentError` for a complex one.
 
-In the benchmark (`docs/spikes/2026-10-18-plan3-benchmark/results.md`), the full two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×).
+In the benchmark, the full two-zero-pi tree takes 9.9 s on CPU and 5.0 s on the A4500 in real arithmetic, against 22.3 s and 13.2 s in complex arithmetic (2.3× and 2.6×) and 15.4 s and 12.6 s in plan 2b (1.55× and 2.5×).
 The `ShiftInvert` leaf on CPU gains nothing against plan 2b, which already factored the assembled real matrix; the gains are in the parent solve (2.5× CPU, 3.3× A4500), the device leaf (2.5×) and port formation (about 4×).
 
 ## Born–Oppenheimer reduction (experimental)
@@ -361,7 +359,7 @@ save_spec("zero_pi_reduced.json", F.spec; metadata=F.metadata)              # a 
 
 `slow_spec(S[1])` gives the slow spec of one surface from its Fourier coefficients instead of a fit.
 Promotion is a spec-to-spec transformation; a charge coupling between slow and fast modes is rejected, and only the single lowest surface is used (no derivative couplings).
-The reproduction (`bench_archive/born_oppenheimer/zero_pi.jl`, results in `bench_archive/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity; the design is `docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md`.
+The reproduction (`bench_archive/born_oppenheimer/zero_pi.jl`, results in `bench_archive/born_oppenheimer/results.md`) matches the published E_α and E_γ to 0.12% with E_Cφ derived from the plasma-frequency identity.
 
 ## Mean-field bases (experimental)
 
@@ -435,7 +433,7 @@ Figure 8(b) of the paper, reproduced by `bench_archive/kite_meanfield/levels.jl`
 In the normal-mode and optimum frames the levels match the reference calculation's to 1.5e-13 GHz.
 In the published frame the two wells' states coincide on one mode up to the loop's convergence residue, whose Gram–Schmidt remainders straddle the `1e-6` drop threshold, so the union depends on where the loop stopped and on round-off; that is the inferred cause of the ratios 0.9986 and 0.9726.
 `bench_archive/kite_meanfield/optimize.jl` optimizes the frame from the identity on the product energy and ends at a frame as good as the paper's optimum (two wells at −9.429473654505 GHz against −9.429473599561 on the same bases), after 150 iterations, the cap, without meeting its gradient tolerance.
-Both scripts, their runs and the measured details are in `bench_archive/kite_meanfield/README.md`; the design is `docs/superpowers/specs/2026-11-10-mean-field-augmentation-design.md`, and spec §20k records the build and where it departed from the design.
+Both scripts, their runs and the measured details are in `bench_archive/kite_meanfield/README.md`.
 
 ## Derivatives
 
@@ -508,7 +506,6 @@ Zygote.gradient(L, θ)[1]            # a NamedTuple: ∂L/∂E_J1, …, ∂L/∂
 
 The rules run `derivatives` to first order; second derivatives come from `derivatives(...; order = 2)`, not from differentiating the rule twice.
 `bench_archive/derivative_design` solves a three-parameter design problem with BFGS on this gradient.
-The design is `docs/superpowers/specs/2026-11-10-perturbative-derivatives-design.md`; spec §20l records the equations, the measurements and where the build departed from the design.
 
 ## Wavefunctions
 
@@ -571,16 +568,6 @@ Setting `KRONFREE_SLOW_TESTS=1` runs every file, about 10 minutes in all on a lo
 Run the slow tier before merging.
 A named-file run skips the testsets gated inside those files unless `KRONFREE_SLOW_TESTS=1` is also set.
 
-The [science reference catalogue](docs/science/README.md) maps package capabilities to
-versioned literature sources and reproduction targets. The default suite includes
-saved scqubits spectra and matrix elements for CPB/transmon, fluxonium, and three
-seeded circuits with irrotational flux assignments. Python is only needed to
-regenerate those fixtures. The [Appendix B BO reference](docs/science/born-oppenheimer.md)
-is implemented by the Born–Oppenheimer reduction above.
-The [KITE references](docs/science/kite.md) prepare both the inductively shunted
-experiment and the capacitively shunted protected circuit for future spectra and
-matrix-element benchmarks alongside the four-mode fluxonium coupler.
-
 The Python tier tests the circuit-quantization interface and has its own environment, `test/python`; it needs the Python environment of "Defining circuits from Julia" (with circuit-quantization at commit `c8c8714` or later) and is never included by `Pkg.test()`.
 Set the two environment variables for the `Pkg.instantiate()` too: precompiling the extension without them can make CondaPkg install a Python of its own.
 
@@ -614,34 +601,11 @@ julia --project=test/cuda test/cuda/runtests.jl
 
 Two benchmark scripts take their settings from environment variables, documented at the top of each file.
 `bench_archive/parent_solve.jl` solves the audit's stored 300 × 300 parent cold and after a 1 % coupling step, with both preconditioners; `bench_archive/end_to_end.jl` materializes two coupled zero-pis and times each stage separately.
-Results and the exact commands are in `docs/spikes/2026-10-17-plan2-benchmark/results.md`, and the rerun with the plan-2b leaf solvers (`BENCH_LEAF_SOLVER=shiftinvert`, `chebyshev` or `auto`) is in `docs/spikes/2026-10-17-plan2b-benchmark/results.md`.
-`BENCH_ARITHMETIC=auto|complex` sets `arithmetic=` on every node of `bench_archive/end_to_end.jl`'s tree; the plan-3 results and commands are in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
+`BENCH_LEAF_SOLVER=shiftinvert`, `chebyshev` or `auto` picks the leaf solver.
+`BENCH_ARITHMETIC=auto|complex` sets `arithmetic=` on every node of `bench_archive/end_to_end.jl`'s tree.
 
 ```bash
 BENCH_SMOKE=1 julia --project=. -t 1 bench_archive/end_to_end.jl                                  # reduced sizes, CPU
 BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=. -t 1 bench_archive/parent_solve.jl
 BENCH_DEVICE=gpu BENCH_FIXTURE=path/to/larger-real300-operators.bin julia --project=test/cuda -t 1 bench_archive/parent_solve.jl
 ```
-
-## Status and plans
-
-The design is in `docs/superpowers/specs/2026-10-15-kronfree-architecture-design.md`.
-Plan 1 (core CPU pipeline: spec loading, term construction, kron-free application, Dense and Lanczos solvers, selection rules, materialization, dressed/bare interface) is done.
-Plan 2 (ITensor-backed operator application, LOBPCG with adaptive Jacobi preconditioning, warm starts and physical-overlap transport, the CUDA extension) is done; its benchmark names the leaf solver and device-side port formation as the next stages to optimize.
-Plan 2b (derived operator quantities, the `ShiftInvert` and `ChebyshevFilter` leaf solvers, product-state seeding for `LOBPCG`, the `Auto()` default, the solver extension contract, and `PeriodicGrid`) is done; in its benchmark the two-zero-pi tree materializes in 15 s on CPU and 12.4 s on the A4500, against plan 2's 237 s (`docs/spikes/2026-10-17-plan2b-benchmark/results.md`).
-`Auto()`'s `dense_cutoff` was benchmarked (`bench_archive/dense_cutoff/results.md`): the iterative solvers win from about 150 to 1000 states, and it was lowered from 2500 to 1000 once `ShiftInvert`'s spurious residual-check failures were fixed; 3D leaves are tabled (spec §20e decision 8).
-KernelAbstractions compat is `0.9, 0.10`: CUDA 6 requires 0.9, so a CUDA environment resolves to 0.9, while under 0.10 the CPU backend runs the kernels through POCL.
-Plan 3 (real arithmetic by port character: `Float64` nodes, native output types, the `arithmetic` option) is done; its benchmark is in `docs/spikes/2026-10-18-plan3-benchmark/results.md`.
-Plan 4 (spec files from `circuit-quantization`, Julia side: the loader and generated cross-check fixtures) is done.
-The Born–Oppenheimer reduction (`promote_mode`, `bo_surface`, `slow_spec`, `fit_surfaces`, `save_spec`) is done; its gated test reproduces Di Paolo et al.'s E_α and E_γ.
-The circuit-quantization interface (2026-11-10: a PythonCall extension with the symbolic and loop routes to a spec in a new frame, `numeric_spec`, constant coefficients that never compile, and run records; spec §20j) is on `main` (local; not pushed as of 2026-11-11); what is done and what is open is in `docs/superpowers/STATUS.md`.
-Mean-field basis augmentation (2026-11-11: mean-field children, the self-consistent loop, union bases and augmented children; spec §20k) is on `main` (local; not pushed as of 2026-11-11); its Harmonium benchmark (design §6.2) is deferred to its own plan.
-On 2026-11-20 the Born–Oppenheimer reduction and mean field (with `mean_field_augment`) moved to the `KronFreeCircuits.Experimental` submodule (`src/experimental/`), which also holds `dmrg_levels` (an ITensorMPS extension); basis augmentation stays in the core, unexported.
-Derivatives by perturbation theory through the tree (2026-11-11: first and second derivatives, near-degenerate blocks, and the outer rule of `spectrum`; spec §20l) replace the automatic-differentiation rules that were to be plan 5; see "Derivatives" above and `docs/superpowers/STATUS.md`.
-Later plans:
-
-1. Export, caching, and NPZ output.
-2. The sweep layer (aligned secant prediction along parameter sweeps).
-3. The noise plan, which needs the spec format's `operators` and `noise_channels` sections on both the Python and the Julia side.
-
-Current state, open items and decisions pending are in `docs/superpowers/STATUS.md`.

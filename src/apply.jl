@@ -531,7 +531,7 @@ function Base.Matrix(H::KronFreeOperator)
 end
 
 # ---------------------------------------------------------------------------------------------
-# Derived quantities (spec §20e decision 2): computed when asked for, memoized on the operator in
+# Derived quantities: computed when asked for, memoized on the operator in
 # `Ref` fields that start empty, never built at construction. All are host data.
 
 """

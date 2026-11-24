@@ -4,7 +4,7 @@ using KrylovKit: KrylovKit
     Solver
 
 The abstract type of node eigensolvers: [`Auto`](@ref) (the default), `Dense`, `Lanczos`, `LOBPCG`,
-`ShiftInvert` and `ChebyshevFilter`. The contract below (spec §20e decision 6) is what a user-defined
+`ShiftInvert` and `ChebyshevFilter`. The contract below is what a user-defined
 solver implements; a user solver needs only `solve`.
 
 - `KronFreeCircuits.solve(s, H, m; X0=nothing) -> (E, V)`: the lowest `m` eigenpairs of the Hermitian
@@ -19,7 +19,7 @@ solver implements; a user solver needs only `solve`.
 - `KronFreeCircuits.resolve(s, info)` (optional, default `s`): the solver that actually runs, given
   `info = (; isleaf, dims, m)`; this is how [`Auto`](@ref) picks a solver by node shape.
 
-`H` is real (`eltype(H) <: Real`) at a node that is real by structure (spec §20f), so a user solver must accept real operators and return real `V` for them.
+`H` is real (`eltype(H) <: Real`) at a node that is real by structure, so a user solver must accept real operators and return real `V` for them.
 
 What `H` provides: `mul!(Y, H, X)` and `H * X` on vectors and blocks of any width on `storage(s)`;
 `size(H)` and `eltype(H)`; and, on the host, computed when asked for and memoized on the operator,

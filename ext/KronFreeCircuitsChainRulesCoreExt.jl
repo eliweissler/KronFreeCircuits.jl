@@ -1,6 +1,6 @@
 module KronFreeCircuitsChainRulesCoreExt
 
-# The differentiation rules of `spectrum` (design §4.6): an `rrule` and an `frule`, each running the first-order
+# The differentiation rules of `spectrum`: an `rrule` and an `frule`, each running the first-order
 # upward passes of `derivatives` once and contracting them with the cotangent or the tangent.
 # The convention for complex outputs is that of `spectrum`'s docstring.
 

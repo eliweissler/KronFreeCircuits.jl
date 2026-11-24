@@ -8,8 +8,7 @@ using Test, LinearAlgebra, KronFreeCircuits
 const KITE_SYM = load_spec(fixture("kite/optimum_symbolic.json"))
 # The bases are the mean-field reference calculation's on the optimum frame (test/fixtures/kite/meanfield_reference.json,
 # `optimum.grid`: charge cutoff 16, extents 18.915907192616967 and 17.714011073078225, 120 points); twelve states per leaf
-# and the root's compute = 6, keep = lowest(4) are the plan's settings (docs/superpowers/plans/2026-11-11-perturbative-
-# derivatives.md); the reason for them is not recorded.
+# and the root's compute = 6, keep = lowest(4) are the original plan's settings; the reason for them is not recorded.
 # `compact` is the number of states kept on the compact leaf: at n_g1 = 0 its charge states come in degenerate pairs,
 # which twelve split and eleven or thirteen do not.
 function kite_deriv_tree(solver; retain=:auto, compact::Int=12)

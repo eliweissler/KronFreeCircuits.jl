@@ -1,5 +1,4 @@
-# Charge and phase wavefunctions of a single mode, in the convention ⟨φ|n⟩ = e^{inφ}/√2π
-# (docs/superpowers/specs/2026-11-15-wavefunction-transforms-design.md).
+# Charge and phase wavefunctions of a single mode, in the convention ⟨φ|n⟩ = e^{inφ}/√2π.
 
 const KFC = KronFreeCircuits
 

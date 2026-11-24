@@ -39,3 +39,7 @@ bench_archive/kite_frames/results/
 
 # Results written by bench_archive/kite_meanfield/optimize.jl
 bench_archive/kite_meanfield/results/
+
+# Development notes (design specs, plans, spikes) stay local; backups live outside the repo
+docs/superpowers/
+docs/spikes/

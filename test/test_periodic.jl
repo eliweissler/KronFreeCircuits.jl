@@ -1,4 +1,4 @@
-# Plane-wave symbols of the order-`order` cyclic stencils (design §4.5): n e^{ikφ} = σ₁(k) e^{ikφ}, n² e^{ikφ} = σ₂(k) e^{ikφ}
+# Plane-wave symbols of the order-`order` cyclic stencils: n e^{ikφ} = σ₁(k) e^{ikφ}, n² e^{ikφ} = σ₂(k) e^{ikφ}
 function periodic_symbols(order)
     w1 = KronFreeCircuits.fd_weights(order, 1); w2 = KronFreeCircuits.fd_weights(order, 2); h = order ÷ 2
     σ1(k, Δ) = sum(w1[j+h+1] * sin(j * k * Δ) for j in -h:h) / Δ
@@ -24,7 +24,7 @@ end
     end
 end
 
-@testset "n_g = ½: the sweet-spot pairs split by the discretization, at order 8 (design §4.5)" begin
+@testset "n_g = ½: the sweet-spot pairs split by the discretization, at order 8" begin
     spec = load_spec(fixture("transmon.json")); σ1, σ2 = periodic_symbols(8)
     split = Float64[]; predicted = Float64[]
     for N in (32, 64, 128)
@@ -55,7 +55,7 @@ end
     # the cyclic BandedOps in the sparse assembly used by ShiftInvert
     @test sparse(KronFreeCircuits.operator(sp)) ≈ Matrix(KronFreeCircuits.operator(sp))
     @test_throws ArgumentError KronFreeCircuits.charge_port(sp, :nope)
-    # structure decides: a parameter n_g is complex; the literal "0" is real; the literal "0.5" is complex (design §4.4)
+    # structure decides: a parameter n_g is complex; the literal "0" is real; the literal "0.5" is complex
     leaf(b; kw...) = Node([:varphi_1 => b]; solver=Dense(), keep=lowest(6), kw...)
     lit(v) = parse_spec(replace(read(fixture("transmon.json"), String), "\"n_g\": [\"n_g\"]" => "\"n_g\": [\"$v\"]"))
     s0 = materialize(leaf(PeriodicGrid(128); ports=[(:varphi_1, nport())]), lit("0"), (E_J=20.0, E_C=1.0))
@@ -90,7 +90,7 @@ end
     parity = [real(dot(V[:, j], T * V[:, j])) for j in 1:8]
     @test all(abs.(abs.(parity) .- 1) .< 1e-6) && any(>(0.5), parity) && any(<(-0.5), parity)
     # at n_g = ½ the two sectors are degenerate (k ↦ 1 - k): exactly in the charge basis (6e-14), on the grid only to
-    # O(Δ⁸) (design §1, "What it costs"); measured pairs (1,2), (3,4), (5,6): N = 64: 4.5e-9, 1.1e-7, 8.0e-7;
+    # O(Δ⁸); measured pairs (1,2), (3,4), (5,6): N = 64: 4.5e-9, 1.1e-7, 8.0e-7;
     # N = 128: 1.8e-11, 4.3e-10, 3.3e-9; N = 256: 1.3e-12, 2.1e-12, 1.4e-11 (about 2⁸ per doubling, then roundoff)
     θ½ = (E_C=1.0, n_g=0.5, E_1=0.0, E_2=15.0)
     E½ = energies(materialize(Node([:phi => b]; solver=Dense(), keep=lowest(8)), spec, θ½))

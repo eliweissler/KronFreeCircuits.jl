@@ -1,4 +1,4 @@
-# ShiftInvert leaf solver (spec §20e decision 3): KrylovKit Lanczos on (H − σI)⁻¹ with H − σI
+# ShiftInvert leaf solver: KrylovKit Lanczos on (H − σI)⁻¹ with H − σI
 # factored directly (CHOLMOD Cholesky, or UMFPACK LU) from the assembled sparse matrix, in real
 # arithmetic when the operator is real (`eltype(H) <: Real`). The Krylov tolerance applies to the inverted
 # operator; one step of block inverse iteration polishes the pairs, and acceptance is the true residual against the

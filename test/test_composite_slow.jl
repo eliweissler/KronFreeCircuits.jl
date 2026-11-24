@@ -32,7 +32,7 @@ function allowing(rx, f)
 end
 
 # With `c` on a `ChargeBasis` and `e` on a `PhaseGrid` (and `h` on a Fock basis), the cosine's terms have no conjugate image
-# in the term list, so the tree classifies complex (architecture spec §20f).
+# in the term list, so the tree classifies complex.
 @testset "mixed bases, both KITE signs, π and generic offsets" begin
     using KronFreeCircuits: dense, localop
     θ = (E_C=1.0, E_J=2.0, E_L=0.5)

@@ -1,4 +1,4 @@
-# Pathological-case catalogue (docs/spikes/2026-10-16-pathological-test-catalogue/README.md):
+# Pathological-case catalogue:
 # whole-pipeline regressions before Plan 2 acceptance, one testset per case identifier.
 # Every reference is assembled independently of the apply routines (`primitive_hamiltonian`, closed
 # forms, explicit Kronecker products); the larger versions are gated in test_zero_pi_reference.jl.

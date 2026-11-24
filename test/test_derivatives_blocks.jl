@@ -43,7 +43,7 @@ end
     @test bm.states == [1, 2] && haskey(bm.H2, (:E_1, :n_g)) && haskey(bm.H2, (:n_g, :n_g)) && haskey(bm.H1, :n_g)
     θd = merge(c.θ, (E_1=0.03, n_g=0.492))
     @test block_levels(bm, (E_1=0.03, n_g=0.002)).energies ≈ energies(dc_solve(c, θd)) atol=1e-6
-    # the block report does not alter the point derivatives (design §4.4): the same numbers with and without `scale`
+    # the block report does not alter the point derivatives: the same numbers with and without `scale`
     plain = derivatives(sys; wrt=(:E_1, :n_g), order=2, mixed=((:E_1, :n_g),))
     for x in (:E_1, :n_g)
         @test energies(d, x) == energies(plain, x) && eigenvectors(d, x) == eigenvectors(plain, x)

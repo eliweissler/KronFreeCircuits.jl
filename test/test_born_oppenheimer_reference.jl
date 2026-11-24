@@ -1,5 +1,4 @@
-# Gated (KRONFREE_SLOW_TESTS=1): the zero-pi Born–Oppenheimer reproduction of Di Paolo et al., arXiv:1811.07921v1, Appendix B
-# (design §7 of docs/superpowers/specs/2026-10-19-born-oppenheimer-design.md; bench_archive/born_oppenheimer/results.md).
+# Gated (KRONFREE_SLOW_TESTS=1): the zero-pi Born–Oppenheimer reproduction of Di Paolo et al., arXiv:1811.07921v1, Appendix B.
 # The settings and inputs come from the reference fixture written by bench_archive/born_oppenheimer/zero_pi.jl
 # (producer `independent BO numerics`); the published coefficients are compared against, never stored as results.
 using KronFreeCircuits.Experimental                                   # experimental: mean field, Born–Oppenheimer

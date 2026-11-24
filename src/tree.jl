@@ -44,7 +44,7 @@ through its public interface only.
   recoverable in practice; they are not a completeness guarantee. The guard shrinks so that the
   block fits `N ≥ 3(m + guard) + 5`. On a stiff grid leaf the guard columns can set the
   iteration count and emit the guard warning even on a warm start; `guard=0` avoids this for warm leaf sweeps at the documented completeness cost.
-  A guard stopping rule is an open item (spec §20c execution notes).
+  A guard stopping rule is an open item.
 - `seed`: `:product` starts the whole block of `m + guard` columns from
   [`product_seed`](@ref KronFreeCircuits.product_seed) (the lowest product states of the separable part, no
   random columns), `:random` from a random block. The product seed is perturbed like `X0` (below). A previous
@@ -90,7 +90,7 @@ LOBPCG(; tol=1e-8, maxiter=1000, preconditioner=:ritz, eta=0.01, guard=4, seed=:
     ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdim=0, maxiter=100,
                 block=1, slices=1, certify=:auto, maxnnz=10^8)
 
-Leaf solver on the CPU (spec §20e decision 3): Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
+Leaf solver on the CPU: Lanczos on `(H − σI)⁻¹`, with `H − σI` factored
 directly from the assembled sparse matrix `sparse(H; maxnnz)`.
 Arithmetic follows the operator's element type: real when `eltype(H) <: Real`, complex otherwise.
 
@@ -202,7 +202,7 @@ ShiftInvert(; tol=1e-8, shift=:auto, shift_margin=5.0, inner_tol=1e-13, krylovdi
     ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, ortho=:svqb,
                     bound=:gershgorin, seed=:product, on=Array, callback=nothing)
 
-Block leaf solver (spec §20e decision 3): Chebyshev-filtered subspace iteration (Zhou–Saad ChFSI) on
+Block leaf solver: Chebyshev-filtered subspace iteration (Zhou–Saad ChFSI) on
 the package operator, on the host or a device. Each iteration applies to the unlocked columns of a
 block of `nb = m + extra` columns (capped at the dimension) the degree-`degree` Chebyshev polynomial
 of the first kind on the unwanted interval `[λ_cut, λ_max]` mapped to `[−1, 1]`, which damps that
@@ -324,7 +324,7 @@ ChebyshevFilter(; tol=1e-8, degree=100, extra=40, maxiter=50, rescale_every=20, 
     Auto(; dense_cutoff=1000, on=Array)
 
 The default solver of every [`Node`](@ref): it picks a solver for the node at materialization, from
-the node's kind, product dimension and storage (spec §20e decision 5).
+the node's kind, product dimension and storage.
 
 - `Dense()` when the product dimension `N` is at most `dense_cutoff`, or when `0 < compute` and `N < 3 compute + 5`,
   where the block solvers are unreliable (a node whose children kept their states by an energy window can be small

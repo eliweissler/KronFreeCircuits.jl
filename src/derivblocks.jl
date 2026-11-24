@@ -1,4 +1,4 @@
-# Near-degenerate blocks (design §4.4): where the second-order Taylor expansion of the kept levels cannot be trusted over
+# Near-degenerate blocks: where the second-order Taylor expansion of the kept levels cannot be trusted over
 # the caller's scale of a parameter, and the effective Hamiltonian that replaces it there.
 
 """

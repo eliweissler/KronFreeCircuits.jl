@@ -882,7 +882,7 @@ end
     @test P.eta isa Float32
 end
 
-# ---- Pathological-test catalogue (docs/spikes/2026-10-16-pathological-test-catalogue), Task 4 cases ----
+# ---- Pathological-test catalogue, Task 4 cases ----
 
 # A single-axis operator from a dense Hermitian matrix (independent of the operator under test).
 dense_axis_operator(A::AbstractMatrix) = KronFreeOperator([size(A, 1)], [AxisTerm(1.0, [(1, DenseOp(A))])])

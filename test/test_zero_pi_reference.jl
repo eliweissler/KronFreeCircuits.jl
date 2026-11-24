@@ -79,7 +79,7 @@ end
     @test maximum(abs.(energies(sys) .- ref.energies)) < 1e-6            # different stencils, both converged (observed 5.9e-11)
 end
 
-# ---- Pathological-case catalogue, larger versions (docs/spikes/2026-10-16-pathological-test-catalogue) ----
+# ---- Pathological-case catalogue, larger versions ----
 # Each references an independently assembled primitive operator (`primitive_hamiltonian` in helpers.jl)
 # or an analytic oracle, never the apply routines.  Work measurements (H columns, times, failures) are
 # collected in CATALOGUE_SLOW for the outcomes record; they are observations, not assertions.

@@ -1,5 +1,5 @@
 # ChebyshevFilter: Chebyshev-filtered block subspace iteration (Zhou–Saad ChFSI) on the package
-# operator, host or device (spec §20e decision 3). The block, its image under H and the recurrence
+# operator, host or device. The block, its image under H and the recurrence
 # scratch stay on the solver's storage; only nb × nb matrices (Gram, Rayleigh–Ritz, rotations) and
 # 1 × nb rows (column norms, Ritz values) cross to the host, plus the seed going in and the result
 # coming out. Acceptance is the true residual against the package operator.

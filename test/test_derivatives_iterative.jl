@@ -23,7 +23,7 @@ tree(solver; kw...) = dc_two_transmons(; leafkeep=12, solver, compute=8, keep=lo
         @test all(s -> s.iterations < 5000 && s.residual <= 1e-9 && isempty(s.at_floor), di.linear_solves)   # 10 · lintol
         worst = max(worst, maximum(s.iterations for s in di.linear_solves))
     end
-    # a complex node (design §5.1): periodic grids make the leaves and the root complex; the ports include expiphi
+    # a complex node: periodic grids make the leaves and the root complex; the ports include expiphi
     for x in (:g, :n_g1)
         di = same_derivatives(tree(LOBPCG(tol=1e-11); periodic=true), tree(Dense(); periodic=true), x)
         worst = max(worst, maximum(s.iterations for s in di.linear_solves))
