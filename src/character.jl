@@ -25,7 +25,7 @@ _paired_char(p::Port) = iszero(p.k) ? _real_char(p) : PortCharacter(:paired, Por
     character(b::Basis, p::Port) -> PortCharacter
     character(g::GivenSystem, p::Port) -> PortCharacter
 
-The conjugation character of port `p`, from the table of the architecture spec (Section 20f).
+The conjugation character of port `p`, from the table in the manual's "Real arithmetic" page.
 A port the basis does not serve throws the same `ArgumentError` as `localop`.
 A `GivenSystem`'s character is read exactly from its stored operator.
 """
@@ -236,7 +236,7 @@ end
     classify(root, routed, constant, θ) -> IdDict{Node,Bool}
 
 Which nodes of the tree run in real arithmetic (`true`), decided bottom-up from the term list and the tree, never from
-the values in `θ` (the node test of the architecture spec, Section 20f).
+the values in `θ` (see the manual's "Real arithmetic" page).
 A node is real when its `arithmetic` is not `:complex`, every node below it is real, every factor of its `routed` terms
 has a real, imaginary or paired character in its mode's leaf, every coefficient passes a syntactic real-analyticity gate
 (no `abs` or `sign`; no `sqrt`, `log` or non-integer-literal `^` of a possibly complex argument), and for every factor key

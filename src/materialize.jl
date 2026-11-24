@@ -4,7 +4,7 @@
 """
     Retained{T}
 
-What a node's solve computed beyond its kept vectors (the `retained` field of [`MaterializedNode`](@ref)).
+What a node's solve computed beyond its kept vectors (the `retained` field of `MaterializedNode`).
 `energies` are every computed eigenvalue, in the solver's ascending order; the node's `kept` indexes them.
 `unkept` are the increasing indices among them that were not kept.
 `vectors` are the unkept eigenvectors, one column per entry of `unkept`, as the solver returned them (no phase fixed), or `nothing` when the node does not retain them (its `retain` option, see [`Node`](@ref)).
@@ -48,7 +48,7 @@ eigenpairs.  `ports[(mode, port)]` is the port operator in the kept eigenbasis.
 key's character; every key has two or more factors.
 Each costs `kept²` of memory, plus two product-basis scratch blocks while it is formed.
 `children` holds, in axis order, the child's `Basis` or `MaterializedNode`.
-Ports have their natural type (spec Section 20f, "Outputs"): on a real node a real-character port is a
+Ports have their natural type: on a real node a real-character port is a
 `Matrix{Float64}` and an imaginary, paired or general one a `Matrix{ComplexF64}`; on a complex node every port is a
 `Matrix{ComplexF64}`.
 A [`GivenSystem`](@ref) child is materialized as a `MaterializedNode{Float64}` whose `node` is the given
@@ -131,7 +131,7 @@ delegates to the second, which takes a user-built (filtered, transformed) term l
 `constant`.
 The second checks every `PeriodicGrid` against the harmonics `k` of every `expiphi(k)` factor on its
 mode in the term list (the spec's cosines and `extra_terms` alike): `k` must be an integer and
-divide the grid size ([`check_sectors`](@ref)).
+divide the grid size (`check_sectors`).
 
 The constant is added at the root only: the `energies` of every child node exclude it.
 `previous`, a `System` of the same tree, supplies each node's previous solution (same tree
@@ -142,7 +142,7 @@ padded on the right with random columns to `compute` or truncated to it; a node 
 changed starts cold.
 Only the kept vectors seed it, so when `compute > keep` the remaining columns start random and the
 block is only partially warm.
-A node that retains (its `retain` option, see [`Node`](@ref)) also stores the vectors its solver computed but did not keep, and every node stores all its computed energies (the `retained` field of [`MaterializedNode`](@ref)); a retaining `Dense` node computes its full decomposition and stores the whole spectrum.
+A node that retains (its `retain` option, see [`Node`](@ref)) also stores the vectors its solver computed but did not keep, and every node stores all its computed energies (the `retained` field of `MaterializedNode`); a retaining `Dense` node computes its full decomposition and stores the whole spectrum.
 The `follow` rule and the `:follow` phase compare physical overlaps: the previous kept vectors are
 first transported into the current product basis through the overlaps of the previous and current
 child kept states, computed recursively (the identity on basis axes).
@@ -162,7 +162,7 @@ option; see [`Node`](@ref)); a node with `arithmetic = :real` whose structure do
 throws an `ArgumentError`.
 
 A term routed to a branch node with two or more factors inside the same child is applied through that child's joint
-port (`joint_ports` of [`MaterializedNode`](@ref)): the operator `V† (⊗ₐ Oₐ) V` of those factors, formed in the child's
+port (`joint_ports` of `MaterializedNode`): the operator `V† (⊗ₐ Oₐ) V` of those factors, formed in the child's
 product basis before its projection onto the kept states, never a product of separately projected single ports.
 A term with two or more factors on one mode throws an `ArgumentError`.
 
@@ -248,7 +248,7 @@ end
 
 # Every `PeriodicGrid` child against the harmonics `k` of every `expiphi(k)` factor `(mode, port)` on its mode, over
 # the whole term list (the spec's cosines and any extra terms alike): each `k` must be an integer and divide
-# the grid size ([`check_sectors`](@ref)).
+# the grid size (`check_sectors`).
 function _check_periodic_harmonics(root::Node, factors)
     for (mode, b) in _tree_bases(root)
         b isa PeriodicGrid || continue
@@ -768,7 +768,7 @@ function _solve_node(node::Node, children::Vector{Any}, terms::Vector{Term}, θ:
     _dense_too_large(solver, prod(dims)) &&
         @warn("Dense node on modes $(modes(node)) has product dimension $(prod(dims)) > $_DENSE_WARN_DIM; " *
               (all(c -> c isa Basis, children) ?
-                   "this is a leaf: ShiftInvert() on the CPU or ChebyshevFilter(on=CuArray) on a GPU (or Auto()) is advised; see README" :
+                   "this is a leaf: ShiftInvert() on the CPU or ChebyshevFilter(on=CuArray) on a GPU (or Auto()) is advised; see the Solvers page of the documentation" :
                    "this is a branch: LOBPCG (or Auto()) is advised"), _id=(:kronfree_dense_large, objectid(node)), maxlog=1)
     # A retaining Dense node computes its whole spectrum, and its selection sees the lowest `m` pairs as before.
     m = _compute_count(node, dims)
@@ -1009,7 +1009,7 @@ eigenvectors(sys::System, node::Node=sys.root.node) = materialized(sys, node).ve
     port(sys, mode, p, node=root) -> Matrix{Float64} or Matrix{ComplexF64}
 
 The port `p` of `mode` in the kept eigenbasis of `node`, as stored: a `Matrix{Float64}` for a real-character port of a
-node in real arithmetic, else a `Matrix{ComplexF64}` (see [`MaterializedNode`](@ref)).
+node in real arithmetic, else a `Matrix{ComplexF64}` (see `MaterializedNode`).
 """
 function port(sys::System, mode::Symbol, p::Port, node::Node=sys.root.node)
     mn = materialized(sys, node)
@@ -1023,7 +1023,7 @@ end
     port(sys, key::AbstractVector{Tuple{Symbol,Port}}, node=root) -> Matrix{Float64} or Matrix{ComplexF64}
 
 The joint port of the factors `key`, `[(mode, port), ...]` on distinct modes of `node`, in its kept eigenbasis, as
-stored: `V† (⊗ₐ Oₐ) V`, formed before the projection (see [`MaterializedNode`](@ref)).
+stored: `V† (⊗ₐ Oₐ) V`, formed before the projection (see `MaterializedNode`).
 A key of one factor is the single port `port(sys, mode, p, node)`; a longer one is looked up in any order of its
 factors, and throws an `ArgumentError` when that joint port was not formed for `node` (only the joint ports that terms
 routed to its ancestors apply are formed).

@@ -1,4 +1,4 @@
-# A saved system is plain HDF5: read it with h5py, no KronFreeCircuits needed (docs/save-format.md).
+# A saved system is plain HDF5: read it with h5py, no KronFreeCircuits needed (the manual page "Saving and loading").
 using KronFreeCircuits: nport, expiphi
 
 @testset "save_system file read with h5py" begin

@@ -1,5 +1,11 @@
 # Single-mode bases; each hands out the named port operators as structured local operators.
 
+"""
+    Basis
+
+A single-mode basis: [`ChargeBasis`](@ref), [`PhaseGrid`](@ref), [`PeriodicGrid`](@ref) or [`FockBasis`](@ref).
+A basis hands out the ports it serves as [`LocalOp`](@ref KronFreeCircuits.LocalOp)s.
+"""
 abstract type Basis end
 
 """

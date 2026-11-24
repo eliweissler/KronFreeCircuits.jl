@@ -4,7 +4,7 @@
     NodeDerivative{T}
 
 The derivative data of one node along one parameter (first order) or one pair of parameters (second order); it mirrors
-[`MaterializedNode`](@ref), with `T` the node's element type.
+`MaterializedNode`, with `T` the node's element type.
 `energies` are the derivatives of the kept energies, `vectors` those of the kept vectors (`prod(dims) × nkept`).
 `gauge[j]` is `Im⟨ψ_j|∂ψ_j⟩` of kept state `j` (zero on a real node).
 `ports` and `joint_ports` have the keys and element types of the node's own, each the derivative of that port.

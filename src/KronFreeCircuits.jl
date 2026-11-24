@@ -14,7 +14,7 @@ using GSL: GSL
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-# The everyday workflow (see the README).
+# The everyday workflow (see the documentation).
 export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitute, promote_mode, Coefficient, Port,
        nport, n2port, phiport, phi2port, expiphi, exp2pin, Factor, Term, circuit_terms, ChargeBasis, PhaseGrid,
        PeriodicGrid, FockBasis, Node, Auto, Dense, Lanczos, LOBPCG, ShiftInvert, ChebyshevFilter, lowest, indices,

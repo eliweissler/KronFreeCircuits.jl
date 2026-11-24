@@ -1,0 +1,35 @@
+# Builds the documentation site on every push to main, every tag and every pull request, and deploys main (as `dev`)
+# and each release tag (as `stable` and its version) to the gh-pages branch, which GitHub Pages serves.
+name: Documentation
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  actions: write    # julia-actions/cache deletes old caches
+  contents: write   # deploydocs pushes to gh-pages
+  statuses: write
+
+jobs:
+  build:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+      - name: Install the docs environment
+        run: julia --color=yes --project=docs -e 'using Pkg; Pkg.instantiate()'
+      - name: Build and deploy
+        run: julia --color=yes --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

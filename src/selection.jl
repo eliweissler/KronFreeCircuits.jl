@@ -44,26 +44,30 @@ end
 SelectionContext(energies, vectors, ports, previous) =
     SelectionContext(energies, vectors, ports, previous, previous === nothing ? nothing : previous.vectors)
 
-"Keep the eigenstates at the given indices, in the given order."
 struct Indices <: SelectionRule
     list::Vector{Int}
 end
+"""
+    indices(list)
+
+Keep the computed eigenstates at the given indices, in the given order.
+"""
 indices(v::AbstractVector{<:Integer}) = Indices(collect(Int, v))
 
-"""
-    connected(core, (mode, port), thresh)
-    connected(; core, port, thresh)
-
-Keep `core` plus every state reachable from it through matrix elements of `port` on `mode`
-with modulus above `thresh`, iterated to closure, sorted (Eli's `trunc_by_thresh`).
-In the keyword form `port` is either `(mode::Symbol, p::Port)` or `(kind::Symbol, mode::Symbol)`
-with `kind` one of `:n, :n2, :phi, :phi2, :expiphi, :exp2pin`.
-"""
 struct Connected <: SelectionRule
     core::Vector{Int}
     port::Tuple{Symbol,Port}
     thresh::Float64
 end
+"""
+    connected(core, (mode, port), thresh)
+    connected(; core, port, thresh)
+
+Keep `core` plus every state reachable from it through matrix elements of `port` on `mode`
+with modulus above `thresh`, iterated to closure, sorted.
+In the keyword form `port` is either `(mode::Symbol, p::Port)` or `(kind::Symbol, mode::Symbol)`
+with `kind` one of `:n, :n2, :phi, :phi2, :expiphi, :exp2pin`.
+"""
 connected(core::AbstractVector{<:Integer}, port::Tuple{Symbol,Port}, thresh::Real) =
     Connected(unique(Int.(core)), port, Float64(thresh))
 connected(; core::AbstractVector{<:Integer}, port::Tuple{Symbol,Union{Symbol,Port}}, thresh::Real) =
@@ -72,6 +76,10 @@ connected(; core::AbstractVector{<:Integer}, port::Tuple{Symbol,Union{Symbol,Por
 _mode_port(p::Tuple{Symbol,Port}) = p
 _mode_port((kind, mode)::Tuple{Symbol,Symbol}) = (mode, port_of_kind(kind))
 
+struct Follow <: SelectionRule
+    reference::Union{Nothing,NodeMatrix}
+    minoverlap::Float64
+end
 """
     follow(reference=nothing; minoverlap=0.5)
 
@@ -85,13 +93,18 @@ decreasing `|⟨ref|cur⟩|`, a pair being assigned when both states are still f
 A warning lists the reference states whose assigned overlap is below `minoverlap`.
 A node with this rule defaults to the `:follow` phase convention.
 """
-struct Follow <: SelectionRule
-    reference::Union{Nothing,NodeMatrix}
-    minoverlap::Float64
-end
 follow(reference::Union{Nothing,AbstractMatrix}=nothing; minoverlap::Real=0.5) =
     Follow(reference === nothing ? nothing : copy(_node_matrix(reference)), Float64(minoverlap))
 
+struct Within <: SelectionRule
+    window::Float64
+    max::Int
+    function Within(window::Real, max::Integer)
+        window >= 0 && isfinite(window) || throw(ArgumentError("within: window must be nonnegative and finite, got $window"))
+        max >= 0 || throw(ArgumentError("within: max must be nonnegative, got $max"))
+        return new(Float64(window), Int(max))
+    end
+end
 """
     within(window; max=0)
 
@@ -103,21 +116,19 @@ the user, and `compute` only has to be large enough to close the window.
 When the highest computed state still lies inside the window (and no `max` has been reached) the window is not closed:
 the rule warns that `compute` should be raised, and keeps every computed state.
 """
-struct Within <: SelectionRule
-    window::Float64
-    max::Int
-    function Within(window::Real, max::Integer)
-        window >= 0 && isfinite(window) || throw(ArgumentError("within: window must be nonnegative and finite, got $window"))
-        max >= 0 || throw(ArgumentError("within: max must be nonnegative, got $max"))
-        return new(Float64(window), Int(max))
-    end
-end
 within(window::Real; max::Integer=0) = Within(window, max)
 
 ports_needed(rule::Connected) = Tuple{Symbol,Port}[rule.port]
 
 # `lowest(k)` keeps every computed state when fewer than `k` were computed (a node below a windowed child can be smaller
 # than planned).
+"""
+    select(rule::SelectionRule, ctx::SelectionContext) -> Vector{Int}
+
+The indices of the kept states among the computed eigenpairs, in the order they are kept. A custom
+[`SelectionRule`](@ref KronFreeCircuits.SelectionRule) adds a method.
+"""
+function select end
 select(rule::Lowest, ctx::SelectionContext) =
     collect(1:(rule.k == 0 ? length(ctx.energies) : min(rule.k, length(ctx.energies))))
 

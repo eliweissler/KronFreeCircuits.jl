@@ -199,7 +199,7 @@ is chosen here; the device saved in the file is only recorded, see [`load_node`]
 `nothing`. A node solved with a custom solver gets that solver back when its type is in `solvers` (for example
 `solvers=[MySolver]`) and all its settings were saved, and otherwise a [`SavedSolver`](@ref) holding its name and
 settings: the saved results, ports and derivatives work without the solver's code, and only a new solve needs it.
-The layout is described in `docs/save-format.md`.
+The file layout is described in the manual page "Saving and loading".
 """
 function load_system(path::AbstractString; on=Array, solvers=())
     table = Dict{String,Type}(string(nameof(T)) => T for T in solvers)

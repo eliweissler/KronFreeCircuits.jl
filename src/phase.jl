@@ -5,7 +5,7 @@ Fix the global phase of each column of `V` in place and return `V`.
 `:positive_sector` makes the largest-modulus entry among `mask` real and positive
 (falling back to the global largest entry, with a warning, if the column has no weight on `mask`).
 `:follow` makes the overlap with the matching `reference` column real and positive.
-On real `V` both reduce to signs (spec Section 20f): the peak entry is made positive, and the column is multiplied by the
+On real `V` both reduce to signs: the peak entry is made positive, and the column is multiplied by the
 sign of the real part of the overlap (`+1` when it is zero), so real vectors stay real; `reference` may be of either
 element type.
 """

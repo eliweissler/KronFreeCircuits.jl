@@ -1,4 +1,22 @@
-# Save-file format (version 1)
+# Saving and loading
+
+`save_system(path, sys)` writes a solved `System` to a JLD2 (HDF5) file, and `load_system(path; on=Array)` reads it back, ready for `energies`, `port`, derivatives and the QuantumToolbox functions.
+`load_metadata`, `system_nodes` and `load_node` read your notes or one node without loading the rest.
+
+```@example save
+using KronFreeCircuits
+spec = load_spec("two_transmons.json")
+θ = (E_J1=30.0, E_C1=1.2, n_g1=0.25, E_J2=25.0, E_C2=1.0, n_g2=0.0, g=0.3)
+leaf(i) = Node([Symbol("varphi_$i") => ChargeBasis(20)]; keep=lowest(6))
+sys = materialize(Node([leaf(1), leaf(2)]; keep=lowest(10)), spec, θ)
+
+path = joinpath(mktempdir(), "two_transmons.jld2")
+save_system(path, sys; metadata=(note="g = 0.3",))
+sys2 = load_system(path)
+energies(sys2) == energies(sys), load_metadata(path)
+```
+
+A system solved with a custom solver loads without that solver's code (only a new solve needs it); pass `load_system(path; solvers=[MySolver])` to get the solver itself back.
 
 `save_system(path, sys)` writes a solved `System` to a JLD2 file, and `load_system(path)` reads it back.
 JLD2 files are HDF5, and this one holds only numbers, `Bool`, strings and arrays of them, so it can be read without

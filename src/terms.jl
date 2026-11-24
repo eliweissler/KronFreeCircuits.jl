@@ -14,12 +14,18 @@ end
 Base.:(==)(a::Port, b::Port) = a.kind === b.kind && a.k == b.k
 Base.hash(p::Port, h::UInt) = hash(p.k, hash(p.kind, hash(:Port, h)))
 
-nport() = Port(:n, 0)
-n2port() = Port(:n2, 0)
-phiport() = Port(:phi, 0)
-phi2port() = Port(:phi2, 0)
-expiphi(k::Real) = Port(:expiphi, k)
-exp2pin(k::Real) = Port(:exp2pin, k)
+const _PORTS_DOC = """
+    nport(), n2port(), phiport(), phi2port(), expiphi(k), exp2pin(k) -> Port
+
+The single-mode ports: the charge `n`, `n²`, the phase `φ`, `φ²`, `exp(i k φ)` and `exp(2π i k n)`.
+Which ports a mode serves depends on its basis: a compact mode in a `ChargeBasis` has no `φ`, for example.
+"""
+@doc _PORTS_DOC nport() = Port(:n, 0)
+@doc _PORTS_DOC n2port() = Port(:n2, 0)
+@doc _PORTS_DOC phiport() = Port(:phi, 0)
+@doc _PORTS_DOC phi2port() = Port(:phi2, 0)
+@doc _PORTS_DOC expiphi(k::Real) = Port(:expiphi, k)
+@doc _PORTS_DOC exp2pin(k::Real) = Port(:exp2pin, k)
 
 const _POLY_PORTS = (n=nport, n2=n2port, phi=phiport, phi2=phi2port)
 

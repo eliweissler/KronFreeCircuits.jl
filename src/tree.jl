@@ -353,7 +353,7 @@ Auto(; dense_cutoff=1000, on=Array) = Auto(dense_cutoff, on)
 """
     SelectionRule
 
-A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `connected` or `follow`.
+A rule choosing which computed eigenstates a node keeps: `lowest`, `indices`, `within`, `connected` or `follow`.
 A custom rule subtypes `SelectionRule` and implements `KronFreeCircuits.select(rule, ctx::SelectionContext)`,
 returning the kept indices among the computed eigenpairs (in the order they are to be kept);
 if it inspects ports it also implements `KronFreeCircuits.ports_needed(rule)`, returning the
@@ -361,10 +361,14 @@ if it inspects ports it also implements `KronFreeCircuits.ports_needed(rule)`, r
 """
 abstract type SelectionRule end
 
-"Keep the `k` lowest eigenstates, or all computed when fewer than `k` were (`k == 0`: keep all computed)."
 struct Lowest <: SelectionRule
     k::Int
 end
+"""
+    lowest(k)
+
+Keep the `k` lowest computed eigenstates, or all computed when fewer than `k` were (`k == 0`: keep all computed).
+"""
 lowest(k::Int) = Lowest(k)
 
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
@@ -396,12 +400,12 @@ subsystem); a node's product basis has one axis per child.
 - `ports`: extra `(mode, port)` operators to form in this node's kept eigenbasis, beyond those
   its ancestors need (which are inferred).
 - `arithmetic`: `:auto` (the default) runs the node in real arithmetic when its structure guarantees a
-  real Hamiltonian at every θ (the node test of the architecture spec, Section 20f), else complex.
+  real Hamiltonian at every θ (see the manual's "Real arithmetic" page), else complex.
   `:complex` forces complex arithmetic for this node and so for every ancestor.
   `:real` asserts the node test: `materialize` throws an `ArgumentError` naming the first term whose
   conjugate image is missing when it fails.
   [`arithmetic`](@ref) reports the arithmetic a node was materialized in.
-- `retain`: whether the node keeps the eigenvectors of the states its solver computed but `keep` did not select (the `retained` field of [`MaterializedNode`](@ref)).
+- `retain`: whether the node keeps the eigenvectors of the states its solver computed but `keep` did not select (the `retained` field of `MaterializedNode`).
   `:always` retains them, `:never` stores only the computed energies, and `:auto` (the default) retains them except at a `Dense` node above 1000 product states.
   A `Dense` node that retains computes its full eigendecomposition whatever `compute` is, and still hands only the lowest `compute` pairs to `keep`.
 """

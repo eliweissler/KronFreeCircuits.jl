@@ -1,7 +1,20 @@
 # Local operators acting on one axis of a state tensor; structure is carried in the type.
 
+"""
+    LocalOp
+
+An operator on one axis of a state tensor, with its structure carried in the type: [`DenseOp`](@ref KronFreeCircuits.DenseOp),
+[`DiagonalOp`](@ref KronFreeCircuits.DiagonalOp), [`BandedOp`](@ref KronFreeCircuits.BandedOp) or
+[`ShiftOp`](@ref KronFreeCircuits.ShiftOp). `apply_axis!` applies one along an axis; `dense`, `diagonal` and `sparse`
+convert it.
+"""
 abstract type LocalOp end
 
+"""
+    DenseOp(M)
+
+A square dense matrix `M` as a [`LocalOp`](@ref KronFreeCircuits.LocalOp).
+"""
 struct DenseOp{T<:Number} <: LocalOp
     M::Matrix{T}
     function DenseOp{T}(M::Matrix{T}) where {T<:Number}
@@ -12,11 +25,21 @@ end
 DenseOp(M::Matrix{T}) where {T<:Number} = DenseOp{T}(M)
 DenseOp(A::AbstractMatrix{T}) where {T<:Number} = DenseOp(Matrix{float(T)}(A))
 
+"""
+    DiagonalOp(d)
+
+The diagonal matrix with diagonal `d` as a [`LocalOp`](@ref KronFreeCircuits.LocalOp).
+"""
 struct DiagonalOp{T<:Number} <: LocalOp
     d::Vector{T}
 end
 
-# Y[i] = sum_b weights[b][i] * X[i + offsets[b]] for 1 <= i + offsets[b] <= n
+"""
+    BandedOp(n, offsets, weights)
+
+A banded `n × n` [`LocalOp`](@ref KronFreeCircuits.LocalOp): `Y[i] = Σ_b weights[b][i] X[i + offsets[b]]` over
+`1 ≤ i + offsets[b] ≤ n`, as a finite-difference stencil on a phase grid.
+"""
 struct BandedOp{T<:Number} <: LocalOp
     n::Int
     offsets::Vector{Int}
@@ -32,7 +55,12 @@ struct BandedOp{T<:Number} <: LocalOp
 end
 BandedOp(n::Int, offsets::Vector{Int}, weights::Vector{Vector{T}}) where {T<:Number} = BandedOp{T}(n, offsets, weights)
 
-# Y[i + s] = factor * X[i] for valid indices
+"""
+    ShiftOp(n, s, factor)
+
+The `n × n` shift `Y[i + s] = factor X[i]` (for valid indices) as a [`LocalOp`](@ref KronFreeCircuits.LocalOp), as
+`exp(i k φ)` on a charge basis.
+"""
 struct ShiftOp{T<:Number} <: LocalOp
     n::Int
     s::Int
@@ -79,6 +107,11 @@ diagonal(op::DenseOp) = diag(op.M)
 diagonal(op::DiagonalOp{T}) where {T} = Vector{T}(op.d)
 diagonal(op::ShiftOp{T}) where {T} = op.s == 0 ? fill(op.factor, op.n) : zeros(T, op.n)
 
+"""
+    dense(op::LocalOp) -> Matrix
+
+The operator as a dense matrix.
+"""
 dense(op::DenseOp) = copy(op.M)
 dense(op::DiagonalOp{T}) where {T} = Matrix(Diagonal(Vector{T}(op.d)))
 function dense(op::BandedOp{T}) where {T}
@@ -122,6 +155,7 @@ The operator of the same structure type whose `Float64` data is the real (imagin
 For real data `imagpart` has zero data.
 """
 function realpart end
+@doc (@doc realpart) imagpart
 function imagpart end
 realpart(op::DenseOp) = DenseOp(Matrix{Float64}(real.(op.M)))
 imagpart(op::DenseOp) = DenseOp(Matrix{Float64}(imag.(op.M)))
