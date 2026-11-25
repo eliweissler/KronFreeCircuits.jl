@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><meta name="referrer" content="no-referrer"/><title>Tutorial: two coupled soft zero-pi qubits · KronFreeCircuits.jl</title><meta name="title" content="Tutorial: two coupled soft zero-pi qubits · KronFreeCircuits.jl"/><meta property="og:title" content="Tutorial: two coupled soft zero-pi qubits · KronFreeCircuits.jl"/><meta property="twitter:title" content="Tutorial: two coupled soft zero-pi qubits · KronFreeCircuits.jl"/><meta name="description" content="Documentation for KronFreeCircuits.jl."/><meta property="og:description" content="Documentation for KronFreeCircuits.jl."/><meta property="twitter:description" content="Documentation for KronFreeCircuits.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.63.2/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">KronFreeCircuits.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../getting_started/">Getting started</a></li><li><span class="tocitem">Manual</span><ul><li><a class="tocitem" href="../../manual/circuits/">Building circuits</a></li><li><a class="tocitem" href="../../manual/trees/">Trees and truncation</a></li><li><a class="tocitem" href="../../manual/solvers/">Solvers</a></li><li><a class="tocitem" href="../../manual/real_arithmetic/">Real arithmetic</a></li><li><a class="tocitem" href="../../manual/derivatives/">Derivatives</a></li><li><a class="tocitem" href="../../manual/wavefunctions/">Wavefunctions</a></li><li><a class="tocitem" href="../../manual/saveload/">Saving and loading</a></li><li><a class="tocitem" href="../../manual/quantumtoolbox/">Time evolution with QuantumToolbox</a></li></ul></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../soft_zero_pi/">Tutorial: a soft zero-pi qubit</a></li><li class="is-active"><a class="tocitem" href>Tutorial: two coupled soft zero-pi qubits</a><ul class="internal"><li><a class="tocitem" href="#The-circuit"><span>The circuit</span></a></li><li><a class="tocitem" href="#The-tree"><span>The tree</span></a></li><li><a class="tocitem" href="#The-spectrum"><span>The spectrum</span></a></li><li><a class="tocitem" href="#Static-ZZ-and-truncation"><span>Static ZZ and truncation</span></a></li><li><a class="tocitem" href="#Sweeping-the-coupling-capacitance"><span>Sweeping the coupling capacitance</span></a></li><li><a class="tocitem" href="#Where-next"><span>Where next</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../extending/">Extending</a></li><li><a class="tocitem" href="../../experimental/">Experimental</a></li><li><span class="tocitem">API reference</span><ul><li><a class="tocitem" href="../../api/exported/">Exported</a></li><li><a class="tocitem" href="../../api/public/">Public and experimental</a></li></ul></li><li><a class="tocitem" href="../../development/">Development</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>Tutorial: two coupled soft zero-pi qubits</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Tutorial: two coupled soft zero-pi qubits</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/eliweissler/KronFreeCircuits.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/eliweissler/KronFreeCircuits.jl/blob/main/docs/src/tutorials/two_zero_pi.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Tutorial:-two-coupled-soft-zero-pi-qubits"><a class="docs-heading-anchor" href="#Tutorial:-two-coupled-soft-zero-pi-qubits">Tutorial: two coupled soft zero-pi qubits</a><a id="Tutorial:-two-coupled-soft-zero-pi-qubits-1"></a><a class="docs-heading-anchor-permalink" href="#Tutorial:-two-coupled-soft-zero-pi-qubits" title="Permalink"></a></h1><p>This tutorial solves the two capacitively coupled soft zero-pi qubits of Liu, Weissler and Combes, <em>Two-qubit gates for the soft 0-π qubit</em>, <a href="https://arxiv.org/abs/2609.16630">arXiv:2609.16630</a>. It builds a three-level tree, reads the coupled spectrum and the static ZZ rate, checks how both converge with the truncation, and sweeps the coupling capacitance through the level crossings the paper discusses. Following the paper, the circuit has no disorder, so only the θ and φ modes of each qubit take part.</p><h2 id="The-circuit"><a class="docs-heading-anchor" href="#The-circuit">The circuit</a><a id="The-circuit-1"></a><a class="docs-heading-anchor-permalink" href="#The-circuit" title="Permalink"></a></h2><p>The paper&#39;s circuit (a) is two symmetric zero-pi qubits, each with two junctions, two superinductors, two large capacitors and a capacitance <code>C_0</code> from each node to ground, coupled through two coupler islands that connect to all four nodes of each qubit. This <a href="https://github.com/eliweissler/circuit-quantization">circuit-quantization</a> script builds it in the parameters of the paper&#39;s Table I, quantizes it in each qubit&#39;s θ, φ, ζ (the remaining directions are free and eliminated) and writes the spec:</p><pre><code class="language-python hljs">import sympy as sym
+import circuit_quantization as cq
+from circuit_quantization import Branch, Circuit, Loops, quantize
+
+# Parameters as in the paper&#39;s Table I: E_C^theta, E_C^phi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0,
+# C_phi = 2C_J + C_0), E_Cc of each coupling capacitor, E_C0 of each ground capacitor, E_L, E_J1, E_J2 (GHz).
+ECt, ECp, ECc, EC0, EL = sym.symbols(&quot;E_Ctheta E_Cphi E_Cc E_C0 E_L&quot;, positive=True)
+xJ = 2 * ECp * EC0 / (EC0 - ECp)      # each junction&#39;s capacitance C_J (1/E adds like a capacitance)
+xC = 2 * ECt * ECp / (ECp - ECt)      # each large capacitor C
+
+
+def zero_pi(q, a, b, c, d):
+    &quot;&quot;&quot;Qubit q on nodes a, b, c, d, with a capacitance C_0 from each node to ground (node 0).&quot;&quot;&quot;
+    EJ = sym.Symbol(f&quot;E_J{q}&quot;, positive=True)
+    return [Branch(f&quot;J{q}a&quot;, a, b, C=cq.ghz_to_farad(xJ), EJ=EJ),
+            Branch(f&quot;J{q}b&quot;, c, d, C=cq.ghz_to_farad(xJ), EJ=EJ),
+            Branch(f&quot;L{q}a&quot;, b, c, L=cq.ghz_to_henry(EL)),
+            Branch(f&quot;L{q}b&quot;, d, a, L=cq.ghz_to_henry(EL)),
+            Branch(f&quot;C{q}a&quot;, a, c, C=cq.ghz_to_farad(xC)),
+            Branch(f&quot;C{q}b&quot;, b, d, C=cq.ghz_to_farad(xC))] + \
+           [Branch(f&quot;C0_{n}&quot;, n, 0, C=cq.ghz_to_farad(EC0)) for n in (a, b, c, d)]
+
+
+# Circuit (a): nodes 1, 4, 5, 8 couple to island 10 and nodes 2, 3, 6, 7 to island 9.
+coupler = [Branch(f&quot;Cc_{n}_{i}&quot;, n, i, C=cq.ghz_to_farad(ECc))
+           for i, nodes in ((10, (1, 4, 5, 8)), (9, (2, 3, 6, 7))) for n in nodes]
+circuit = Circuit(zero_pi(1, 1, 2, 3, 4) + zero_pi(2, 5, 6, 7, 8) + coupler, ground=0)
+
+# Each qubit&#39;s ring (closed by L&lt;q&gt;b) carries its external flux; the capacitive loops carry none.
+fluxes = {name: 0 for name in Loops.from_circuit(circuit).names}
+for q in (1, 2):
+    fluxes[f&quot;L{q}b&quot;] = cq.phase_to_weber(-sym.Symbol(f&quot;varphi_ext{q}&quot;, real=True))
+loops = Loops.from_tree(circuit, cq.default_tree(circuit), fluxes)
+
+# Columns theta1, phi1, theta2, phi2, zeta1, zeta2 of the ten node fluxes, then the non-dynamical
+# directions: Sigma1 - Sigma2, the two coupler-island combinations and the sum of all nodes (all free).
+s = 1 / sym.sqrt(2)
+M = sym.Matrix([[1, 1, s], [-1, -1, s], [-1, 1, -s], [1, -1, -s]]) / 2      # theta, phi, zeta of one qubit
+Z = sym.zeros(10, 10)
+for q, rows in ((0, slice(0, 4)), (1, slice(4, 8))):
+    Z[rows, 2 * q], Z[rows, 2 * q + 1], Z[rows, 4 + q] = M[:, 0], M[:, 1], M[:, 2]
+Z[:, 6] = sym.Matrix([1, 1, 1, 1, -1, -1, -1, -1, 0, 0])
+Z[:, 7] = sym.Matrix([0] * 8 + [1, -1])
+Z[:, 8] = sym.Matrix([0] * 8 + [1, 1])
+Z[:, 9] = sym.ones(10, 1)
+res = quantize(circuit, loops, Z, (&quot;c&quot;, &quot;e&quot;, &quot;c&quot;, &quot;e&quot;, &quot;h&quot;, &quot;h&quot;, &quot;fr&quot;, &quot;fr&quot;, &quot;fr&quot;, &quot;fr&quot;))
+cq.save_spec(res, &quot;two_soft_zero_pi.json&quot;, mode_names=[&quot;theta1&quot;, &quot;phi1&quot;, &quot;theta2&quot;, &quot;phi2&quot;, &quot;zeta1&quot;, &quot;zeta2&quot;],
+             subs={sym.Symbol(&quot;n_g3&quot;, real=True): sym.Symbol(&quot;n_g2&quot;, real=True)})</code></pre><p>The script writes the spec that this page loads (<code>test/fixtures/generated/two_soft_zero_pi.json</code> in the repository), here with each matrix row on one line:</p><pre><code class="language-julia hljs">using KronFreeCircuits, CairoMakie
+
+json = read(&quot;two_soft_zero_pi.json&quot;, String)
+print(replace(json, r&quot;\[[^\[\]{}]*\]&quot; =&gt; row -&gt; replace(row, r&quot;\s+&quot; =&gt; &quot; &quot;)))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">{
+  &quot;format&quot;: &quot;kronfree-spec&quot;,
+  &quot;version&quot;: 1,
+  &quot;units&quot;: &quot;GHz&quot;,
+  &quot;parameters&quot;: [ &quot;E_Cc&quot;, &quot;E_Ctheta&quot;, &quot;E_Cphi&quot;, &quot;E_C0&quot;, &quot;E_L&quot;, &quot;varphi_ext1&quot;, &quot;varphi_ext2&quot;, &quot;n_g1&quot;, &quot;n_g2&quot;, &quot;E_J1&quot;, &quot;E_J2&quot; ],
+  &quot;modes&quot;: [
+    {
+      &quot;name&quot;: &quot;theta1&quot;,
+      &quot;type&quot;: &quot;c&quot;
+    },
+    {
+      &quot;name&quot;: &quot;phi1&quot;,
+      &quot;type&quot;: &quot;e&quot;
+    },
+    {
+      &quot;name&quot;: &quot;theta2&quot;,
+      &quot;type&quot;: &quot;c&quot;
+    },
+    {
+      &quot;name&quot;: &quot;phi2&quot;,
+      &quot;type&quot;: &quot;e&quot;
+    },
+    {
+      &quot;name&quot;: &quot;zeta1&quot;,
+      &quot;type&quot;: &quot;h&quot;
+    },
+    {
+      &quot;name&quot;: &quot;zeta2&quot;,
+      &quot;type&quot;: &quot;h&quot;
+    }
+  ],
+  &quot;E_C&quot;: [
+    [ &quot;(2 * E_Cc .* E_Ctheta + E_Ctheta .^ 2) ./ (2 * E_Cc + 2 * E_Ctheta)&quot;, &quot;0&quot;, &quot;E_Ctheta .^ 2 ./ (2 * E_Cc + 2 * E_Ctheta)&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;E_Cc .* E_Cphi ./ (E_Cc + E_Cphi)&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;E_Ctheta .^ 2 ./ (2 * E_Cc + 2 * E_Ctheta)&quot;, &quot;0&quot;, &quot;(2 * E_Cc .* E_Ctheta + E_Ctheta .^ 2) ./ (2 * E_Cc + 2 * E_Ctheta)&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;E_Cc .* E_Cphi ./ (E_Cc + E_Cphi)&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;2 * E_C0 .* E_Cc .* E_Cphi .* E_Ctheta ./ (E_C0 .* E_Cc .* E_Cphi - E_C0 .* E_Cc .* E_Ctheta + E_C0 .* E_Cphi .* E_Ctheta + E_Cc .* E_Cphi .* E_Ctheta)&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;2 * E_C0 .* E_Cc .* E_Cphi .* E_Ctheta ./ (E_C0 .* E_Cc .* E_Cphi - E_C0 .* E_Cc .* E_Ctheta + E_C0 .* E_Cphi .* E_Ctheta + E_Cc .* E_Cphi .* E_Ctheta)&quot; ]
+  ],
+  &quot;E_L&quot;: [
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;2 * E_L&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;2 * E_L&quot;, &quot;0&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;E_L&quot;, &quot;0&quot; ],
+    [ &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot;, &quot;E_L&quot; ]
+  ],
+  &quot;flux_linear&quot;: [ &quot;0&quot;, &quot;E_L .* varphi_ext1&quot;, &quot;0&quot;, &quot;E_L .* varphi_ext2&quot;, &quot;sqrt(2) * E_L .* varphi_ext1 / 2&quot;, &quot;sqrt(2) * E_L .* varphi_ext2 / 2&quot; ],
+  &quot;n_g&quot;: [ &quot;n_g1&quot;, &quot;0&quot;, &quot;n_g2&quot;, &quot;0&quot;, &quot;0&quot;, &quot;0&quot; ],
+  &quot;cosines&quot;: [
+    {
+      &quot;energy&quot;: &quot;E_J1&quot;,
+      &quot;omega&quot;: [ 1, 1, 0, 0, 0, 0 ],
+      &quot;offset&quot;: &quot;0&quot;
+    },
+    {
+      &quot;energy&quot;: &quot;E_J1&quot;,
+      &quot;omega&quot;: [ -1, 1, 0, 0, 0, 0 ],
+      &quot;offset&quot;: &quot;0&quot;
+    },
+    {
+      &quot;energy&quot;: &quot;E_J2&quot;,
+      &quot;omega&quot;: [ 0, 0, 1, 1, 0, 0 ],
+      &quot;offset&quot;: &quot;0&quot;
+    },
+    {
+      &quot;energy&quot;: &quot;E_J2&quot;,
+      &quot;omega&quot;: [ 0, 0, -1, 1, 0, 0 ],
+      &quot;offset&quot;: &quot;0&quot;
+    }
+  ],
+  &quot;constant&quot;: &quot;0&quot;,
+  &quot;_generator&quot;: {
+    &quot;package&quot;: &quot;circuit-quantization&quot;,
+    &quot;version&quot;: &quot;0.2.0&quot;,
+    &quot;branches&quot;: [ &quot;C1a&quot;, &quot;C1b&quot;, &quot;C0_1&quot;, &quot;C0_2&quot;, &quot;C0_3&quot;, &quot;C0_4&quot;, &quot;C2a&quot;, &quot;C2b&quot;, &quot;C0_5&quot;, &quot;C0_6&quot;, &quot;C0_7&quot;, &quot;C0_8&quot;, &quot;Cc_1_10&quot;, &quot;Cc_4_10&quot;, &quot;Cc_5_10&quot;, &quot;Cc_8_10&quot;, &quot;Cc_2_9&quot;, &quot;Cc_3_9&quot;, &quot;Cc_6_9&quot;, &quot;Cc_7_9&quot;, &quot;J1a&quot;, &quot;J1b&quot;, &quot;J2a&quot;, &quot;J2b&quot;, &quot;L1a&quot;, &quot;L1b&quot;, &quot;L2a&quot;, &quot;L2b&quot; ],
+    &quot;commit&quot;: &quot;658e3c8f94b3e83066aaf92925b1dce9e2634d09&quot;,
+    &quot;dirty&quot;: false,
+    &quot;script&quot;: &quot;test/fixtures/generate_specs.py&quot;
+  },
+  &quot;_comment&quot;: [
+    &quot;Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1: qubits on nodes 1-4 and 5-8 (branches J&lt;q&gt;a, J&lt;q&gt;b, L&lt;q&gt;a, L&lt;q&gt;b, C&lt;q&gt;a, C&lt;q&gt;b), C0_&lt;n&gt; from each qubit node to ground 0, Cc_&lt;n&gt;_&lt;i&gt; from nodes 1, 4, 5, 8 to island 10 and from 2, 3, 6, 7 to island 9; built by the script on docs/src/tutorials/two_zero_pi.md.&quot;,
+    &quot;Parameters are the paper&#39;s Table I: E_Ctheta, E_Cphi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0, C_phi = 2C_J + C_0), E_Cc, E_C0, E_L shared, E_J1, E_J2.&quot;,
+    &quot;The coupling g n_theta1 n_theta2 has g = 8 E_C[theta1, theta2]; the coupler also renormalizes E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta).&quot;,
+    &quot;Non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).&quot;,
+    &quot;Default (irrotational) flux assignment: each ring flux on L&lt;q&gt;b, flux_linear on phi_q and zeta_q.&quot;,
+    &quot;Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.&quot;
+  ]
+}</code></pre><p>The θ block of <code>E_C</code> carries the coupling, and both diagonal entries are renormalized by the coupling capacitors; the junctions give <code>E_Jq cos(±θ_q + φ_q)</code>, and each qubit&#39;s flux enters as <code>flux_linear</code> (circuit-quantization&#39;s default flux assignment, a gauge equivalent to the paper&#39;s <code>cos(φ − φ_ext/2)</code>; this page works at zero flux).</p><pre><code class="language-julia hljs">spec = load_spec(&quot;two_soft_zero_pi.json&quot;)
+[(m.name, m.type) for m in spec.modes]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">6-element Vector{Tuple{Symbol, Symbol}}:
+ (:theta1, :c)
+ (:phi1, :e)
+ (:theta2, :c)
+ (:phi2, :e)
+ (:zeta1, :h)
+ (:zeta2, :h)</code></pre><p>Each qubit (<code>1</code> or <code>2</code>) has three modes, named with its number:</p><ul><li><code>theta</code>, compact (<code>:c</code>): half the difference of the two junction phases, which are <code>θ + φ</code> and <code>−θ + φ</code>; its offset charge is <code>n_g1</code> (or <code>n_g2</code>);</li><li><code>phi</code>, extended (<code>:e</code>): the junctions&#39; common phase, which the inductors confine;</li><li><code>zeta</code>, harmonic (<code>:h</code>): an oscillator that decouples exactly in the symmetric circuit.</li></ul><p>The parameters are the paper&#39;s Table I, in GHz: qubit 1 is the device of Gyenis et al. (see <a href="../soft_zero_pi/#Tutorial:-a-soft-zero-pi-qubit">Tutorial: a soft zero-pi qubit</a>), and qubit 2 has its <code>E_J</code> lowered by 10%. <code>E_Ctheta</code> and <code>E_Cphi</code> are the charging energies of the uncoupled qubit, <code>E_Cc</code> that of each coupling capacitor and <code>E_C0</code> that of each ground capacitor:</p><pre><code class="language-julia hljs">θ = (E_Ctheta=0.092, E_Cphi=1.14, E_Cc=1.0, E_C0=1.491, E_L=0.377, E_J1=6.013, E_J2=5.412,
+     n_g1=0.0, n_g2=0.0, varphi_ext1=0.0, varphi_ext2=0.0)</code></pre><p>The coupler renormalizes each qubit&#39;s charging energies and adds the coupling <code>g n_θ1 n_θ2</code>, with <code>g = 8 E_C[θ1, θ2]</code>. The spec reproduces the paper&#39;s values: E<em>C^θ drops by about 4% and E</em>C^φ by about 50%, and g ≈ 0.031 GHz:</p><pre><code class="language-julia hljs">EC = [real(spec.E_C[i, j](θ)) for i in 1:4, j in 1:4]          # theta1, phi1, theta2, phi2
+(E_Ctheta=EC[1, 1], E_Cphi=EC[2, 2], g=8EC[1, 3])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(E_Ctheta = 0.08812454212454211, E_Cphi = 0.5327102803738318, g = 0.031003663003662998)</code></pre><h2 id="The-tree"><a class="docs-heading-anchor" href="#The-tree">The tree</a><a id="The-tree-1"></a><a class="docs-heading-anchor-permalink" href="#The-tree" title="Permalink"></a></h2><pre><code class="nohighlight hljs">                 root  (couples the qubits through g)
+               /                    \
+        qubit 1                      qubit 2
+       /       \                    /       \
+ (θ₁, φ₁)       ζ₁           (θ₂, φ₂)       ζ₂
+  leaf          leaf           leaf          leaf</code></pre><ul><li>The <code>(θ, φ)</code> leaf diagonalizes the two strongly coupled modes of one qubit together, θ in a charge basis and φ on a phase grid, and keeps its <code>k</code> lowest states.</li><li>Without disorder <code>ζ</code> is exactly decoupled. Its leaf keeps only its ground state, which removes it from the spectrum as the paper&#39;s two-mode model does.</li><li>Each qubit node combines its two leaves, and the root couples the qubits.</li></ul><pre><code class="language-julia hljs">function zpf(spec, mode, θ)                       # zero-point phase width of a harmonic mode
+    i = findfirst(m -&gt; m.name === mode, spec.modes)
+    return (2real(spec.E_C[i, i](θ)) / real(spec.E_L[i, i](θ)))^(1 / 4)
+end
+
+function tree(k; root_keep=30)
+    leaf(q) = Node([Symbol(&quot;theta$q&quot;) =&gt; ChargeBasis(20), Symbol(&quot;phi$q&quot;) =&gt; PhaseGrid(-8π, 8π, 401)];
+                   compute=k + 4, keep=lowest(k))
+    zeta(q) = Node([Symbol(&quot;zeta$q&quot;) =&gt; FockBasis(8; phi_zpf=zpf(spec, Symbol(&quot;zeta$q&quot;), θ))]; keep=lowest(1))
+    qubits = [Node([leaf(q), zeta(q)]; keep=lowest(k)) for q in 1:2]
+    return Node(qubits; compute=root_keep, keep=lowest(root_keep)), qubits
+end</code></pre><p>Each leaf has 41 × 401 = 16 441 product states, and the root <code>k²</code>. A root larger than 1000 states is solved iteratively, so it states how many eigenpairs to <code>compute</code>.</p><h2 id="The-spectrum"><a class="docs-heading-anchor" href="#The-spectrum">The spectrum</a><a id="The-spectrum-1"></a><a class="docs-heading-anchor-permalink" href="#The-spectrum" title="Permalink"></a></h2><p>With <code>k = 20</code> states per qubit:</p><pre><code class="language-julia hljs">root, qubits = tree(20)
+sys, records = KronFreeCircuits.node_timings(() -&gt; materialize(root, spec, θ))
+[(modes=r.modes, dim=r.dim, solver=r.solver, kept=r.kept) for r in records]</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">7-element Vector{@NamedTuple{modes::Vector{Symbol}, dim::Int64, solver::Symbol, kept::Int64}}:
+ (modes = [:theta1, :phi1], dim = 16441, solver = :ShiftInvert, kept = 20)
+ (modes = [:zeta1], dim = 8, solver = :Dense, kept = 1)
+ (modes = [:theta1, :phi1, :zeta1], dim = 20, solver = :Dense, kept = 20)
+ (modes = [:theta2, :phi2], dim = 16441, solver = :ShiftInvert, kept = 20)
+ (modes = [:zeta2], dim = 8, solver = :Dense, kept = 1)
+ (modes = [:theta2, :phi2, :zeta2], dim = 20, solver = :Dense, kept = 20)
+ (modes = [:theta1, :phi1, :zeta1, :theta2, :phi2, :zeta2], dim = 400, solver = :Dense, kept = 30)</code></pre><p>Qubit 1&#39;s own levels, read at its node, include the renormalization by the coupler:</p><pre><code class="language-julia hljs">E1 = energies(sys, qubits[1])
+round.(E1[1:11] .- E1[1]; digits=4)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">11-element Vector{Float64}:
+ 0.0
+ 2.5797
+ 3.4434
+ 3.444
+ 5.0259
+ 5.9649
+ 5.9689
+ 6.5717
+ 7.3045
+ 8.2509
+ 8.2882</code></pre><p>The logical states are <code>|0_L⟩ = |0⟩</code>, the ground state of the θ = 0 valley, and <code>|1_L⟩ = |2⟩</code>, the lowest state of the θ = π valley; <code>|1⟩</code> is a θ excitation in the θ = 0 valley. <code>dressed_state_string</code> shows each dressed state&#39;s content in the two qubits&#39; kept states, with physics indices from 0:</p><pre><code class="language-julia hljs">for n in 0:4
+    println(dressed_state_string(sys, n))
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">|ψ₀⟩ = 1.0|0,0⟩
+|ψ₁⟩ = 0.951|0,1⟩ − 0.31|1,0⟩
+|ψ₂⟩ = 0.951|1,0⟩ + 0.31|0,1⟩
+|ψ₃⟩ = 1.0|0,2⟩
+|ψ₄⟩ = 1.0|0,3⟩</code></pre><p>The non-logical <code>|1⟩</code> excitations of the two qubits are close in energy, and the coupling mixes them; the logical states have disjoint support, and <code>|0,2⟩</code> is barely dressed.</p><h2 id="Static-ZZ-and-truncation"><a class="docs-heading-anchor" href="#Static-ZZ-and-truncation">Static ZZ and truncation</a><a id="Static-ZZ-and-truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Static-ZZ-and-truncation" title="Permalink"></a></h2><p>The static ZZ rate compares qubit 1&#39;s logical transition with qubit 2 in <code>|0⟩</code> and in <code>|2⟩</code>: <code>ZZ = (E_{2,2} − E_{0,2}) − (E_{2,0} − E_{0,0})</code>. It comes from virtual transitions through higher qubit states, so it depends on how many states each qubit keeps. <code>dressed_index</code> finds the dressed state with the largest weight on a product of the qubits&#39; kept states (1-based):</p><pre><code class="language-julia hljs">function zz(sys, root)
+    E = energies(sys)
+    i(l) = dressed_index(sys, root, l)
+    return (E[i((3, 3))] - E[i((1, 3))]) - (E[i((3, 1))] - E[i((1, 1))])
+end
+
+map((20, 40, 80, 120)) do k
+    r, _ = tree(k)
+    (k=k, ZZ_Hz=round(1e9 * zz(materialize(r, spec, θ), r); digits=1))
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">((k = 20, ZZ_Hz = -187.8), (k = 40, ZZ_Hz = -180.3), (k = 80, ZZ_Hz = -171.3), (k = 120, ZZ_Hz = -171.1))</code></pre><p>The rate converges to a magnitude of 171 Hz, the value the paper gives. Because the logical states have disjoint support, it is much smaller than for transmon or fluxonium devices at a comparable coupling.</p><h2 id="Sweeping-the-coupling-capacitance"><a class="docs-heading-anchor" href="#Sweeping-the-coupling-capacitance">Sweeping the coupling capacitance</a><a id="Sweeping-the-coupling-capacitance-1"></a><a class="docs-heading-anchor-permalink" href="#Sweeping-the-coupling-capacitance" title="Permalink"></a></h2><p>The coupling capacitance sets g and also renormalizes each qubit&#39;s charging energies, so qubit 1&#39;s levels move as <code>C_c</code> grows. Inverting <code>g = 8 E_C[θ1, θ2]</code> for <code>E_Cc</code> gives a sweep in g; <code>previous=</code> starts each point from the last solution:</p><pre><code class="language-julia hljs">a = 1 / θ.E_Ctheta
+E_Cc(g) = (4 - g * a) / (g * a^2)                  # inverts g = 4 C_c/((a + C_c) a), C = 1/E_C
+
+small, small_qubits = tree(12; root_keep=4)                # only qubit 1&#39;s levels are read
+gs = range(0.002, 0.04; length=40)
+levels = let prev = nothing
+    map(gs) do g
+        s = materialize(small, spec, merge(θ, (E_Cc=E_Cc(g),)); previous=prev)
+        prev = s
+        E = energies(s, small_qubits[1])
+        E[1:11] .- E[1]
+    end
+end
+
+fig = Figure(size=(700, 450))
+ax = Axis(fig[1, 1]; xlabel=&quot;g (GHz)&quot;, ylabel=&quot;E − E₀ (GHz)&quot;, title=&quot;qubit 1 with the coupling capacitances&quot;)
+for n in 1:11
+    lines!(ax, gs, getindex.(levels, n); color=n in (8, 9, 10) ? :black : :gray60)
+end
+vlines!(ax, [8EC[1, 3]]; color=:black, linestyle=:dash)
+text!(ax, 0.0215, 7.5; text=&quot;|7⟩, |8⟩&quot;, align=(:center, :bottom))
+text!(ax, 0.0105, 8.35; text=&quot;|8⟩, |9⟩&quot;, align=(:center, :bottom))
+ylims!(ax, 5.5, 9.2)</code></pre><p><img src="../soft_zero_pi_crossing.png" alt="Qubit 1 levels against the coupling g"/></p><p>Levels <code>|8⟩</code> and <code>|9⟩</code> cross near g ≈ 0.01 GHz and <code>|7⟩</code> and <code>|8⟩</code> near g ≈ 0.02 GHz, as in the paper; the dashed line marks the operating point g ≈ 0.031 GHz.</p><h2 id="Where-next"><a class="docs-heading-anchor" href="#Where-next">Where next</a><a id="Where-next-1"></a><a class="docs-heading-anchor-permalink" href="#Where-next" title="Permalink"></a></h2><ul><li><a href="../soft_zero_pi/#Tutorial:-a-soft-zero-pi-qubit">Tutorial: a soft zero-pi qubit</a> solves one of these qubits with junction asymmetry and all three modes, and plots its wavefunctions.</li><li><a href="../../manual/trees/">Trees and truncation</a> covers the selection rules: <code>within</code> keeps an energy window instead of a count, and <code>connected</code> keeps the states a coupling reaches.</li><li><a href="../../manual/solvers/">Solvers</a> covers how <code>Auto()</code> chooses a solver for each node.</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../soft_zero_pi/">« Tutorial: a soft zero-pi qubit</a><a class="docs-footer-nextpage" href="../../extending/">Extending »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.20.0 on <span class="colophon-date" title="Wednesday 25 November 2026 20:01">Wednesday 25 November 2026</span>. Using Julia version 1.13.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
