@@ -28,7 +28,7 @@ export Spec, load_spec, parse_spec, numeric_spec, spec_json, save_spec, substitu
 # (see the `Solver` docstring), basis augmentation, and types and helpers rarely named directly.
 public LocalOp, DenseOp, DiagonalOp, BandedOp, ShiftOp, localop, apply_axis!, dense, diagonal, realpart, imagpart,
        KronFreeOperator, infnorm, Solver, solve, resolve, gershgorin_bound, separable_eigenbases, product_seed,
-       SavedSolver, SelectionRule, SelectionContext, select, Basis, PromotedSpec, PortCharacter, Derivatives,
+       SavedSolver, SelectionRule, SelectionContext, select, ports_needed, Basis, PromotedSpec, PortCharacter, Derivatives,
        NearDegenerateBlock, differentiate, node_timings, edge_weight, augment, union_basis, BasisSource,
        AugmentedChild, augmented, charge_port, operator
 

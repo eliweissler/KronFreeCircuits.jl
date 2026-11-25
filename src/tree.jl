@@ -371,6 +371,13 @@ Keep the `k` lowest computed eigenstates, or all computed when fewer than `k` we
 """
 lowest(k::Int) = Lowest(k)
 
+"""
+    KronFreeCircuits.ports_needed(rule::SelectionRule) -> Vector{Tuple{Symbol,Port}}
+
+The `(mode, port)` pairs a selection rule reads from `ctx.ports` in `select(rule, ctx)`. Each is built on every computed
+eigenvector of the node before selection. The default is none; `connected` returns its port. A custom rule that inspects
+ports adds a method.
+"""
 ports_needed(::SelectionRule) = Tuple{Symbol,Port}[]
 
 """

@@ -28,6 +28,7 @@ KronFreeCircuits.SavedSolver
 KronFreeCircuits.SelectionRule
 KronFreeCircuits.SelectionContext
 KronFreeCircuits.select
+KronFreeCircuits.ports_needed
 KronFreeCircuits.Basis
 KronFreeCircuits.PromotedSpec
 KronFreeCircuits.PortCharacter
