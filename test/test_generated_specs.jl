@@ -92,7 +92,7 @@ u(rng, a, b) = a + (b - a) * rand(rng)
     end
     @test sort(filter(f -> endswith(f, ".json"), readdir(fixture("generated")))) ==
           sort(["transmon.json", "two_transmons.json", "three_transmons.json", "fluxonium.json", "zero_pi.json",
-                "full_zero_pi.json", "two_zero_pi.json", "two_soft_zero_pi.json"])
+                "full_zero_pi.json", "two_zero_pi.json", "soft_zero_pi.json", "two_soft_zero_pi.json"])
 end
 
 @testset "generated vs hand: transmon" begin
@@ -258,6 +258,27 @@ end
     same_energies(gen, hand, Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(6)), θ; Δconstant=Δ)
 end
 
+@testset "generated: soft_zero_pi against Gyenis et al. (arXiv:1910.07542v1)" begin
+    # The supplement's H = 4E_C^θ (n_θ - n_g)² + 4E_C^φ n_φ² - 2E_J cos θ cos φ + E_L φ² + E_J dE_J sin θ sin φ at zero flux:
+    # E_C, E_L and the junction energies E_J (1 ± dE_J/2) on θ ± φ, whose sum is that potential.
+    s = load_spec(generated("soft_zero_pi"))
+    @test [(m.name, m.type) for m in s.modes] == [(:theta, :c), (:phi, :e), (:zeta, :h)]
+    rng = MersenneTwister(73)
+    for k in 1:4
+        θ = k == 1 ? (E_Ctheta=0.092, E_Cphi=1.142, E_J=6.013, E_L=0.377, dE_J=0.1, n_g=0.0, varphi_ext=0.0) :   # Table S2
+            (E_Ctheta=u(rng, 0.05, 0.2), E_Cphi=u(rng, 0.5, 2), E_J=u(rng, 3, 10), E_L=u(rng, 0.1, 1), dE_J=u(rng, -0.2, 0.2),
+             n_g=u(rng, -0.5, 0.5), varphi_ext=u(rng, -π, π))
+        @test _close(real(s.E_C[1, 1](θ)), θ.E_Ctheta) && _close(real(s.E_C[2, 2](θ)), θ.E_Cphi)
+        @test _close(real(s.E_L[2, 2](θ)), 2θ.E_L) && real(s.E_L[1, 1](θ)) == 0
+        @test _close(real(s.flux_linear[2](θ)), θ.E_L * θ.varphi_ext) && real(s.n_g[1](θ)) == θ.n_g
+        energy(ω) = only(real(c.energy(θ)) for c in s.cosines if c.omega == ω)
+        @test length(s.cosines) == 2
+        @test _close(energy([1.0, 1.0, 0.0]), θ.E_J * (1 + θ.dE_J / 2)) && _close(energy([-1.0, 1.0, 0.0]), θ.E_J * (1 - θ.dE_J / 2))
+        @test all(c -> real(c.offset(θ)) == 0, s.cosines)
+        decoupled_restriction(s, [1, 2], merge(θ, (varphi_ext=0.0,)))
+    end
+end
+
 @testset "generated: two_soft_zero_pi against arXiv:2609.16630v1" begin
     # Circuit (a) of Liu, Weissler, Combes with C_0 to ground (generate_specs.py, two_soft_zero_pi()); no hand fixture.
     # With capacitances in units where C = 1/E (e^2 = 2), C~_theta = 1/E_Ctheta + 1/E_Cc and C_c = 1/E_Cc, the paper's
@@ -282,7 +303,10 @@ end
         end
         @test _close(abs(8real(s.E_C[1, 3](θ))), g)
         k == 1 && @test round(g; digits=3) == 0.031                                      # Table I's g_theta
-        decoupled_restriction(s, [1, 2, 3, 4], θ)
+        # Default flux assignment: each ring flux enters as E_L varphi_ext phi_q (and a shift of zeta_q), the
+        # gauge equivalent of the paper's cos(phi - varphi_ext/2); zeta is exactly decoupled at zero flux.
+        @test _close(real(s.flux_linear[2](θ)), θ.E_L * θ.varphi_ext1) && _close(real(s.flux_linear[4](θ)), θ.E_L * θ.varphi_ext2)
+        decoupled_restriction(s, [1, 2, 3, 4], merge(θ, (varphi_ext1=0.0, varphi_ext2=0.0)))
     end
 end
 

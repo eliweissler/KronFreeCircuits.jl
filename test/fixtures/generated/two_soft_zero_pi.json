@@ -8,12 +8,12 @@
     "E_Cphi",
     "E_C0",
     "E_L",
+    "varphi_ext1",
+    "varphi_ext2",
     "n_g1",
     "n_g2",
     "E_J1",
-    "varphi_ext1",
-    "E_J2",
-    "varphi_ext2"
+    "E_J2"
   ],
   "modes": [
     {
@@ -143,11 +143,11 @@
   ],
   "flux_linear": [
     "0",
+    "E_L .* varphi_ext1",
     "0",
-    "0",
-    "0",
-    "0",
-    "0"
+    "E_L .* varphi_ext2",
+    "sqrt(2) * E_L .* varphi_ext1 / 2",
+    "sqrt(2) * E_L .* varphi_ext2 / 2"
   ],
   "n_g": [
     "n_g1",
@@ -168,7 +168,7 @@
         0,
         0
       ],
-      "offset": "-varphi_ext1 / 2"
+      "offset": "0"
     },
     {
       "energy": "E_J1",
@@ -180,7 +180,7 @@
         0,
         0
       ],
-      "offset": "-varphi_ext1 / 2"
+      "offset": "0"
     },
     {
       "energy": "E_J2",
@@ -192,7 +192,7 @@
         0,
         0
       ],
-      "offset": "-varphi_ext2 / 2"
+      "offset": "0"
     },
     {
       "energy": "E_J2",
@@ -204,7 +204,7 @@
         0,
         0
       ],
-      "offset": "-varphi_ext2 / 2"
+      "offset": "0"
     }
   ],
   "constant": "0",
@@ -224,14 +224,14 @@
       "C0_6",
       "C0_7",
       "C0_8",
-      "Cc1_1",
-      "Cc1_4",
-      "Cc1_2",
-      "Cc1_3",
-      "Cc2_5",
-      "Cc2_8",
-      "Cc2_6",
-      "Cc2_7",
+      "Cc_1_10",
+      "Cc_4_10",
+      "Cc_5_10",
+      "Cc_8_10",
+      "Cc_2_9",
+      "Cc_3_9",
+      "Cc_6_9",
+      "Cc_7_9",
       "J1a",
       "J1b",
       "J2a",
@@ -246,11 +246,11 @@
     "script": "test/fixtures/generate_specs.py"
   },
   "_comment": [
-    "Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1: the two_zero_pi.json circuit (nodes 1-4 and 5-8, coupler islands 9 and 10) plus C0_<n> from each qubit node 1-8 to ground 0 (none on the coupler islands).",
-    "Parameters are the paper's Table I: E_Ctheta, E_Cphi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0, C_phi = 2C_J + C_0), E_Cc of each coupling capacitor, E_C0 of each ground capacitor; E_L shared, E_J1, E_J2. Elements: junction C = ghz_to_farad(2 E_Cphi E_C0/(E_C0 - E_Cphi)), large C = ghz_to_farad(2 E_Ctheta E_Cphi/(E_Cphi - E_Ctheta)), L = ghz_to_henry(E_L).",
-    "The coupling g n_theta1 n_theta2 has g = 8 E_C[theta1, theta2]; the coupler also renormalizes E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta and the renormalized charging energies).",
-    "Z_full as two_zero_pi.json; non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).",
-    "zeta1, zeta2 are decoupled harmonic modes. Ring flux on the junctions: custom B with +1/2 of the ring flux on each junction and capacitor entries solving G B = I (static flux: a gauge choice; the irrotational B would put it on L<q>b instead, giving flux_linear on phi and zeta).",
+    "Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1: qubits on nodes 1-4 and 5-8 (branches J<q>a, J<q>b, L<q>a, L<q>b, C<q>a, C<q>b), C0_<n> from each qubit node to ground 0, Cc_<n>_<i> from nodes 1, 4, 5, 8 to island 10 and from 2, 3, 6, 7 to island 9; built by the script on docs/src/tutorials/two_zero_pi.md.",
+    "Parameters are the paper's Table I: E_Ctheta, E_Cphi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0, C_phi = 2C_J + C_0), E_Cc, E_C0, E_L shared, E_J1, E_J2.",
+    "The coupling g n_theta1 n_theta2 has g = 8 E_C[theta1, theta2]; the coupler also renormalizes E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta).",
+    "Non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).",
+    "Default (irrotational) flux assignment: each ring flux on L<q>b, flux_linear on phi_q and zeta_q.",
     "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2."
   ]
 }

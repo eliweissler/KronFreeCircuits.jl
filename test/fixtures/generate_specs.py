@@ -392,61 +392,107 @@ def two_zero_pi():
     ], subs=subs)
 
 
-def two_soft_zero_pi():
-    """Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1.
+# --- the documentation's soft zero-pi tutorials ---------------------------------
+# These two builders are the circuit-quantization scripts printed on the tutorial pages
+# (docs/src/tutorials/soft_zero_pi.md and two_zero_pi.md), line for line apart from the
+# final save; keep them in step.  Unlike the fixtures above they use circuit-quantization's
+# default (irrotational) flux assignment: the ring flux sits on the inductor that closes the
+# ring and enters as flux_linear on phi and zeta, a static gauge equivalent to the junction
+# offsets cos(theta +- (phi - varphi_ext/2)).  The tutorials work at varphi_ext = 0.
 
-    The circuit of two_zero_pi() (same nodes, branches and coupler islands 9, 10) plus a
-    capacitance C_0 from each qubit node 1-8 to ground (none on the coupler islands), as in
-    the paper's Appendix A (sec app:coupling_scheme_theta).  The parameters are the paper's
-    Table I: E_Ctheta = e^2/2C_theta and E_Cphi = e^2/2C_phi of the uncoupled qubit, with
-    C_theta = 2C + 2C_J + C_0 and C_phi = 2C_J + C_0, the coupler's E_Cc = e^2/2C_c and
-    E_C0 = e^2/2C_0.  Hence the element charging energies (1/E adds as a capacitance)
-      junction x_J = 1/C_J = 2 E_Cphi E_C0/(E_C0 - E_Cphi),
-      large C   x_B = 1/C   = 2 E_Ctheta E_Cphi/(E_Cphi - E_Ctheta).
-    The coupler renormalizes both charging energies and gives g n_theta1 n_theta2 with
-    g = 8 E_C[theta1, theta2] (paper eq:g_theta).  Both qubits share E_L, E_Ctheta, E_Cphi.
-    """
-    EL, ECt, ECp, ECc, EC0 = pos("E_L E_Ctheta E_Cphi E_Cc E_C0")
-    xJ = 2 * ECp * EC0 / (EC0 - ECp)
-    xB = 2 * ECt * ECp / (ECp - ECt)
-    vxs = {}
-    branches = []
-    for q, nodes in ((1, (1, 2, 3, 4)), (2, (5, 6, 7, 8))):
-        EJ = pos(f"E_J{q}")
-        vxs[q] = real(f"varphi_ext{q}")
-        branches += zero_pi_branches(q, nodes, (xJ, xJ), (xB, xB), (EL, EL), (EJ, EJ))
-        branches += [Branch(f"C0_{n}", n, 0, C=cq.ghz_to_farad(EC0)) for n in nodes]
-    for q, (a, b, c, d) in ((1, (1, 2, 3, 4)), (2, (5, 6, 7, 8))):
-        branches += [Branch(f"Cc{q}_{n}", n, 10, C=cq.ghz_to_farad(ECc)) for n in (a, d)]
-        branches += [Branch(f"Cc{q}_{n}", n, 9, C=cq.ghz_to_farad(ECc)) for n in (b, c)]
-    circuit = Circuit(branches, ground=0)
-    # Columns as two_zero_pi(); the all-ones column is now free (C_0 gives it a capacitance).
+
+def soft_zero_pi():
+    """The soft zero-pi of Gyenis et al., PRX Quantum 2, 010339 (arXiv:1910.07542), in the paper's parameters."""
+    # Parameters as in the paper: E_C^theta, E_C^phi, E_J, E_L (GHz), junction asymmetry dE_J, external flux.
+    ECt, ECp, EJ, EL = sym.symbols("E_Ctheta E_Cphi E_J E_L", positive=True)
+    dEJ, vx = sym.symbols("dE_J varphi_ext", real=True)
+
+    # Element charging energies (1/E adds like a capacitance). With C_phi = 2 C_J and C_theta = 2 C + 2 C_J:
+    xJ = 2 * ECp                          # each junction's capacitance C_J
+    xC = 2 * ECt * ECp / (ECp - ECt)      # each large capacitor C
+    circuit = Circuit([
+        Branch("J1", 1, 2, C=cq.ghz_to_farad(xJ), EJ=EJ * (1 + dEJ / 2)),
+        Branch("J2", 3, 4, C=cq.ghz_to_farad(xJ), EJ=EJ * (1 - dEJ / 2)),
+        Branch("L1", 2, 3, L=cq.ghz_to_henry(EL)),
+        Branch("L2", 4, 1, L=cq.ghz_to_henry(EL)),
+        Branch("C1", 1, 3, C=cq.ghz_to_farad(xC)),
+        Branch("C2", 2, 4, C=cq.ghz_to_farad(xC)),
+    ])
+
+    # The ring J1 L1 J2 L2 (closed by L2) carries the external flux; the capacitive loops carry none.
+    fluxes = {name: 0 for name in Loops.from_circuit(circuit).names}
+    fluxes["L2"] = cq.phase_to_weber(-vx)
+    loops = Loops.from_tree(circuit, cq.default_tree(circuit), fluxes)
+
+    # Columns theta, phi, zeta, Sigma of the node fluxes; Sigma is cyclic in this floating circuit.
+    s = 1 / sym.sqrt(2)
+    Z = sym.Matrix([[1, 1, s, 1], [-1, -1, s, 1], [-1, 1, -s, 1], [1, -1, -s, 1]]) / 2
+    res = quantize(circuit, loops, Z, ("c", "e", "h", "cy"))
+    return Fixture("soft_zero_pi", res, ["theta", "phi", "zeta"], [
+        "The soft zero-pi of Gyenis et al., PRX Quantum 2, 010339 (arXiv:1910.07542): J1 (1->2), J2 (3->4), L1 (2->3),"
+        " L2 (4->1), C1 (1->3), C2 (2->4), floating; built by the script on docs/src/tutorials/soft_zero_pi.md.",
+        "Parameters as in the paper: E_Ctheta = e^2/2(2C + 2C_J), E_Cphi = e^2/2(2C_J), E_J, E_L, junction asymmetry dE_J"
+        " (J1 has E_J (1 + dE_J/2), J2 E_J (1 - dE_J/2)), varphi_ext.",
+        "Default (irrotational) flux assignment: the ring flux on L2, flux_linear on phi and zeta.",
+        "Sector label n_g1 renamed n_g.",
+    ], subs={sym.Symbol("n_g1", real=True): sym.Symbol("n_g", real=True)})
+
+
+def two_soft_zero_pi():
+    """Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1 (Table I)."""
+    # Parameters as in the paper's Table I: E_C^theta, E_C^phi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0,
+    # C_phi = 2C_J + C_0), E_Cc of each coupling capacitor, E_C0 of each ground capacitor, E_L, E_J1, E_J2 (GHz).
+    ECt, ECp, ECc, EC0, EL = sym.symbols("E_Ctheta E_Cphi E_Cc E_C0 E_L", positive=True)
+    xJ = 2 * ECp * EC0 / (EC0 - ECp)      # each junction's capacitance C_J (1/E adds like a capacitance)
+    xC = 2 * ECt * ECp / (ECp - ECt)      # each large capacitor C
+
+    def zero_pi(q, a, b, c, d):
+        """Qubit q on nodes a, b, c, d, with a capacitance C_0 from each node to ground (node 0)."""
+        EJ = sym.Symbol(f"E_J{q}", positive=True)
+        return [Branch(f"J{q}a", a, b, C=cq.ghz_to_farad(xJ), EJ=EJ),
+                Branch(f"J{q}b", c, d, C=cq.ghz_to_farad(xJ), EJ=EJ),
+                Branch(f"L{q}a", b, c, L=cq.ghz_to_henry(EL)),
+                Branch(f"L{q}b", d, a, L=cq.ghz_to_henry(EL)),
+                Branch(f"C{q}a", a, c, C=cq.ghz_to_farad(xC)),
+                Branch(f"C{q}b", b, d, C=cq.ghz_to_farad(xC))] + \
+               [Branch(f"C0_{n}", n, 0, C=cq.ghz_to_farad(EC0)) for n in (a, b, c, d)]
+
+    # Circuit (a): nodes 1, 4, 5, 8 couple to island 10 and nodes 2, 3, 6, 7 to island 9.
+    coupler = [Branch(f"Cc_{n}_{i}", n, i, C=cq.ghz_to_farad(ECc))
+               for i, nodes in ((10, (1, 4, 5, 8)), (9, (2, 3, 6, 7))) for n in nodes]
+    circuit = Circuit(zero_pi(1, 1, 2, 3, 4) + zero_pi(2, 5, 6, 7, 8) + coupler, ground=0)
+
+    # Each qubit's ring (closed by L<q>b) carries its external flux; the capacitive loops carry none.
+    fluxes = {name: 0 for name in Loops.from_circuit(circuit).names}
+    for q in (1, 2):
+        fluxes[f"L{q}b"] = cq.phase_to_weber(-sym.Symbol(f"varphi_ext{q}", real=True))
+    loops = Loops.from_tree(circuit, cq.default_tree(circuit), fluxes)
+
+    # Columns theta1, phi1, theta2, phi2, zeta1, zeta2 of the ten node fluxes, then the non-dynamical
+    # directions: Sigma1 - Sigma2, the two coupler-island combinations and the sum of all nodes (all free).
+    s = 1 / sym.sqrt(2)
+    M = sym.Matrix([[1, 1, s], [-1, -1, s], [-1, 1, -s], [1, -1, -s]]) / 2      # theta, phi, zeta of one qubit
     Z = sym.zeros(10, 10)
     for q, rows in ((0, slice(0, 4)), (1, slice(4, 8))):
-        Z[rows, 2 * q] = ZP_M[:, 0]
-        Z[rows, 2 * q + 1] = ZP_M[:, 1]
-        Z[rows, 4 + q] = ZP_M[:, 2]
+        Z[rows, 2 * q], Z[rows, 2 * q + 1], Z[rows, 4 + q] = M[:, 0], M[:, 1], M[:, 2]
     Z[:, 6] = sym.Matrix([1, 1, 1, 1, -1, -1, -1, -1, 0, 0])
     Z[:, 7] = sym.Matrix([0] * 8 + [1, -1])
     Z[:, 8] = sym.Matrix([0] * 8 + [1, 1])
     Z[:, 9] = sym.ones(10, 1)
-    types = ("c", "e", "c", "e", "h", "h", "fr", "fr", "fr", "fr")
-    loops, rings = ring_loops(circuit, vxs)
-    res = quantize_junction_gauge(circuit, loops, rings, Z, types)
+    res = quantize(circuit, loops, Z, ("c", "e", "c", "e", "h", "h", "fr", "fr", "fr", "fr"))
     return Fixture("two_soft_zero_pi", res, ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
-        "Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1:"
-        " the two_zero_pi.json circuit (nodes 1-4 and 5-8, coupler islands 9 and 10) plus C0_<n> from each qubit node"
-        " 1-8 to ground 0 (none on the coupler islands).",
+        "Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1: qubits on nodes"
+        " 1-4 and 5-8 (branches J<q>a, J<q>b, L<q>a, L<q>b, C<q>a, C<q>b), C0_<n> from each qubit node to ground 0,"
+        " Cc_<n>_<i> from nodes 1, 4, 5, 8 to island 10 and from 2, 3, 6, 7 to island 9; built by the script on"
+        " docs/src/tutorials/two_zero_pi.md.",
         "Parameters are the paper's Table I: E_Ctheta, E_Cphi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0,"
-        " C_phi = 2C_J + C_0), E_Cc of each coupling capacitor, E_C0 of each ground capacitor; E_L shared, E_J1, E_J2."
-        " Elements: junction C = ghz_to_farad(2 E_Cphi E_C0/(E_C0 - E_Cphi)), large C ="
-        " ghz_to_farad(2 E_Ctheta E_Cphi/(E_Cphi - E_Ctheta)), L = ghz_to_henry(E_L).",
+        " C_phi = 2C_J + C_0), E_Cc, E_C0, E_L shared, E_J1, E_J2.",
         "The coupling g n_theta1 n_theta2 has g = 8 E_C[theta1, theta2]; the coupler also renormalizes"
-        " E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta and the renormalized charging energies).",
-        "Z_full as two_zero_pi.json; non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).",
-        "zeta1, zeta2 are decoupled harmonic modes. " + ZP_GAUGE,
+        " E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta).",
+        "Non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).",
+        "Default (irrotational) flux assignment: each ring flux on L<q>b, flux_linear on phi_q and zeta_q.",
         "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.",
-    ], subs={real("n_g3"): real("n_g2")})
+    ], subs={sym.Symbol("n_g3", real=True): sym.Symbol("n_g2", real=True)})
 
 
 def cos2phi_not_expressible():
@@ -472,6 +518,7 @@ BUILDERS = {
     "zero_pi": zero_pi,
     "full_zero_pi": full_zero_pi,
     "two_zero_pi": two_zero_pi,
+    "soft_zero_pi": soft_zero_pi,
     "two_soft_zero_pi": two_soft_zero_pi,
 }
 
