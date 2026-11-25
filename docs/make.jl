@@ -27,7 +27,10 @@ makedocs(;
             "Saving and loading" => "manual/saveload.md",
             "Time evolution with QuantumToolbox" => "manual/quantumtoolbox.md",
         ],
-        "Tutorial: two coupled zero-pi qubits" => "tutorials/two_zero_pi.md",
+        "Tutorials" => [
+            "Tutorial: a soft zero-pi qubit" => "tutorials/soft_zero_pi.md",
+            "Tutorial: two coupled soft zero-pi qubits" => "tutorials/two_zero_pi.md",
+        ],
         "Extending" => "extending.md",
         "Experimental" => "experimental.md",
         "API reference" => ["Exported" => "api/exported.md", "Public and experimental" => "api/public.md"],

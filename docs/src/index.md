@@ -50,5 +50,5 @@ port(sys, :varphi_1, nport())                           # the charge operator in
 
 - [Getting started](@ref) builds a transmon and two coupled transmons and reads their states.
 - The manual explains [building circuits](manual/circuits.md), [trees and truncation](manual/trees.md) and [solvers](manual/solvers.md), then the features built on a solved tree: [derivatives](manual/derivatives.md), [wavefunctions](manual/wavefunctions.md), [saving](manual/saveload.md) and [time evolution](manual/quantumtoolbox.md).
-- [Tutorial: two coupled zero-pi qubits](@ref) works through a three-level tree, with plots of each leaf's two-dimensional wavefunctions.
+- [Tutorial: a soft zero-pi qubit](@ref) solves the device of Gyenis et al. and redraws its wavefunctions; [Tutorial: two coupled soft zero-pi qubits](@ref) couples two of them as in Liu, Weissler and Combes and works through a three-level tree.
 - [Extending](@ref) shows how to plug in your own solver or selection rule.

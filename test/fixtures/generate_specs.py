@@ -392,6 +392,63 @@ def two_zero_pi():
     ], subs=subs)
 
 
+def two_soft_zero_pi():
+    """Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1.
+
+    The circuit of two_zero_pi() (same nodes, branches and coupler islands 9, 10) plus a
+    capacitance C_0 from each qubit node 1-8 to ground (none on the coupler islands), as in
+    the paper's Appendix A (sec app:coupling_scheme_theta).  The parameters are the paper's
+    Table I: E_Ctheta = e^2/2C_theta and E_Cphi = e^2/2C_phi of the uncoupled qubit, with
+    C_theta = 2C + 2C_J + C_0 and C_phi = 2C_J + C_0, the coupler's E_Cc = e^2/2C_c and
+    E_C0 = e^2/2C_0.  Hence the element charging energies (1/E adds as a capacitance)
+      junction x_J = 1/C_J = 2 E_Cphi E_C0/(E_C0 - E_Cphi),
+      large C   x_B = 1/C   = 2 E_Ctheta E_Cphi/(E_Cphi - E_Ctheta).
+    The coupler renormalizes both charging energies and gives g n_theta1 n_theta2 with
+    g = 8 E_C[theta1, theta2] (paper eq:g_theta).  Both qubits share E_L, E_Ctheta, E_Cphi.
+    """
+    EL, ECt, ECp, ECc, EC0 = pos("E_L E_Ctheta E_Cphi E_Cc E_C0")
+    xJ = 2 * ECp * EC0 / (EC0 - ECp)
+    xB = 2 * ECt * ECp / (ECp - ECt)
+    vxs = {}
+    branches = []
+    for q, nodes in ((1, (1, 2, 3, 4)), (2, (5, 6, 7, 8))):
+        EJ = pos(f"E_J{q}")
+        vxs[q] = real(f"varphi_ext{q}")
+        branches += zero_pi_branches(q, nodes, (xJ, xJ), (xB, xB), (EL, EL), (EJ, EJ))
+        branches += [Branch(f"C0_{n}", n, 0, C=cq.ghz_to_farad(EC0)) for n in nodes]
+    for q, (a, b, c, d) in ((1, (1, 2, 3, 4)), (2, (5, 6, 7, 8))):
+        branches += [Branch(f"Cc{q}_{n}", n, 10, C=cq.ghz_to_farad(ECc)) for n in (a, d)]
+        branches += [Branch(f"Cc{q}_{n}", n, 9, C=cq.ghz_to_farad(ECc)) for n in (b, c)]
+    circuit = Circuit(branches, ground=0)
+    # Columns as two_zero_pi(); the all-ones column is now free (C_0 gives it a capacitance).
+    Z = sym.zeros(10, 10)
+    for q, rows in ((0, slice(0, 4)), (1, slice(4, 8))):
+        Z[rows, 2 * q] = ZP_M[:, 0]
+        Z[rows, 2 * q + 1] = ZP_M[:, 1]
+        Z[rows, 4 + q] = ZP_M[:, 2]
+    Z[:, 6] = sym.Matrix([1, 1, 1, 1, -1, -1, -1, -1, 0, 0])
+    Z[:, 7] = sym.Matrix([0] * 8 + [1, -1])
+    Z[:, 8] = sym.Matrix([0] * 8 + [1, 1])
+    Z[:, 9] = sym.ones(10, 1)
+    types = ("c", "e", "c", "e", "h", "h", "fr", "fr", "fr", "fr")
+    loops, rings = ring_loops(circuit, vxs)
+    res = quantize_junction_gauge(circuit, loops, rings, Z, types)
+    return Fixture("two_soft_zero_pi", res, ["theta1", "phi1", "theta2", "phi2", "zeta1", "zeta2"], [
+        "Two symmetric soft zero-pis coupled by circuit (a) of Liu, Weissler, Combes, arXiv:2609.16630v1:"
+        " the two_zero_pi.json circuit (nodes 1-4 and 5-8, coupler islands 9 and 10) plus C0_<n> from each qubit node"
+        " 1-8 to ground 0 (none on the coupler islands).",
+        "Parameters are the paper's Table I: E_Ctheta, E_Cphi of the uncoupled qubit (C_theta = 2C + 2C_J + C_0,"
+        " C_phi = 2C_J + C_0), E_Cc of each coupling capacitor, E_C0 of each ground capacitor; E_L shared, E_J1, E_J2."
+        " Elements: junction C = ghz_to_farad(2 E_Cphi E_C0/(E_C0 - E_Cphi)), large C ="
+        " ghz_to_farad(2 E_Ctheta E_Cphi/(E_Cphi - E_Ctheta)), L = ghz_to_henry(E_L).",
+        "The coupling g n_theta1 n_theta2 has g = 8 E_C[theta1, theta2]; the coupler also renormalizes"
+        " E_C[theta_q, theta_q] and E_C[phi_q, phi_q] (paper eq:g_theta and the renormalized charging energies).",
+        "Z_full as two_zero_pi.json; non-dynamical: Sigma1 - Sigma2, the coupler-island directions and all-ones (all free).",
+        "zeta1, zeta2 are decoupled harmonic modes. " + ZP_GAUGE,
+        "Sector labels n_g1 (theta1) and n_g3 (theta2) renamed n_g1, n_g2.",
+    ], subs={real("n_g3"): real("n_g2")})
+
+
 def cos2phi_not_expressible():
     """Why cos2phi.json has no generated counterpart.
 
@@ -415,6 +472,7 @@ BUILDERS = {
     "zero_pi": zero_pi,
     "full_zero_pi": full_zero_pi,
     "two_zero_pi": two_zero_pi,
+    "two_soft_zero_pi": two_soft_zero_pi,
 }
 
 

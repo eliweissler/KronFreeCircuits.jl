@@ -13,7 +13,7 @@ Hamiltonians come from circuit specs written by the `circuit-quantization` packa
 
 ## Documentation
 
-The [documentation](https://eliweissler.github.io/KronFreeCircuits.jl/dev/) has a getting-started guide, a manual (building circuits, trees and truncation, solvers, real arithmetic, derivatives, wavefunctions, saving and loading, time evolution with QuantumToolbox), a tutorial on two coupled zero-pi qubits, and the API reference.
+The [documentation](https://eliweissler.github.io/KronFreeCircuits.jl/dev/) has a getting-started guide, a manual (building circuits, trees and truncation, solvers, real arithmetic, derivatives, wavefunctions, saving and loading, time evolution with QuantumToolbox), tutorials on a soft zero-pi qubit and on two coupled soft zero-pi qubits, and the API reference.
 
 ## Installation
 

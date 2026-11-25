@@ -92,7 +92,7 @@ u(rng, a, b) = a + (b - a) * rand(rng)
     end
     @test sort(filter(f -> endswith(f, ".json"), readdir(fixture("generated")))) ==
           sort(["transmon.json", "two_transmons.json", "three_transmons.json", "fluxonium.json", "zero_pi.json",
-                "full_zero_pi.json", "two_zero_pi.json"])
+                "full_zero_pi.json", "two_zero_pi.json", "two_soft_zero_pi.json"])
 end
 
 @testset "generated vs hand: transmon" begin
@@ -256,6 +256,34 @@ end
     gen = decoupled_restriction(gen6, [1, 2, 3, 4], θ)
     leaf(i) = Node([Symbol("theta$i") => ChargeBasis(3), Symbol("phi$i") => PhaseGrid(-4π, 4π, 31)]; solver=Dense(), keep=lowest(5))
     same_energies(gen, hand, Node([leaf(1), leaf(2)]; solver=Dense(), keep=lowest(6)), θ; Δconstant=Δ)
+end
+
+@testset "generated: two_soft_zero_pi against arXiv:2609.16630v1" begin
+    # Circuit (a) of Liu, Weissler, Combes with C_0 to ground (generate_specs.py, two_soft_zero_pi()); no hand fixture.
+    # With capacitances in units where C = 1/E (e^2 = 2), C~_theta = 1/E_Ctheta + 1/E_Cc and C_c = 1/E_Cc, the paper's
+    # renormalized E~_Ctheta = (2 C~ - C_c)/(2 C~ (C~ - C_c)), E~_Cphi = 1/(1/E_Cphi + 1/E_Cc) and
+    # g = 4 C_c/(C~ (C~ - C_c)) (eq:g_theta) = 8 E_C[theta1, theta2].
+    s = load_spec(generated("two_soft_zero_pi"))
+    @test [m.name for m in s.modes] == [:theta1, :phi1, :theta2, :phi2, :zeta1, :zeta2]
+    @test [m.type for m in s.modes] == [:c, :e, :c, :e, :h, :h]
+    rng = MersenneTwister(71)
+    for k in 1:4
+        θ = k == 1 ? (E_Ctheta=0.092, E_Cphi=1.14, E_Cc=1.0, E_C0=1.491, E_L=0.377, E_J1=6.013, E_J2=5.412,
+                      n_g1=0.0, n_g2=0.0, varphi_ext1=0.0, varphi_ext2=0.0) :          # Table I
+            (E_Ctheta=u(rng, 0.05, 0.2), E_Cphi=u(rng, 0.5, 2), E_Cc=u(rng, 0.5, 3), E_C0=u(rng, 2.5, 5), E_L=u(rng, 0.1, 1),
+             E_J1=u(rng, 3, 10), E_J2=u(rng, 3, 10), n_g1=u(rng, -0.5, 0.5), n_g2=u(rng, -0.5, 0.5),
+             varphi_ext1=u(rng, -π, π), varphi_ext2=u(rng, -π, π))
+        Ct, Cc = 1 / θ.E_Ctheta + 1 / θ.E_Cc, 1 / θ.E_Cc
+        g = 4Cc / (Ct * (Ct - Cc))
+        for (t, p) in ((1, 2), (3, 4))
+            @test _close(real(s.E_C[t, t](θ)), (2Ct - Cc) / (2Ct * (Ct - Cc)))
+            @test _close(real(s.E_C[p, p](θ)), 1 / (1 / θ.E_Cphi + 1 / θ.E_Cc))
+            @test _close(real(s.E_L[p, p](θ)), 2θ.E_L)
+        end
+        @test _close(abs(8real(s.E_C[1, 3](θ))), g)
+        k == 1 && @test round(g; digits=3) == 0.031                                      # Table I's g_theta
+        decoupled_restriction(s, [1, 2, 3, 4], θ)
+    end
 end
 
 @testset "n_g on a noncompact mode is accepted and expanded" begin

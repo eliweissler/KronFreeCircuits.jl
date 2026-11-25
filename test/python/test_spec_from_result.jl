@@ -1,7 +1,7 @@
 include("circuits.jl")
 
 @testset "in-memory Spec equals the committed JSON: $name" for name in
-        ("transmon", "fluxonium", "two_transmons", "three_transmons", "zero_pi", "full_zero_pi", "two_zero_pi")
+        ("transmon", "fluxonium", "two_transmons", "three_transmons", "zero_pi", "full_zero_pi", "two_zero_pi", "two_soft_zero_pi")
     res, kw = fixture_result(name)
     a = Spec(res; kw...)
     b = load_spec(joinpath(@__DIR__, "..", "fixtures", "generated", name * ".json"))

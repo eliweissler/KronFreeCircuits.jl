@@ -70,7 +70,7 @@ grids.theta, (grids.phi[2] - grids.phi[1]) * sum(abs2, ψ[:, :, 1])   # weight 1
 
 The normalization is the product of the one-mode rules below, with weight 1 on the charges of a `ChargeBasis` or a `PeriodicGrid`.
 A branch node throws: only leaves are supported, since a branch state over several leaves on a full product grid is usually too large to hold.
-The [tutorial](../tutorials/two_zero_pi.md) plots these two-dimensional wavefunctions.
+[Tutorial: a soft zero-pi qubit](@ref) plots these two-dimensional wavefunctions, evaluated on a fine θ grid.
 
 ## Grids and normalization
 

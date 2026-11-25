@@ -89,4 +89,5 @@ energies(sys, root.children[1]) .- energies(sys, root.children[1])[1]
 ## What next
 
 - [Trees and truncation](manual/trees.md): selection rules other than `lowest`, ports, and given subsystems such as a resonator.
-- [Tutorial: two coupled zero-pi qubits](@ref): a larger tree whose leaves have two modes each.
+- [Tutorial: a soft zero-pi qubit](@ref): a published device with all three of its modes, and its two-dimensional wavefunctions.
+- [Tutorial: two coupled soft zero-pi qubits](@ref): a larger tree whose leaves have two modes each, and the static ZZ rate.
