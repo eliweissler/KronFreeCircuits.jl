@@ -10,6 +10,7 @@ A fluxonium on a phase grid, and the same fluxonium in a Fock basis:
 ```@example wf
 using KronFreeCircuits, CairoMakie
 CairoMakie.activate!(type="png") # hide
+figdir = mkpath(joinpath(pkgdir(KronFreeCircuits), "docs", "build", "manual")) # hide
 
 spec = load_spec("fluxonium.json")
 θ = (E_J=8.9, E_C=2.5, E_L=0.5, varphi_ext=2.0)
@@ -38,8 +39,10 @@ for i in 1:4
     lines!(ax, φ[sel] ./ 2π, E[i] .+ 3 .* real.(ψ[sel, i]); label="state $(i - 1)")
 end
 Legend(fig[1, 2], ax)
-fig
+save(joinpath(figdir, "fluxonium_states.png"), fig); nothing # hide
 ```
+
+![Fluxonium states offset by their energies](fluxonium_states.png)
 
 Both functions also take a basis and a vector or a matrix of column states, `phase_wavefunction(basis, V)`, and a leaf of a larger tree, `phase_wavefunction(sys, node)`.
 
